@@ -1,0 +1,889 @@
+Running tests with live code mounting...
+📦 Installing dependencies...
+[notice] To update, run: pip install --upgrade pip
+🧪 Running tests...
+[32m2026-02-09 16:31:14[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36m__init__[0m - [1mCSVCandleStore initialized: root=/tmp/tmpxrlh18vb, broker=test, tz=America/New_York[0m
+[32m2026-02-09 16:31:14[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36m__init__[0m - [1mCSVCandleStore initialized: root=/tmp/tmpucof3o2d, broker=test, tz=America/New_York[0m
+[32m2026-02-09 16:31:14[0m | [33m[1mWARNING [0m | [36minfrastructure.storage.csv_store[0m:[36mread_range[0m - [33m[1mRange incomplete: EURUSD has 1 missing candles (2/3)[0m
+[32m2026-02-09 16:31:14[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36mpatch[0m - [1mPatching 1 candles for EURUSD[0m
+[32m2026-02-09 16:31:14[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36mpatch[0m - [1mPatched 1 candles[0m
+[32m2026-02-09 16:31:14[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36m__init__[0m - [1mCSVCandleStore initialized: root=/tmp/tmpghu2yla3, broker=test, tz=America/New_York[0m
+[32m2026-02-09 16:31:14[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36m__init__[0m - [1mCSVCandleStore initialized: root=/tmp/tmp7b27kn97, broker=test, tz=America/New_York[0m
+[32m2026-02-09 16:31:14[0m | [33m[1mWARNING [0m | [36minfrastructure.storage.csv_store[0m:[36mread_range[0m - [33m[1mRange incomplete: EURUSD has 3 missing candles (7/10)[0m
+[32m2026-02-09 16:31:14[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36m__init__[0m - [1mCSVCandleStore initialized: root=/tmp/tmp0wy0e399, broker=test, tz=America/New_York[0m
+[32m2026-02-09 16:31:14[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36mvalidate_integrity[0m - [1mIntegrity check passed: XAUUSD [2026-02-08 09:00:00-05:00 to 2026-02-08 09:05:00-05:00)[0m
+
+============================================================
+CSVCandleStore Unit Tests
+============================================================
+
+Testing append and read...
+✓ Append and read test passed
+Testing patch...
+✓ Patch test passed
+Testing get_last_timestamp...
+✓ get_last_timestamp test passed
+Testing coverage...
+✓ Coverage test passed
+Testing validate_integrity...
+✓ validate_integrity test passed
+
+============================================================
+✓ All tests passed!
+============================================================
+
+
+============================================================
+GapValidator Unit Tests
+============================================================
+
+Testing find_gaps...
+✓ find_gaps test passed
+Testing no gaps...
+✓ no gaps test passed
+Testing validation report...
+✓ validation report test passed
+Testing check_integrity...
+✓ check_integrity test passed
+Testing get_missing_ranges...
+✓ get_missing_ranges test passed
+Testing empty data...
+✓ empty data test passed
+
+============================================================
+✓ All tests passed!
+============================================================
+
+[32m2026-02-09 16:31:15[0m | [1mINFO    [0m | [36minfrastructure.builders.candle_builder[0m:[36m__init__[0m - [1mCandleBuilder initialized: symbol=XAUUSD, tz=America/New_York[0m
+[32m2026-02-09 16:31:15[0m | [1mINFO    [0m | [36minfrastructure.builders.candle_builder[0m:[36m__init__[0m - [1mCandleBuilder initialized: symbol=EURUSD, tz=America/New_York[0m
+[32m2026-02-09 16:31:15[0m | [1mINFO    [0m | [36minfrastructure.builders.candle_builder[0m:[36m__init__[0m - [1mCandleBuilder initialized: symbol=XAUUSD, tz=America/New_York[0m
+[32m2026-02-09 16:31:15[0m | [1mINFO    [0m | [36minfrastructure.builders.candle_builder[0m:[36m__init__[0m - [1mCandleBuilder initialized: symbol=XAUUSD, tz=America/New_York[0m
+[32m2026-02-09 16:31:15[0m | [1mINFO    [0m | [36minfrastructure.builders.candle_builder[0m:[36m__init__[0m - [1mCandleBuilder initialized: symbol=XAUUSD, tz=America/New_York[0m
+[32m2026-02-09 16:31:15[0m | [1mINFO    [0m | [36minfrastructure.builders.candle_builder[0m:[36m__init__[0m - [1mCandleBuilder initialized: symbol=XAUUSD, tz=America/New_York[0m
+[32m2026-02-09 16:31:15[0m | [1mINFO    [0m | [36minfrastructure.builders.candle_builder[0m:[36m__init__[0m - [1mCandleBuilder initialized: symbol=XAUUSD, tz=America/New_York[0m
+[32m2026-02-09 16:31:15[0m | [1mINFO    [0m | [36minfrastructure.builders.candle_builder[0m:[36m__init__[0m - [1mCandleBuilder initialized: symbol=XAUUSD, tz=America/New_York[0m
+
+============================================================
+CandleBuilder Unit Tests
+============================================================
+
+Testing single tick...
+✓ Single tick test passed
+Testing multiple ticks same minute...
+✓ Multiple ticks same minute test passed
+Testing minute transition...
+✓ Minute transition test passed
+Testing OHLC correctness...
+✓ OHLC correctness test passed
+Testing timezone handling...
+✓ Timezone handling test passed
+Testing reset...
+✓ Reset test passed
+Testing no volume...
+✓ No volume test passed
+Testing empty finalize...
+✓ Empty finalize test passed
+
+============================================================
+✓ All tests passed!
+============================================================
+
+[32m2026-02-09 16:31:15[0m | [1mINFO    [0m | [36minfrastructure.data.mock_provider[0m:[36m__init__[0m - [1mMockBackfillProvider initialized: base_price=2700.0, volatility=0.001, trend=0.0, seed=None[0m
+[32m2026-02-09 16:31:15[0m | [1mINFO    [0m | [36minfrastructure.data.mock_provider[0m:[36m__init__[0m - [1mMockBackfillProvider initialized: base_price=2700.0, volatility=0.002, trend=0.0, seed=None[0m
+[32m2026-02-09 16:31:15[0m | [1mINFO    [0m | [36minfrastructure.data.mock_provider[0m:[36m__init__[0m - [1mMockBackfillProvider initialized: base_price=2700.0, volatility=0.001, trend=0.0001, seed=42[0m
+[32m2026-02-09 16:31:15[0m | [1mINFO    [0m | [36minfrastructure.data.mock_provider[0m:[36m__init__[0m - [1mMockBackfillProvider initialized: base_price=2700.0, volatility=0.001, trend=0.0, seed=None[0m
+[32m2026-02-09 16:31:15[0m | [1mINFO    [0m | [36minfrastructure.data.mock_provider[0m:[36m__init__[0m - [1mMockBackfillProvider initialized: base_price=2700.0, volatility=0.001, trend=0.0, seed=None[0m
+
+============================================================
+MockBackfillProvider Unit Tests
+============================================================
+
+Testing generate candles...
+✓ Generate candles test passed
+Testing OHLC validity...
+✓ OHLC validity test passed
+Testing price behavior...
+✓ Price behavior test passed
+Testing is_available...
+✓ is_available test passed
+Testing large range...
+✓ Large range test passed
+
+============================================================
+✓ All tests passed!
+============================================================
+
+[32m2026-02-09 16:31:15[0m | [1mINFO    [0m | [36minfrastructure.storage.idempotency_store[0m:[36m__init__[0m - [1mIdempotencyStore initialized (TTL=60s)[0m
+[32m2026-02-09 16:31:15[0m | [1mINFO    [0m | [36minfrastructure.storage.idempotency_store[0m:[36m__init__[0m - [1mIdempotencyStore initialized (TTL=1s)[0m
+[32m2026-02-09 16:31:17[0m | [1mINFO    [0m | [36minfrastructure.storage.idempotency_store[0m:[36m__init__[0m - [1mIdempotencyStore initialized (TTL=60s)[0m
+[32m2026-02-09 16:31:17[0m | [1mINFO    [0m | [36minfrastructure.storage.idempotency_store[0m:[36m__init__[0m - [1mIdempotencyStore initialized (TTL=60s)[0m
+[32m2026-02-09 16:31:17[0m | [1mINFO    [0m | [36minfrastructure.storage.idempotency_store[0m:[36mclear[0m - [1mIdempotencyStore cleared[0m
+[32m2026-02-09 16:31:17[0m | [1mINFO    [0m | [36minfrastructure.storage.idempotency_store[0m:[36m__init__[0m - [1mIdempotencyStore initialized (TTL=1s)[0m
+[32m2026-02-09 16:31:18[0m | [1mINFO    [0m | [36minfrastructure.storage.idempotency_store[0m:[36m__init__[0m - [1mIdempotencyStore initialized (TTL=60s)[0m
+
+============================================================
+IdempotencyStore Unit Tests
+============================================================
+
+Testing set and get...
+✓ Set and get test passed
+Testing TTL expiration...
+✓ TTL expiration test passed
+Testing delete...
+✓ Delete test passed
+Testing clear...
+✓ Clear test passed
+Testing automatic cleanup...
+✓ Automatic cleanup test passed
+Testing overwrite...
+✓ Overwrite test passed
+
+============================================================
+✓ All tests passed!
+============================================================
+
+
+============================================================
+CostModel Unit Tests
+============================================================
+
+Testing EURUSD fees...
+  ✓ EURUSD $10k position: total fees = $3.40 (expected $3.40)
+✓ EURUSD fees test passed
+Testing XAUUSD fees...
+  ✓ XAUUSD $10k position: total fees = $11.00 (expected $11.00)
+✓ XAUUSD fees test passed
+Testing different position sizes...
+  ✓ $1k position: $0.34
+  ✓ $50k position: $17.00
+  ✓ $100k position: $34.00
+✓ Position size test passed
+Testing unsupported symbol error...
+✓ Unsupported symbol test passed
+Testing fees breakdown structure...
+✓ Fees breakdown structure test passed
+Testing exact calculation precision...
+  ✓ Manual verification: $1.00 + $1.20 + $1.20 = $3.40
+✓ Exact calculation test passed
+
+============================================================
+✓ All CostModel tests passed!
+============================================================
+
+[32m2026-02-09 16:31:18[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.price_feed_ws_client[0m:[36m__init__[0m - [1mGTradePriceFeedWSClient initialized: url=wss://backend-arbitrum.gains.trade, reconnect_delay=5.0s[0m
+[32m2026-02-09 16:31:18[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.price_feed_ws_client[0m:[36m__init__[0m - [1mGTradePriceFeedWSClient initialized: url=wss://backend-arbitrum.gains.trade, reconnect_delay=5.0s[0m
+[32m2026-02-09 16:31:18[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.price_feed_ws_client[0m:[36m__init__[0m - [1mGTradePriceFeedWSClient initialized: url=wss://backend-arbitrum.gains.trade, reconnect_delay=5.0s[0m
+[32m2026-02-09 16:31:18[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.price_feed_ws_client[0m:[36m_handle_message[0m - [33m[1mInvalid price update (odd length): [0, 2700.5, 2][0m
+[32m2026-02-09 16:31:18[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.price_feed_ws_client[0m:[36m__init__[0m - [1mGTradePriceFeedWSClient initialized: url=wss://backend-arbitrum.gains.trade, reconnect_delay=5.0s[0m
+[32m2026-02-09 16:31:18[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.price_feed_ws_client[0m:[36m__init__[0m - [1mGTradePriceFeedWSClient initialized: url=wss://backend-arbitrum.gains.trade, reconnect_delay=5.0s[0m
+[32m2026-02-09 16:31:18[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.price_feed_ws_client[0m:[36m_handle_message[0m - [33m[1mInvalid price data: pair_id=0, price=invalid_price[0m
+[32m2026-02-09 16:31:18[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.price_feed_ws_client[0m:[36m__init__[0m - [1mGTradePriceFeedWSClient initialized: url=wss://backend-arbitrum.gains.trade, reconnect_delay=5.0s[0m
+[32m2026-02-09 16:31:18[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.price_feed_ws_client[0m:[36m_handle_message[0m - [33m[1mInvalid JSON message: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)[0m
+[32m2026-02-09 16:31:18[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.price_feed_ws_client[0m:[36m__init__[0m - [1mGTradePriceFeedWSClient initialized: url=wss://backend-arbitrum.gains.trade, reconnect_delay=5.0s[0m
+
+============================================================
+GTrade Price Feed Parser Unit Tests
+============================================================
+
+Testing parse price updates...
+  ✓ Parsed 2 ticks: XAUUSD=2700.5, EURUSD=1.05
+✓ Parse price updates test passed
+Testing parse ping message...
+  ✓ Ping message handled (no ticks queued)
+✓ Parse ping message test passed
+Testing parse invalid odd length...
+  ✓ Invalid odd length handled (no ticks queued)
+✓ Parse invalid odd length test passed
+Testing parse unknown pairId...
+  ✓ Unknown pairId handled (no ticks queued)
+✓ Parse unknown pairId test passed
+Testing parse invalid price type...
+  ✓ Invalid price type handled (no ticks queued)
+✓ Parse invalid price type test passed
+Testing parse malformed JSON...
+  ✓ Malformed JSON handled (no ticks queued)
+✓ Parse malformed JSON test passed
+Testing latest price cache...
+  ✓ Cache updated: XAUUSD=2700.0, EURUSD=1.05
+✓ Latest price cache test passed
+
+============================================================
+✓ All GTrade price feed parser tests passed!
+============================================================
+
+[32m2026-02-09 16:31:20[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.chain_config[0m:[36m__post_init__[0m - [33m[1mContract address 'diamond' was not checksummed, converted to: 0xFF162c694eAA571f685030649814282eA457f169[0m
+[32m2026-02-09 16:31:20[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.chain_config[0m:[36m__post_init__[0m - [33m[1mContract address 'trading' was not checksummed, converted to: 0xFF162c694eAA571f685030649814282eA457f169[0m
+[32m2026-02-09 16:31:20[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.chain_config[0m:[36m__post_init__[0m - [33m[1mContract address 'usdc' was not checksummed, converted to: 0xaf88d065e77c8cC2239327C5EDb3A432268e5831[0m
+[32m2026-02-09 16:31:20[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.chain_config[0m:[36mload_chain_config_from_env[0m - [1mChain config loaded: network=Arbitrum Mainnet, has_wallet=False, rpc_url=https://arb1.arbitrum.io/rpc...[0m
+[32m2026-02-09 16:31:20[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.chain_config[0m:[36mload_chain_config_from_env[0m - [1mChain config loaded: network=Arbitrum Mainnet, has_wallet=True, rpc_url=https://arb1.arbitrum.io/rpc...[0m
+[32m2026-02-09 16:31:20[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.chain_config[0m:[36mload_chain_config_from_env[0m - [1mChain config loaded: network=Arbitrum Mainnet, has_wallet=False, rpc_url=https://arb1.arbitrum.io/rpc...[0m
+
+============================================================
+Unit Test: ChainConfig
+============================================================
+
+✓ Contract addresses auto-checksum
+✓ ChainConfig mainnet detection
+✓ ChainConfig testnet detection
+✓ ChainConfig with wallet
+✓ Load config from env (mainnet)
+✓ Load config from env (with wallet)
+✓ Load config from env (custom addresses)
+
+============================================================
+✓ All tests passed
+============================================================
+
+[32m2026-02-09 16:31:21[0m | [31m[1mERROR   [0m | [36minfrastructure.venues.gtrade.tx_sender[0m:[36mestimate_gas[0m - [31m[1mGas estimation failed: execution reverted[0m
+[32m2026-02-09 16:31:21[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.tx_sender[0m:[36mbuild_tx[0m - [1mBuilt tx: to=0x1234567890123456789012345678901234567890, gas=120000, nonce=5[0m
+[32m2026-02-09 16:31:21[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.tx_sender[0m:[36msend_raw_tx[0m - [1mSent tx: 1234123412341234123412341234123412341234123412341234123412341234[0m
+[32m2026-02-09 16:31:21[0m | [31m[1mERROR   [0m | [36minfrastructure.venues.gtrade.tx_sender[0m:[36msend_raw_tx[0m - [31m[1mFailed to send tx: nonce too low[0m
+[32m2026-02-09 16:31:21[0m | [31m[1mERROR   [0m | [36minfrastructure.venues.gtrade.tx_sender[0m:[36msend_raw_tx[0m - [31m[1mFailed to send tx: replacement transaction underpriced[0m
+[32m2026-02-09 16:31:21[0m | [31m[1mERROR   [0m | [36minfrastructure.venues.gtrade.tx_sender[0m:[36msend_raw_tx[0m - [31m[1mFailed to send tx: insufficient funds for gas * price + value[0m
+[32m2026-02-09 16:31:21[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.tx_sender[0m:[36mwait_receipt[0m - [1mTx confirmed: 0x1234, gas_used=100000[0m
+[32m2026-02-09 16:31:21[0m | [31m[1mERROR   [0m | [36minfrastructure.venues.gtrade.tx_sender[0m:[36mwait_receipt[0m - [31m[1mTx reverted: 0x1234[0m
+[32m2026-02-09 16:31:22[0m | [31m[1mERROR   [0m | [36minfrastructure.venues.gtrade.tx_sender[0m:[36mwait_receipt[0m - [31m[1mTimeout waiting for tx 0x1234[0m
+[32m2026-02-09 16:31:22[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.tx_sender[0m:[36mbuild_tx[0m - [1mBuilt tx: to=0x1234567890123456789012345678901234567890, gas=120000, nonce=10[0m
+[32m2026-02-09 16:31:22[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.tx_sender[0m:[36msend_raw_tx[0m - [1mSent tx: 1234123412341234123412341234123412341234123412341234123412341234[0m
+[32m2026-02-09 16:31:22[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.tx_sender[0m:[36mwait_receipt[0m - [1mTx confirmed: 1234123412341234123412341234123412341234123412341234123412341234, gas_used=100000[0m
+
+============================================================
+Unit Test: TxSender - Transaction Plumbing
+============================================================
+
+✓ Get pending nonce
+✓ Estimate gas success
+✓ Estimate gas failure (reverted)
+✓ Get gas config (EIP-1559 auto)
+✓ Get gas config (legacy user-provided)
+✓ Build tx success
+✓ Sign tx
+✓ Send raw tx success
+✓ Send raw tx (nonce too low)
+✓ Send raw tx (underpriced)
+✓ Send raw tx (insufficient funds)
+✓ Wait receipt success
+✓ Wait receipt (reverted)
+✓ Wait receipt (timeout)
+✓ Send and confirm (complete flow)
+
+============================================================
+✓ All tests passed (15/15)
+============================================================
+
+
+============================================================
+Unit Test: PositionRef - Canonical Position Identifier
+============================================================
+
+✓ PositionRef creation from Position
+✓ PositionRef immutability (frozen)
+✓ PositionRef string representation
+✓ get_ref() returns None when wallet missing
+✓ PositionRef equality and hashing
+
+============================================================
+✓ All tests passed (5/5)
+============================================================
+
+
+============================================================
+Unit Test: ABI Encoder - gTrade Calldata (Official ABI)
+============================================================
+
+✓ Function selector generation (4-byte keccak256)
+✓ Official selectors match computed selectors
+✓ encode_open_trade() returns valid calldata (Trade struct)
+✓ encode_close_trade() returns valid calldata
+✓ encode_update_sl() returns valid calldata
+✓ encode_update_tp() returns valid calldata
+✓ price_to_contract_units conversion
+✓ usdc_to_wei conversion (6 decimals)
+✓ Different parameters produce different calldata
+✓ Function selectors are unique
+
+============================================================
+✓ All tests passed (10/10)
+============================================================
+
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36m__init__[0m - [1mCSVCandleStore initialized: root=/tmp/tmpjvtaoc1n, broker=gtrade, tz=America/New_York[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.builders.candle_builder[0m:[36m__init__[0m - [1mCandleBuilder initialized: symbol=XAUUSD, tz=America/New_York[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36m__init__[0m - [1mCSVCandleStore initialized: root=/tmp/tmp2sqos47_, broker=gtrade, tz=America/New_York[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.builders.candle_builder[0m:[36m__init__[0m - [1mCandleBuilder initialized: symbol=XAUUSD, tz=America/New_York[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.builders.candle_builder[0m:[36m__init__[0m - [1mCandleBuilder initialized: symbol=EURUSD, tz=America/New_York[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36m__init__[0m - [1mCSVCandleStore initialized: root=/tmp/tmpejgstsy7, broker=gtrade, tz=America/New_York[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.builders.candle_builder[0m:[36m__init__[0m - [1mCandleBuilder initialized: symbol=XAUUSD, tz=America/New_York[0m
+[32m2026-02-09 16:31:24[0m | [33m[1mWARNING [0m | [36minfrastructure.storage.csv_store[0m:[36mread_range[0m - [33m[1mRange incomplete: XAUUSD has 1 missing candles (2/3)[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36m__init__[0m - [1mCSVCandleStore initialized: root=/tmp/tmptjmeus4n, broker=gtrade, tz=America/New_York[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.builders.candle_builder[0m:[36m__init__[0m - [1mCandleBuilder initialized: symbol=XAUUSD, tz=America/New_York[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36m__init__[0m - [1mCSVCandleStore initialized: root=/tmp/tmptjmeus4n, broker=gtrade, tz=America/New_York[0m
+
+============================================================
+Integration Tests - Live to Store Flow
+============================================================
+
+Testing tick → builder → store flow...
+  ✓ Candle closed and stored: 2026-02-08 10:00:00-05:00
+  ✓ Candle closed and stored: 2026-02-08 10:01:00-05:00
+  ✓ Final candle stored: 2026-02-08 10:02:00-05:00
+✓ Tick → builder → store flow test passed
+Testing multi-symbol flow...
+✓ Multi-symbol flow test passed
+Testing irregular ticks...
+✓ Irregular ticks test passed
+Testing persistent storage...
+✓ Persistent storage test passed
+
+============================================================
+✓ All integration tests passed!
+============================================================
+
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36m__init__[0m - [1mCSVCandleStore initialized: root=/tmp/tmp9o_l9xtn, broker=gtrade, tz=America/New_York[0m
+[32m2026-02-09 16:31:24[0m | [33m[1mWARNING [0m | [36minfrastructure.storage.csv_store[0m:[36mread_range[0m - [33m[1mRange incomplete: XAUUSD has 3 missing candles (4/7)[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.data.mock_provider[0m:[36m__init__[0m - [1mMockBackfillProvider initialized: base_price=2700.0, volatility=0.001, trend=0.0, seed=None[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36m__init__[0m - [1mBackfillService initialized: symbols=['XAUUSD'], corrective_window=10min, interval=600s[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mbackfill_symbol[0m - [1mBackfilling XAUUSD: [2026-02-08 10:00:00-05:00 to 2026-02-08 10:07:00-05:00][0m
+[32m2026-02-09 16:31:24[0m | [33m[1mWARNING [0m | [36minfrastructure.storage.csv_store[0m:[36mread_range[0m - [33m[1mRange incomplete: XAUUSD has 3 missing candles (4/7)[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mbackfill_symbol[0m - [1mFound 1 gaps in XAUUSD (3 missing candles)[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36mpatch[0m - [1mPatching 3 candles for XAUUSD[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36mpatch[0m - [1mPatched 3 candles[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mbackfill_symbol[0m - [1m✓ Backfilled 3 candles for XAUUSD[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36m__init__[0m - [1mCSVCandleStore initialized: root=/tmp/tmpk0vs8w7o, broker=gtrade, tz=America/New_York[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.data.mock_provider[0m:[36m__init__[0m - [1mMockBackfillProvider initialized: base_price=2700.0, volatility=0.001, trend=0.0, seed=None[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36m__init__[0m - [1mBackfillService initialized: symbols=['XAUUSD'], corrective_window=5min, interval=3600s[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mstart[0m - [1mRunning startup backfill...[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mbackfill_symbol[0m - [1mBackfilling XAUUSD: [2026-02-08 15:04:00+00:00 to 2026-02-09 11:31:00-05:00][0m
+[32m2026-02-09 16:31:24[0m | [33m[1mWARNING [0m | [36minfrastructure.storage.csv_store[0m:[36mread_range[0m - [33m[1mRange incomplete: XAUUSD has 1521 missing candles (6/1527)[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mbackfill_symbol[0m - [1mFound 1 gaps in XAUUSD (1521 missing candles)[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36mpatch[0m - [1mPatching 1521 candles for XAUUSD[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36mpatch[0m - [1mPatched 1521 candles[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mbackfill_symbol[0m - [1m✓ Backfilled 1521 candles for XAUUSD[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36m_run_backfill_for_all_symbols[0m - [1m✓ Backfill complete: 1521 total candles filled[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mstart[0m - [1m✓ BackfillService started[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36m_periodic_backfill_loop[0m - [1mPeriodic backfill started (every 3600s)[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36m_periodic_backfill_loop[0m - [1mPeriodic backfill loop stopped[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mstop[0m - [1mBackfillService stopped[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36m__init__[0m - [1mCSVCandleStore initialized: root=/tmp/tmpbre4qpxf, broker=gtrade, tz=America/New_York[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.data.mock_provider[0m:[36m__init__[0m - [1mMockBackfillProvider initialized: base_price=2700.0, volatility=0.001, trend=0.0, seed=None[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36m__init__[0m - [1mBackfillService initialized: symbols=['XAUUSD', 'EURUSD'], corrective_window=10min, interval=600s[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mstart[0m - [1mRunning startup backfill...[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mbackfill_symbol[0m - [1mBackfilling XAUUSD: [2026-02-08 14:52:00+00:00 to 2026-02-09 11:31:00-05:00][0m
+[32m2026-02-09 16:31:24[0m | [33m[1mWARNING [0m | [36minfrastructure.storage.csv_store[0m:[36mread_range[0m - [33m[1mRange incomplete: XAUUSD has 1536 missing candles (3/1539)[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mbackfill_symbol[0m - [1mFound 2 gaps in XAUUSD (1536 missing candles)[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36mpatch[0m - [1mPatching 8 candles for XAUUSD[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36mpatch[0m - [1mPatched 8 candles[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36mpatch[0m - [1mPatching 1528 candles for XAUUSD[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36mpatch[0m - [1mPatched 1528 candles[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mbackfill_symbol[0m - [1m✓ Backfilled 1536 candles for XAUUSD[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mbackfill_symbol[0m - [1mBackfilling EURUSD: [2026-02-08 14:52:00+00:00 to 2026-02-09 11:31:00-05:00][0m
+[32m2026-02-09 16:31:24[0m | [33m[1mWARNING [0m | [36minfrastructure.storage.csv_store[0m:[36mread_range[0m - [33m[1mRange incomplete: EURUSD has 1536 missing candles (3/1539)[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mbackfill_symbol[0m - [1mFound 2 gaps in EURUSD (1536 missing candles)[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36mpatch[0m - [1mPatching 8 candles for EURUSD[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36mpatch[0m - [1mPatched 8 candles[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36mpatch[0m - [1mPatching 1528 candles for EURUSD[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36mpatch[0m - [1mPatched 1528 candles[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mbackfill_symbol[0m - [1m✓ Backfilled 1536 candles for EURUSD[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36m_run_backfill_for_all_symbols[0m - [1m✓ Backfill complete: 3072 total candles filled[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mstart[0m - [1m✓ BackfillService started[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36m_periodic_backfill_loop[0m - [1mPeriodic backfill started (every 600s)[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36m_periodic_backfill_loop[0m - [1mPeriodic backfill loop stopped[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mstop[0m - [1mBackfillService stopped[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36m__init__[0m - [1mCSVCandleStore initialized: root=/tmp/tmpra63jvvj, broker=gtrade, tz=America/New_York[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36minfrastructure.data.mock_provider[0m:[36m__init__[0m - [1mMockBackfillProvider initialized: base_price=2700.0, volatility=0.001, trend=0.0, seed=None[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36m__init__[0m - [1mBackfillService initialized: symbols=['XAUUSD'], corrective_window=5min, interval=600s[0m
+[32m2026-02-09 16:31:24[0m | [1mINFO    [0m | [36mapplication.services.backfill_service[0m:[36mbackfill_symbol[0m - [1mBackfilling XAUUSD: [2026-02-08 10:00:00-05:00 to 2026-02-08 10:10:00-05:00][0m
+
+============================================================
+Integration Tests - Backfill Patch Flow
+============================================================
+
+Testing backfill fills gaps...
+✓ Backfill fills gaps test passed
+Testing startup backfill...
+  Coverage after startup backfill: 100.0%
+✓ Startup backfill test passed
+Testing multi-symbol backfill...
+  XAUUSD coverage: 100.0%
+  EURUSD coverage: 100.0%
+✓ Multi-symbol backfill test passed
+Testing backfill with no gaps...
+✓ No gaps test passed
+
+============================================================
+✓ All integration tests passed!
+============================================================
+
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36m__init__[0m - [1mPaperExecutionEngine initialized: balance=$10000.00, slippage=5.0bps, using official gTrade CostModel, WS broadcasting=disabled[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36mopen_position[0m - [1m✓ Opened position paper_0737364d77c8: XAUUSD BUY $10000.00 @ $2701.35 (collateral=$1000.00, leverage=10.0x, fee=$6.00)[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36m__init__[0m - [1mPaperExecutionEngine initialized: balance=$10000.00, slippage=5.0bps, using official gTrade CostModel, WS broadcasting=disabled[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.storage.idempotency_store[0m:[36m__init__[0m - [1mIdempotencyStore initialized (TTL=3600s)[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36mopen_position[0m - [1m✓ Opened position paper_7777642ad0e1: XAUUSD BUY $10000.00 @ $2701.35 (collateral=$1000.00, leverage=10.0x, fee=$6.00)[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36m__init__[0m - [1mPaperExecutionEngine initialized: balance=$10000.00, slippage=5.0bps, using official gTrade CostModel, WS broadcasting=disabled[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36mopen_position[0m - [1m✓ Opened position paper_b73b3c9e7f35: XAUUSD BUY $2500.00 @ $2701.35 (collateral=$500.00, leverage=5.0x, fee=$1.50)[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36mopen_position[0m - [1m✓ Opened position paper_6fb399b7514a: EURUSD SELL $2500.00 @ $1.05 (collateral=$500.00, leverage=5.0x, fee=$0.55)[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36mopen_position[0m - [1m✓ Opened position paper_8f8b0bb6f29d: XAUUSD BUY $2500.00 @ $2701.35 (collateral=$500.00, leverage=5.0x, fee=$1.50)[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36m__init__[0m - [1mPaperExecutionEngine initialized: balance=$10000.00, slippage=5.0bps, using official gTrade CostModel, WS broadcasting=disabled[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36mopen_position[0m - [1m✓ Opened position paper_f415417c9d22: XAUUSD BUY $10000.00 @ $2701.35 (collateral=$1000.00, leverage=10.0x, fee=$6.00)[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36mupdate_sl[0m - [1mUpdated SL for paper_f415417c9d22: 2660.0[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36mupdate_tp[0m - [1mUpdated TP for paper_f415417c9d22: 2740.0[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36mupdate_sl[0m - [1mUpdated SL for paper_f415417c9d22: None[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36m__init__[0m - [1mPaperExecutionEngine initialized: balance=$10000.00, slippage=5.0bps, using official gTrade CostModel, WS broadcasting=disabled[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36mopen_position[0m - [1m✓ Opened position paper_ba7bbffc9943: XAUUSD BUY $10000.00 @ $2701.35 (collateral=$1000.00, leverage=10.0x, fee=$6.00)[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36mclose_position[0m - [1m✓ Closed position paper_ba7bbffc9943: XAUUSD LONG PnL_net=$59.01 (+5.90%) PnL_gross=$64.01 @ $2718.64 (open=$2701.35, fee=$5.00)[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36m__init__[0m - [1mPaperExecutionEngine initialized: balance=$10000.00, slippage=5.0bps, using official gTrade CostModel, WS broadcasting=disabled[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36mopen_position[0m - [1m✓ Opened position paper_36c31f299486: XAUUSD BUY $10000.00 @ $2701.35 (collateral=$1000.00, leverage=10.0x, fee=$6.00)[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36mcheck_stops[0m - [1mStop loss hit for paper_36c31f299486: 2649.0 <= 2650.0[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36mclose_position[0m - [1m✓ Closed position paper_36c31f299486: XAUUSD LONG PnL_net=$-203.70 (-20.37%) PnL_gross=$-198.70 @ $2647.68 (open=$2701.35, fee=$5.00)[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36m__init__[0m - [1mPaperExecutionEngine initialized: balance=$10000.00, slippage=0.0bps, using official gTrade CostModel, WS broadcasting=disabled[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36mopen_position[0m - [1m✓ Opened position paper_1c907723d7a9: EURUSD BUY $10000.00 @ $1.05 (collateral=$1000.00, leverage=10.0x, fee=$2.20)[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36mclose_position[0m - [1m✓ Closed position paper_1c907723d7a9: EURUSD LONG PnL_net=$-1.20 (-0.12%) PnL_gross=$0.00 @ $1.05 (open=$1.05, fee=$1.20)[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36m__init__[0m - [1mPaperExecutionEngine initialized: balance=$10000.00, slippage=0.0bps, using official gTrade CostModel, WS broadcasting=disabled[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36mopen_position[0m - [1m✓ Opened position paper_ad39fe9ce3ed: XAUUSD SELL $10000.00 @ $2700.00 (collateral=$1000.00, leverage=10.0x, fee=$6.00)[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36mclose_position[0m - [1m✓ Closed position paper_ad39fe9ce3ed: XAUUSD SHORT PnL_net=$69.07 (+6.91%) PnL_gross=$74.07 @ $2680.00 (open=$2700.00, fee=$5.00)[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.execution.paper_engine[0m:[36m__init__[0m - [1mPaperExecutionEngine initialized: balance=$500.00, slippage=5.0bps, using official gTrade CostModel, WS broadcasting=disabled[0m
+
+============================================================
+Integration Tests - Paper Positions Flow
+============================================================
+
+Testing open position...
+✓ Open position test passed
+Testing idempotency...
+✓ Idempotency test passed
+Testing get positions...
+✓ Get positions test passed
+Testing update SL/TP...
+✓ Update SL/TP test passed
+Testing close position...
+✓ Close position test passed
+Testing check stops...
+✓ Check stops test passed
+Testing break-even trade (entry == exit price)...
+  ✓ Gross PnL: $0.00 (≈0)
+  ✓ Net PnL: $-1.20 (negative, fees only)
+  ✓ Close fee: $1.20
+✓ Break-even trade test passed
+Testing short position PnL...
+✓ Short position PnL test passed
+Testing insufficient balance...
+✓ Insufficient balance test passed
+
+============================================================
+✓ All integration tests passed!
+============================================================
+
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36m__init__[0m - [1mCSVCandleStore initialized: root=/tmp/tmpnoxwdobk, broker=gtrade, tz=America/New_York[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.builders.candle_builder[0m:[36m__init__[0m - [1mCandleBuilder initialized: symbol=XAUUSD, tz=America/New_York[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.builders.candle_builder[0m:[36m__init__[0m - [1mCandleBuilder initialized: symbol=EURUSD, tz=America/New_York[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36m__init__[0m - [1mLiveMarketDataService initialized: symbols=['XAUUSD', 'EURUSD'], ticker_broadcast_ms=0, tz=America/New_York[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36mstart[0m - [1mStarting LiveMarketDataService...[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36mstart[0m - [1m✓ LiveMarketDataService started[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36m_process_ticks_loop[0m - [1mTick processing loop started[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36m_handle_completed_candle[0m - [1mCandle completed: XAUUSD @ 2026-02-08 10:00:00-05:00 - O=2700.00000 H=2701.00000 L=2700.00000 C=2701.00000[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36m_handle_completed_candle[0m - [1mCandle completed: EURUSD @ 2026-02-08 10:00:00-05:00 - O=1.05000 H=1.05050 L=1.05000 C=1.05050[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36m_handle_completed_candle[0m - [1mCandle completed: XAUUSD @ 2026-02-08 10:01:00-05:00 - O=2702.00000 H=2703.00000 L=2702.00000 C=2703.00000[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36m_handle_completed_candle[0m - [1mCandle completed: EURUSD @ 2026-02-08 10:01:00-05:00 - O=1.05100 H=1.05150 L=1.05100 C=1.05150[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36mstop[0m - [1mStopping LiveMarketDataService...[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36m_process_ticks_loop[0m - [1mTick processing loop stopped[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36mstop[0m - [1m✓ LiveMarketDataService stopped[0m
+[32m2026-02-09 16:31:25[0m | [33m[1mWARNING [0m | [36minfrastructure.storage.csv_store[0m:[36mread_range[0m - [33m[1mRange incomplete: XAUUSD has 1 missing candles (2/3)[0m
+[32m2026-02-09 16:31:25[0m | [33m[1mWARNING [0m | [36minfrastructure.storage.csv_store[0m:[36mread_range[0m - [33m[1mRange incomplete: EURUSD has 1 missing candles (2/3)[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36m__init__[0m - [1mCSVCandleStore initialized: root=/tmp/tmpkdevwpyp, broker=gtrade, tz=America/New_York[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.builders.candle_builder[0m:[36m__init__[0m - [1mCandleBuilder initialized: symbol=XAUUSD, tz=America/New_York[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36minfrastructure.builders.candle_builder[0m:[36m__init__[0m - [1mCandleBuilder initialized: symbol=EURUSD, tz=America/New_York[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36m__init__[0m - [1mLiveMarketDataService initialized: symbols=['XAUUSD', 'EURUSD'], ticker_broadcast_ms=200, tz=America/New_York[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36mstart[0m - [1mStarting LiveMarketDataService...[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36mstart[0m - [1m✓ LiveMarketDataService started[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36m_process_ticks_loop[0m - [1mTick processing loop started[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36m_handle_completed_candle[0m - [1mCandle completed: XAUUSD @ 2026-02-08 10:00:00-05:00 - O=2700.00000 H=2701.00000 L=2700.00000 C=2701.00000[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36m_handle_completed_candle[0m - [1mCandle completed: EURUSD @ 2026-02-08 10:00:00-05:00 - O=1.05000 H=1.05050 L=1.05000 C=1.05050[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36m_handle_completed_candle[0m - [1mCandle completed: XAUUSD @ 2026-02-08 10:01:00-05:00 - O=2702.00000 H=2703.00000 L=2702.00000 C=2703.00000[0m
+[32m2026-02-09 16:31:25[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36m_handle_completed_candle[0m - [1mCandle completed: EURUSD @ 2026-02-08 10:01:00-05:00 - O=1.05100 H=1.05150 L=1.05100 C=1.05150[0m
+[32m2026-02-09 16:31:26[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36mstop[0m - [1mStopping LiveMarketDataService...[0m
+[32m2026-02-09 16:31:26[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36m_process_ticks_loop[0m - [1mTick processing loop stopped[0m
+[32m2026-02-09 16:31:26[0m | [1mINFO    [0m | [36mapplication.services.live_marketdata_service[0m:[36mstop[0m - [1m✓ LiveMarketDataService stopped[0m
+
+============================================================
+Integration Tests - gTrade Ticks → Candles → Store
+============================================================
+
+Testing ticks → candles → store flow...
+  Generated 10 test ticks
+  ✓ Service processed all ticks
+  ✓ XAUUSD: 2 candles stored
+    - Candle 1: O=2700.0 H=2701.0 L=2700.0 C=2701.0
+    - Candle 2: O=2702.0 H=2703.0 L=2702.0 C=2703.0
+  ✓ EURUSD: 2 candles stored
+    - Candle 1: O=1.0500 H=1.0505 L=1.0500 C=1.0505
+    - Candle 2: O=1.0510 H=1.0515 L=1.0510 C=1.0515
+✓ Ticks → candles → store test passed
+Testing gap validation...
+  ✓ XAUUSD: no gaps
+  ✓ EURUSD: no gaps
+  ✓ Integrity check passed (sorted, no duplicates)
+✓ Gap validation test passed
+
+============================================================
+✓ All integration tests passed!
+============================================================
+
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36m__init__[0m - [1mGTradeVenueAdapter initialized: mode=live, network=Arbitrum Mainnet[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mStarting GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mConnected to chain: 42161[0m
+[32m2026-02-09 16:31:27[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [33m[1mNo wallet configured (read-only mode)[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1m✓ GTradeVenueAdapter started[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1mStopping GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1m✓ GTradeVenueAdapter stopped[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36m__init__[0m - [1mGTradeVenueAdapter initialized: mode=live, network=Arbitrum Mainnet[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mStarting GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mConnected to chain: 42161[0m
+[32m2026-02-09 16:31:27[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [33m[1mNo wallet configured (read-only mode)[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1m✓ GTradeVenueAdapter started[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mhealth_check[0m - [1mHealth check passed: chain_id=42161, block=123456789[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1mStopping GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1m✓ GTradeVenueAdapter stopped[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36m__init__[0m - [1mGTradeVenueAdapter initialized: mode=live, network=Arbitrum Mainnet[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mStarting GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mConnected to chain: 1[0m
+[32m2026-02-09 16:31:27[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [33m[1mChain ID mismatch: expected 42161, got 1[0m
+[32m2026-02-09 16:31:27[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [33m[1mNo wallet configured (read-only mode)[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1m✓ GTradeVenueAdapter started[0m
+[32m2026-02-09 16:31:27[0m | [31m[1mERROR   [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mhealth_check[0m - [31m[1mChain ID mismatch: expected 42161, got 1[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1mStopping GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1m✓ GTradeVenueAdapter stopped[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36m__init__[0m - [1mGTradeVenueAdapter initialized: mode=live, network=Arbitrum Mainnet[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mStarting GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mConnected to chain: 42161[0m
+[32m2026-02-09 16:31:27[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [33m[1mNo wallet configured (read-only mode)[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1m✓ GTradeVenueAdapter started[0m
+[32m2026-02-09 16:31:27[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mget_balance[0m - [33m[1mNo wallet address configured, returning zero balance[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1mStopping GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1m✓ GTradeVenueAdapter stopped[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36m__init__[0m - [1mGTradeVenueAdapter initialized: mode=live, network=Arbitrum Mainnet[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mStarting GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mConnected to chain: 42161[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mWallet address: 0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1m✓ GTradeVenueAdapter started[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mget_balance[0m - [1mBalance: ETH=1.000000, USDC=1000.00[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1mStopping GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1m✓ GTradeVenueAdapter stopped[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36m__init__[0m - [1mGTradeVenueAdapter initialized: mode=live, network=Arbitrum Mainnet[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mStarting GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mConnected to chain: 42161[0m
+[32m2026-02-09 16:31:27[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [33m[1mNo wallet configured (read-only mode)[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1m✓ GTradeVenueAdapter started[0m
+[32m2026-02-09 16:31:27[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mget_open_positions[0m - [33m[1mNo wallet configured, returning empty positions list[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1mStopping GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1m✓ GTradeVenueAdapter stopped[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36m__init__[0m - [1mGTradeVenueAdapter initialized: mode=live, network=Arbitrum Mainnet[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36m__init__[0m - [1mGTradeVenueAdapter initialized: mode=live, network=Arbitrum Mainnet[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mStarting GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mConnected to chain: 42161[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mWallet address: 0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1m✓ GTradeVenueAdapter started[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1mStopping GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1m✓ GTradeVenueAdapter stopped[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36m__init__[0m - [1mGTradeVenueAdapter initialized: mode=live, network=Arbitrum Mainnet[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mStarting GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mConnected to chain: 42161[0m
+[32m2026-02-09 16:31:27[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [33m[1mNo wallet configured (read-only mode)[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1m✓ GTradeVenueAdapter started[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1mStopping GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:27[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1m✓ GTradeVenueAdapter stopped[0m
+
+============================================================
+Integration Test: GTradeVenueAdapter (read-only)
+============================================================
+
+✓ Adapter lifecycle (start/stop)
+✓ Health check (mocked RPC)
+✓ Health check fails on chain ID mismatch
+✓ Get balance without wallet (returns zero)
+✓ Get balance with wallet (mocked balances)
+✓ Get open positions (stub returns empty)
+✓ Write operations disabled when ENABLE_LIVE_TRADING != 1
+✓ Wallet helpers (has_wallet, get_wallet_address, get_account)
+
+============================================================
+✓ All tests passed
+============================================================
+
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36m__init__[0m - [1mGTradeVenueAdapter initialized: mode=live, network=Arbitrum Mainnet[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mStarting GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mConnected to chain: 42161[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mWallet address: 0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1m✓ GTradeVenueAdapter started[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.mappers[0m:[36mmap_open_trades_response[0m - [1mMapping 0 open trades for 0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.mappers[0m:[36mmap_open_trades_response[0m - [1mMapped 0/0 positions successfully[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mget_open_positions[0m - [1mFound 0 open positions for 0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1mStopping GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1m✓ GTradeVenueAdapter stopped[0m
+/usr/local/lib/python3.11/asyncio/events.py:84: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+  self._context.run(self._callback, *self._args)
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36m__init__[0m - [1mGTradeVenueAdapter initialized: mode=live, network=Arbitrum Mainnet[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mStarting GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mConnected to chain: 42161[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mWallet address: 0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1m✓ GTradeVenueAdapter started[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.mappers[0m:[36mmap_open_trades_response[0m - [1mMapping 2 open trades for 0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.mappers[0m:[36mmap_open_trades_response[0m - [1mMapped 2/2 positions successfully[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mget_open_positions[0m - [1mFound 2 open positions for 0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1mStopping GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1m✓ GTradeVenueAdapter stopped[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36m__init__[0m - [1mGTradeVenueAdapter initialized: mode=live, network=Arbitrum Mainnet[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mStarting GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mConnected to chain: 42161[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mWallet address: 0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1m✓ GTradeVenueAdapter started[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.mappers[0m:[36mmap_open_trades_response[0m - [1mMapping 2 open trades for 0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb[0m
+[32m2026-02-09 16:31:29[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.mappers[0m:[36mmap_open_trade_to_position[0m - [33m[1mMissing pairIndex in trade: {'index': 2, 'buy': True, 'openPrice': '1.0850'}[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.mappers[0m:[36mmap_open_trades_response[0m - [1mMapped 1/2 positions successfully[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mget_open_positions[0m - [1mFound 1 open positions for 0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1mStopping GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1m✓ GTradeVenueAdapter stopped[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36m__init__[0m - [1mGTradeVenueAdapter initialized: mode=live, network=Arbitrum Mainnet[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mStarting GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mConnected to chain: 42161[0m
+[32m2026-02-09 16:31:29[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [33m[1mNo wallet configured (read-only mode)[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1m✓ GTradeVenueAdapter started[0m
+[32m2026-02-09 16:31:29[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mget_open_positions[0m - [33m[1mNo wallet configured, returning empty positions list[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1mStopping GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:29[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1m✓ GTradeVenueAdapter stopped[0m
+
+============================================================
+Integration Test: gTrade Backend Open Positions
+============================================================
+
+✓ Get open positions (empty)
+✓ Get open positions (2 trades: XAUUSD long + EURUSD short)
+✓ Get open positions (malformed trade skipped gracefully)
+✓ Get open positions (no wallet, returns empty)
+
+============================================================
+✓ All tests passed
+============================================================
+
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36m__init__[0m - [1mGTradeVenueAdapter initialized: mode=live, network=Arbitrum Mainnet[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mStarting GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mConnected to chain: 42161[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mWallet address: 0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1m✓ GTradeVenueAdapter started[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mopen_position[0m - [1mSending open_position tx: XAUUSD (pair=0) LONG collateral=1000.0 leverage=10.0[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1mStopping GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1m✓ GTradeVenueAdapter stopped[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36m__init__[0m - [1mGTradeVenueAdapter initialized: mode=live, network=Arbitrum Mainnet[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mStarting GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mConnected to chain: 42161[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mWallet address: 0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1m✓ GTradeVenueAdapter started[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mclose_position[0m - [1mSending close_position tx: 0:123 (pair=0, index=123) percent=100.0[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mclose_position[0m - [1mClose position tx confirmed: 0xef56780xef56780xef56780xef56780xef56780xef56780xef56780xef56780xef56780xef5678abcd[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1mStopping GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1m✓ GTradeVenueAdapter stopped[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36m__init__[0m - [1mGTradeVenueAdapter initialized: mode=live, network=Arbitrum Mainnet[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mStarting GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mConnected to chain: 42161[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mWallet address: 0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1m✓ GTradeVenueAdapter started[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1mStopping GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1m✓ GTradeVenueAdapter stopped[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36m__init__[0m - [1mGTradeVenueAdapter initialized: mode=live, network=Arbitrum Mainnet[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mStarting GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1mConnected to chain: 42161[0m
+[32m2026-02-09 16:31:30[0m | [33m[1mWARNING [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [33m[1mNo wallet configured (read-only mode)[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstart[0m - [1m✓ GTradeVenueAdapter started[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1mStopping GTradeVenueAdapter...[0m
+[32m2026-02-09 16:31:30[0m | [1mINFO    [0m | [36minfrastructure.venues.gtrade.gtrade_adapter[0m:[36mstop[0m - [1m✓ GTradeVenueAdapter stopped[0m
+
+============================================================
+Integration Test: GTradeVenueAdapter Write Ops (ABI Encoded)
+============================================================
+
+✓ Open position (mocked TxSender, ABI-encoded calldata)
+✓ Close position (mocked TxSender, ABI-encoded calldata)
+✓ Write ops disabled without ENABLE_LIVE_TRADING=1
+✓ Write ops require wallet configured
+
+============================================================
+✓ All tests passed (4/4)
+============================================================
+
+[32m2026-02-09 16:31:31[0m | [1mINFO    [0m | [36minfrastructure.storage.csv_store[0m:[36m__init__[0m - [1mCSVCandleStore initialized: root=/tmp/brokerage_test_uyuu49no, broker=gtrade, tz=America/New_York[0m
+
+============================================================
+API Smoke Tests - REST Endpoints
+============================================================
+Setting up test data...
+✓ Test data created (100 XAUUSD + 50 EURUSD candles)
+Starting test server on port 8001...
+✓ Server ready after 2s
+
+Testing GET /...
+✓ Root endpoint OK
+
+Testing GET /api/v1/health...
+✓ Health endpoint OK
+
+Testing GET /api/v1/mode...
+✓ Mode endpoint OK
+
+Testing GET /api/v1/ohlcv/XAUUSD (basic)...
+✓ OHLCV basic OK (0 candles)
+
+Testing GET /api/v1/ohlcv/EURUSD (range)...
+✓ OHLCV range OK (20 candles, complete=True)
+
+Testing GET /api/v1/ohlcv/XAUUSD (invalid tf)...
+✓ Invalid timeframe handled correctly
+
+Testing GET /api/v1/ohlcv/UNKNOWN...
+✓ Unknown symbol handled correctly
+Stopping test server...
+
+============================================================
+✓ All API tests passed!
+============================================================
+
+
+============================================================
+WebSocket Smoke Tests
+============================================================
+
+Starting test server on port 8002...
+✓ Server ready after 2s
+Testing basic connection...
+  ✓ Connected to WebSocket
+  ✓ Disconnected cleanly
+✓ Basic connection test passed
+Testing subscribe/unsubscribe...
+  ✓ Subscribed to ticker:XAUUSD
+  ✓ Unsubscribed from ticker:XAUUSD
+✓ Subscribe/unsubscribe test passed
+Testing invalid channel error...
+  ✓ Error received for invalid channel
+✓ Invalid channel test passed
+Testing multiple subscriptions...
+  ✓ Subscribed to ticker:XAUUSD
+  ✓ Subscribed to ticker:EURUSD
+  ✓ Subscribed to positions
+  ✓ Subscribed to balance
+✓ Multiple subscriptions test passed
+Testing message sequence numbers...
+  ✓ Subscribed to execution channel
+  ℹ Note: Seq numbers are only present on broadcast messages (ticker, candle, etc.)
+  ℹ Control messages (subscribed, unsubscribed, error) don't have seq
+✓ Message seq test passed
+Testing resume (no messages in buffer)...
+  ✓ Resume request sent (seq=0)
+  ℹ No messages in buffer to replay (expected)
+✓ Resume test passed
+Testing invalid message type...
+  ✓ Error received for invalid message type
+✓ Invalid message type test passed
+Testing missing channel field...
+  ✓ Error received for missing channel
+✓ Missing channel test passed
+Testing candle channel...
+  ✓ Subscribed to candle:XAUUSD:1m
+✓ Candle channel test passed
+Stopping test server...
+
+============================================================
+✓ All WebSocket smoke tests passed!
+============================================================
+
+
+============================================================
+BrokerageService - Test Suite
+============================================================
+
+============================================================
+Running: test_candle_store.py
+============================================================
+
+============================================================
+Running: test_gap_validator.py
+============================================================
+
+============================================================
+Running: test_candle_builder.py
+============================================================
+
+============================================================
+Running: test_backfill_provider.py
+============================================================
+
+============================================================
+Running: test_idempotency.py
+============================================================
+
+============================================================
+Running: test_cost_model.py
+============================================================
+
+============================================================
+Running: test_gtrade_price_feed_parser.py
+============================================================
+
+============================================================
+Running: test_chain_config.py
+============================================================
+
+============================================================
+Running: test_tx_sender.py
+============================================================
+
+============================================================
+Running: test_position_ref.py
+============================================================
+
+============================================================
+Running: test_abi_encoder.py
+============================================================
+
+============================================================
+Running: test_live_to_store_flow.py
+============================================================
+
+============================================================
+Running: test_backfill_patch_flow.py
+============================================================
+
+============================================================
+Running: test_paper_positions_flow.py
+============================================================
+
+============================================================
+Running: test_gtrade_ticks_to_candles_flow.py
+============================================================
+
+============================================================
+Running: test_gtrade_adapter_readonly.py
+============================================================
+
+============================================================
+Running: test_gtrade_backend_positions.py
+============================================================
+
+============================================================
+Running: test_gtrade_adapter_write_mocked.py
+============================================================
+
+============================================================
+Running: test_rest_smoke.py
+============================================================
+
+============================================================
+Running: test_ws_smoke.py
+============================================================
+
+============================================================
+Test Summary
+============================================================
+  Passed:  20
+  Failed:  0
+  Skipped: 0
+============================================================
+
+✓ All tests passed!

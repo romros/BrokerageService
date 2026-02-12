@@ -1,0 +1,13 @@
+# Extended Python SDK (official package name)
+x10-python-trading-starknet
+
+# Common dependencies
+python-dotenv>=1.0.0
+web3>=6.0.0
+
+# For potential direct API calls if SDK doesn't cover everything
+requests>=2.31.0
+websockets>=12.0
+
+# Async support
+aiohttp>=3.9.0

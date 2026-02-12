@@ -1,0 +1,14 @@
+{
+  "name": "gtrade-cli-demo",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Minimal demo: Node.js CLI + Python bridge for gTrade SDK",
+  "scripts": {
+    "test": "node simpleQuote.js"
+  },
+  "dependencies": {
+    "@gainsnetwork/trading-sdk": "^0.1.0-rc1",
+    "@gainsnetwork/sdk": "^1.8.0",
+    "ethers": "^6.0.0"
+  }
+}

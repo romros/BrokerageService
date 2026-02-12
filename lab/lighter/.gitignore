@@ -1,0 +1,28 @@
+# Lighter Lab - Git Ignore
+
+# Sensitive configuration files
+.env
+api_key_config.json
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

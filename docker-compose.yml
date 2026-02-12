@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # Brokerage Service
+  brokerage:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: brokerage-service
+    ports:
+      - "8000:8000"  # REST API + WebSocket
+    environment:
+      # Mode: live, paper, or backtest
+      - MODE=${MODE:-backtest}
+      - VENUE=${VENUE:-gtrade}
+
+      # Storage
+      - DATAFILES_ROOT=/datafiles
+      - CANONICAL_TZ=America/New_York
+      - SYMBOLS=XAUUSD,EURUSD
+
+      # Backfill
+      - BACKFILL_INTERVAL_SECONDS=${BACKFILL_INTERVAL_SECONDS:-600}
+      - CORRECTIVE_WINDOW_MINUTES=${CORRECTIVE_WINDOW_MINUTES:-5}
+
+      # API
+      - HOST=0.0.0.0
+      - PORT=8000
+
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./datafiles:/datafiles
+      - ./logs:/app/logs
+    networks:
+      - trading
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Node.js CLI for gTrade SDK
+  gtrade-cli:
+    build:
+      context: ./lab/node-gtrade
+      dockerfile: Dockerfile
+    container_name: gtrade-cli
+    volumes:
+      - ./lab/node-gtrade:/app
+    networks:
+      - trading
+    command: tail -f /dev/null  # Keep alive for testing
+
+  # Python CLI for Ostium SDK
+  ostium-cli:
+    build:
+      context: ./lab/ostium
+      dockerfile: Dockerfile
+    container_name: ostium-cli
+    environment:
+      - E2E_TESTNET=${E2E_TESTNET:-1}
+      - ENABLE_LIVE_TRADING=${ENABLE_LIVE_TRADING:-1}
+      - PRIVATE_KEY=${PRIVATE_KEY}
+      - RPC_URL=${RPC_URL:-https://sepolia-rollup.arbitrum.io/rpc}
+    volumes:
+      - ./lab/ostium:/app
+    networks:
+      - trading
+    command: tail -f /dev/null  # Keep alive for testing
+
+  # Redis (optional - for caching)
+  redis:
+    image: redis:7-alpine
+    container_name: brokerage-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - trading
+    restart: unless-stopped
+
+networks:
+  trading:
+    driver: bridge

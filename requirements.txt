@@ -1,0 +1,29 @@
+# Core
+python-dotenv==1.0.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Logging
+loguru==0.7.2
+
+# Async
+asyncio==3.4.3
+
+# API
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+websockets==12.0
+
+# Data handling
+pandas==2.2.0
+pyarrow==15.0.0
+numpy==1.26.3
+
+# Blockchain (for LIVE mode - gTrade on Arbitrum)
+web3==6.15.1
+
+# Testing (optional - we use simple scripts, not pytest)
+# pytest==8.0.0
+# pytest-asyncio==0.23.3
+httpx==0.26.0
+requests==2.31.0

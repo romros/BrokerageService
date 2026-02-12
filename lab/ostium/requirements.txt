@@ -1,0 +1,3 @@
+ostium-python-sdk
+python-dotenv
+web3
