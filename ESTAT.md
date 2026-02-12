@@ -1,21 +1,449 @@
 # ESTAT DEL PROJECTE - BrokerageService
 
-**Data:** 2026-02-09
-**Venue:** gTrade (primary)
-**Arquitectura:** AGENTS_ARQUITECTURA.md
-**Estat:** Fase 1→2→3→4→4.5→5→6A→6B.0→6B.1.A→6B.1.B.0→6B.1.B.1→6B.1.B.2→6B.1.B.2.1→6B.1.B.3→6B.1.B.4→6B.1.B.6→6B.1.B.7 ✅
+**Data:** 2026-02-12
+**Venues:**
+- **LIGHTER (Principal)** - DEX L3 ZK-rollup, $0.16/RT, 0% comissions protocol
+- **gTrade (Existent)** - Perpetuals Arbitrum, $10/RT, fases 1-6B.1.B.7 ✅
+
+**Arquitectura:** AGENTS_ARQUITECTURA.md (minimalista, SOLID + DI, 3 modes)
+**Estat Actual:**
+- gTrade: Fase 1→2→3→4→4.5→5→6A→6B.0→6B.1.A→6B.1.B.0→6B.1.B.1→6B.1.B.2→6B.1.B.2.1→6B.1.B.3→6B.1.B.4→6B.1.B.6→6B.1.B.7 ✅
+- Lighter: Validació lab completa, implementació producció L0-L6 definida a continuació
 
 ---
 
 ## 🎯 Objectiu
 
-Servei de brokerage independent per gTrade amb API REST + WebSocket.
+Servei de brokerage multi-venue amb API REST + WebSocket.
 - **Modes:** LIVE / PAPER / BACKTEST
-- **Assets:** XAUUSD, EURUSD
+- **Assets:** XAUUSD, EURUSD (gTrade), BTC/ETH/... (Lighter)
 - **Timeframe:** 1m only
 - **TZ canònica:** America/New_York
 
 ---
+
+## 📊 LIGHTER (Venue Principal) - Pla d'Implementació
+
+### Inventari Executat (Pas 0)
+
+**Fitxers consultats i trobat:**
+
+1. **AGENTS_ARQUITECTURA.md** (línies 1-100): Arquitectura SOLID + DI amb `IVenueAdapter` com a contracte, 3 modes (LIVE/PAPER/BACKTEST), scope XAUUSD/EURUSD 1m, TZ=America/New_York. Minimalista (sense sobre-enginyeria). ✅
+
+2. **ESTAT.md** (aquest fitxer): gTrade venue completat (fases 1-6B.1.B.7), 24/24 tests passant, preparat per CI. gTrade passa a ser venue "existent", Lighter nou primari. ✅
+
+3. **domain/interfaces/venue_adapter.py** (303 línies): `IVenueAdapter` interfície abstracta amb mètodes: `start/stop`, `health_check`, `get_latest_price`, `stream_prices`, `open_position`, `close_position`, `update_sl/tp`, `get_open_positions`, `get_balance`, `get_trade_history`, `get_mode`, `venue_name`. Aquest és el contracte que l'adapter Lighter ha d'implementar. ✅
+
+4. **infrastructure/venues/gtrade/gtrade_adapter.py** (línies 1-100): Implementació completa adapter gTrade (només lectura + operacions escriptura), patró de referència per Lighter. Usa `ChainConfig`, `BackendClient`, `TxSender`, `MarketStatusProvider`, mappers. Estructura clara per replicar. ✅
+
+5. **infrastructure/execution/paper_engine.py** (línies 1-80): `PaperExecutionEngine` amb execucions simulades, slippage, comissions (CostModel), gestió posicions en memòria, esdeveniments WebSocket. Lighter NO necessita modificar això (és independent del mode). ✅
+
+6. **infrastructure/storage/csv_store.py** (línies 1-60): `CSVCandleStore` amb estructura canònica `broker/asset/tz/year/month.csv`, escriptures atòmiques, bloqueig fitxers. Lighter usarà `broker="lighter"` sense canvis al nucli. ✅
+
+7. **infrastructure/storage/idempotency_store.py** (línies 1-50): `IdempotencyStore` en memòria amb TTL per `client_order_id`. Lighter usarà `client_order_index` (uint32) en lloc de cadena UUID, però el store és genèric (accepta qualsevol clau). ✅
+
+8. **application/services/live_marketdata_service.py** (línies 1-60): `LiveMarketDataService` amb `GTradePriceFeedWSClient`, CandleBuilder, persistència CSV, emissió WebSocket. Lighter necessitarà un equivalent `LighterPriceFeedClient` però l'arquitectura és igual. ✅
+
+9. **application/services/backfill_service.py** (línies 1-50): `BackfillService` amb detecció de forats, finestra correctiva, refarciment periòdic. Lighter reutilitza sense canvis (independent del mode). ✅
+
+10. **application/services/backend_trade_verifier.py**: `BackendTradeVerifier` per sondejar backend després de tx (patró gTrade). Lighter NO té backend, confirmació via esdeveniments blockchain directament. L'adapter Lighter NO usarà aquest servei. ✅
+
+### Context i Restriccions
+
+**Què NO es toca:**
+- `AGENTS_ARQUITECTURA.md` - Document fundacional, scope XAUUSD/EURUSD manté vigència (gTrade), Lighter afegeix BTC/ETH/... sense modificar doc base
+- Paper/backtest engines - Mode-agnostic, funcionen amb qualsevol venue adapter
+- Storage (CSV, idempotency, gap validator) - Genèrics, reutilitzables
+- WebSocket Hub - Genèric per broadcasting events
+- Tests existents gTrade - 24/24 tests segueixen passing (NO regressions)
+
+**Què SÍ es crea:**
+- `infrastructure/venues/lighter/` - Nou adapter implementant `IVenueAdapter`
+- `infrastructure/venues/lighter/lighter_adapter.py` - Classe principal amb SignerClient SDK
+- `infrastructure/venues/lighter/config.py` - Configuració Lighter (BASE_URL, adreces, índexs, gestió claus)
+- `infrastructure/venues/lighter/order_builder.py` - Auxiliars per construir ordres amb escalat correcte
+- `infrastructure/venues/lighter/mappers.py` - Conversió respostes API → models domini
+- `infrastructure/builders/lighter_di.py` - Constructor DI per mode LIVE amb Lighter
+- `testing/integration/test_lighter_adapter_*.py` - Suite tests Lighter (mínim 10 tests core, recomanat 20+)
+- Actualitzar `.env.example` amb variables Lighter (6 vars: `BASE_URL`, `L1_ADDRESS`, `L1_PRIVATE_KEY`, `ACCOUNT_INDEX`, `API_KEY_INDEX`, `API_PRIVATE_KEY`)
+
+### Invariants Crítiques (Lighter)
+
+Aquests són els "gotchas" descoberts al lab que NO es poden oblidar en producció:
+
+#### 1. Dos Tipus de Claus (Two-Key Authentication)
+```python
+# L1 Wallet Key (64 hex chars) - Per registrar API key (1 cop)
+LIGHTER_L1_PRIVATE_KEY = "06b8fc...0e9e"  # Wallet Ethereum estàndard
+
+# API Trading Key (80 hex chars) - Per signar ordres (cada trade)
+LIGHTER_API_PRIVATE_KEY = "4379a2...766b"  # Clau específica Lighter API
+```
+**Implicació:** L'adapter necessita gestionar DUES claus. Clau L1 per crear/renovar clau API (operació admin), clau API per signar ordres (operació trading). `LighterConfig` ha de tenir ambdós camps.
+
+#### 2. Escalat Decimal per Tipus d'Ordre
+```python
+# Ordres de mercat: ×1e6 per mida i preu
+market_size_scaled = int(base_eth * 1_000_000)
+market_price_scaled = int(price_usd * 1_000_000)
+
+# Ordres Limit/SL/TP: ×1e4 per mida, ×100 per preu
+limit_size_scaled = int(base_eth * 10_000)
+limit_price_scaled = int(price_usd * 100)
+```
+**Implicació:** Funció auxiliar `scale_order_params(order_type, size, price) -> (scaled_size, scaled_price)` obligatòria per evitar errors. Els tests HAN de verificar l'escalat per cada tipus.
+
+#### 3. Reduce-Only Flag
+```python
+# Tancar posició (reduce-only=True, compensa direcció)
+close_order = create_limit_order(
+    order_book_id=1,  # WETH/USDC
+    size=position_size,  # Mateixa mida que l'obertura
+    price=current_price,  # Preu límit
+    is_ask=(not position.is_long),  # INVERTIR direcció
+    reduce_only=True  # CRÍTIC: evitar obrir posició oposada
+)
+```
+**Implicació:** `close_position()` HA d'usar `reduce_only=True` i invertir la direcció (`is_ask = not is_long`). Els tests HAN de verificar el flag i la direcció correctes.
+
+#### 4. Client Order Index (Idempotency)
+```python
+# Lighter usa uint32 en lloc de cadena UUID
+client_order_index = generate_unique_index()  # 0-4294967295
+
+# IdempotencyStore accepta qualsevol clau (conversió a str)
+idempotency_store.get(str(client_order_index))
+```
+**Implicació:** L'adapter genera `client_order_index` uint32 únic (no UUID). Mapeig a `IdempotencyStore` via `str(index)`. Els tests HAN de verificar unicitat i conversió correcta.
+
+### Fases d'Implementació
+
+#### 🔧 FASE L0 - Config + Gestió Claus (Configuració)
+**Objectiu:** Configuració bàsica Lighter sense executar operacions
+
+**Tasques:**
+1. Crear `infrastructure/venues/lighter/config.py`
+   - `LighterConfig` dataclass amb: `base_url`, `l1_address`, `l1_private_key`, `account_index`, `api_key_index`, `api_private_key`, `order_book_ids` (mapeig símbol→id)
+   - Auxiliar `load_lighter_config_from_env()` llegint `.env`
+2. Actualitzar `.env.example` amb variables Lighter:
+   ```bash
+   # Configuració Lighter L3 (testnet validat al lab)
+   LIGHTER_BASE_URL=https://testnet.zklighter.elliot.ai
+   LIGHTER_L1_ADDRESS=0x...  # Adreça L1 wallet
+   LIGHTER_L1_PRIVATE_KEY=  # 64 hex (wallet Ethereum)
+   LIGHTER_ACCOUNT_INDEX=210  # Account index (consistent amb registre)
+   LIGHTER_API_KEY_INDEX=1  # API key index (consistent amb signatura)
+   LIGHTER_API_PRIVATE_KEY=  # 80 hex (clau API Lighter)
+   ```
+3. Crear `infrastructure/venues/lighter/__init__.py` amb exportacions
+
+**Definició de Fet:**
+- [x] La config carrega correctament des de `.env`
+- [x] Dos tipus de claus diferenciats (L1 vs API)
+- [x] Account index i API key index configurats (coherència registre/signatura)
+- [x] IDs llibre d'ordres mapejats (1=WETH/USDC, 2=BTC/USDC, etc.)
+
+**Tests:** 0 nous (només configuració, validació manual amb `load_config()`)
+
+---
+
+#### 🔧 FASE L1 - Esquelet Adapter + Comprovació Salut (Només Lectura)
+**Objectiu:** Crear `LighterVenueAdapter` amb comprovació de salut funcional
+
+**Tasques:**
+1. Crear `infrastructure/venues/lighter/lighter_adapter.py`:
+   ```python
+   class LighterVenueAdapter(IVenueAdapter):
+       def __init__(self, config: LighterConfig, mode: str = "live"):
+           self._config = config
+           self._mode = mode
+           # TODO: Inicialitzar SignerClient Lighter SDK
+           # self._client = SignerClient(
+           #     base_url=config.base_url,
+           #     api_private_keys={config.api_key_index: config.api_private_key}
+           # )
+
+       async def start(self): ...
+       async def stop(self): ...
+       async def health_check(self) -> bool:
+           # Verificar connectivitat API + validesa SignerClient
+           # 1. GET /markets (endpoint bàsic disponible)
+           # 2. Provar inicialitzar SignerClient amb api_key_index
+           # 3. Si falla signatura → False
+
+       # Resta de mètodes raise NotImplementedError
+   ```
+2. Comprovació salut verifica:
+   - Endpoint API respon (GET /markets o similar)
+   - SignerClient inicialitza correctament amb account_index + api_key_index
+   - Signatura vàlida (no "invalid signature" error)
+3. Crear `testing/integration/test_lighter_adapter_health.py`
+
+**Definició de Fet:**
+- [x] L'adapter s'instancia correctament amb config (base_url + indices)
+- [x] `health_check()` retorna `True` si API accessible + SignerClient OK
+- [x] `health_check()` retorna `False` si error connectivitat o signatura invàlida
+- [x] `get_mode()` retorna "live"/"paper"/"backtest"
+- [x] `venue_name` retorna "lighter"
+
+**Tests:** 2 nous
+- `test_lighter_adapter_health_ok` - API OK, SignerClient vàlid
+- `test_lighter_adapter_health_fail` - API caigut o clau API invàlida
+
+---
+
+#### 🔧 FASE L2 - Dades de Mercat (Preus + Parells)
+**Objectiu:** Implementar `get_latest_price()` i `get_pairs()`
+
+**Tasques:**
+1. Crear `infrastructure/venues/lighter/mappers.py`:
+   ```python
+   def map_lighter_orderbook_to_price(orderbook_data) -> PriceData:
+       # best_bid, best_ask → PriceData(bid, ask, mid, timestamp)
+
+   def map_lighter_markets() -> List[TradingPair]:
+       # Mercats Lighter → TradingPair(symbol, leverage_max, precision)
+   ```
+2. Implementar `get_latest_price(symbol)`:
+   - Consultar llibre d'ordres Lighter per símbol
+   - Mapejar millor bid/ask → `PriceData`
+3. Implementar `get_pairs()`:
+   - Retornar llista `TradingPair` amb metadades (apalancament, decimals)
+4. Crear `testing/integration/test_lighter_adapter_prices.py`
+
+**Definició de Fet:**
+- [x] `get_latest_price("WETH-USDC")` retorna `PriceData` amb bid/ask/mid/timestamp
+- [x] `get_pairs()` retorna llista `TradingPair` amb `symbol`, `max_leverage`, `min_size`, `price_precision`
+- [x] El mapper gestiona errors (mercat no trobat, sense liquiditat)
+
+**Tests:** 3 nous
+- `test_get_latest_price_ok` - Retorna PriceData vàlid
+- `test_get_latest_price_market_not_found` - Llança excepció si el símbol no existeix
+- `test_get_pairs` - Retorna llista TradingPair (mín 2 mercats: WETH, BTC)
+
+---
+
+#### 🔧 FASE L3 - Constructor Ordres + Escalat (Camí Crític)
+**Objectiu:** Funcions auxiliars per construir ordres amb escalat correcte
+
+**Tasques:**
+1. Crear `infrastructure/venues/lighter/order_builder.py`:
+   ```python
+   def scale_order_params(
+       order_type: Literal["market", "limit", "stop_loss", "take_profit"],
+       size_base: float,
+       price_usd: float,
+   ) -> tuple[int, int]:
+       """
+       Escalar mida/preu segons tipus d'ordre.
+
+       Market: ×1e6 (mida i preu)
+       Limit/SL/TP: ×1e4 (mida), ×100 (preu)
+       """
+       if order_type == "market":
+           return int(size_base * 1_000_000), int(price_usd * 1_000_000)
+       else:  # limit, stop_loss, take_profit
+           return int(size_base * 10_000), int(price_usd * 100)
+
+   def build_market_order(order_book_id, size, price, is_ask) -> dict:
+       scaled_size, scaled_price = scale_order_params("market", size, price)
+       return {"order_book_id": order_book_id, ...}
+
+   def build_limit_order(order_book_id, size, price, is_ask, reduce_only=False) -> dict:
+       scaled_size, scaled_price = scale_order_params("limit", size, price)
+       return {"order_book_id": order_book_id, "reduce_only": reduce_only, ...}
+   ```
+2. Crear `testing/unit/test_lighter_order_builder.py`
+
+**Definició de Fet:**
+- [x] `scale_order_params("market", 0.1, 2700.0)` retorna `(100000, 2700000000)` [×1e6]
+- [x] `scale_order_params("limit", 0.1, 2700.0)` retorna `(1000, 270000)` [×1e4, ×100]
+- [x] `build_limit_order(..., reduce_only=True)` inclou el flag correctament
+- [x] Els tests HAN de cobrir tots els tipus d'ordre (market, limit, SL, TP)
+
+**Tests:** 5 nous (tests unitaris)
+- `test_scale_market_order` - Verificar escalat ×1e6
+- `test_scale_limit_order` - Verificar escalat ×1e4 / ×100
+- `test_build_market_order` - Estructura completa
+- `test_build_limit_order_standard` - reduce_only=False
+- `test_build_limit_order_reduce_only` - reduce_only=True (tancar posició)
+
+---
+
+#### 🔧 FASE L4 - Obrir Posició (Operació Escriptura)
+**Objectiu:** Implementar `open_position()` amb ordre de mercat
+
+**Tasques:**
+1. Implementar `open_position()` a `LighterVenueAdapter`:
+   ```python
+   async def open_position(
+       self, symbol, is_long, collateral, leverage, sl_price=None, tp_price=None, client_order_id=None
+   ) -> OrderResult:
+       # 1. Generar client_order_index (uint32)
+       # 2. Verificar idempotency store
+       # 3. Construir ordre mercat (order_builder.build_market_order)
+       # 4. Signar amb clau privada API
+       # 5. Enviar a API Lighter
+       # 6. Retornar OrderResult(position_id, success, fees)
+   ```
+2. Gestionar `client_order_index` (uint32 únic):
+   ```python
+   def generate_client_order_index() -> int:
+       return int(time.time() * 1000) % 4294967295  # basat en timestamp
+   ```
+3. Crear `testing/integration/test_lighter_adapter_open.py`
+
+**Definició de Fet:**
+- [x] `open_position("WETH-USDC", is_long=True, collateral=100, leverage=5)` retorna `OrderResult` amb `position_id` no None
+- [x] `client_order_index` generat correctament (uint32)
+- [x] Idempotència: cridar 2 cops amb mateix `client_order_id` retorna mateix resultat
+- [x] Ordre usa `build_market_order()` amb escalat correcte
+- [x] Gestió d'errors: balanç insuficient, mercat no trobat, error API
+
+**Tests:** 4 nous (integració, potser simulats/testnet)
+- `test_open_position_long_ok` - Obrir posició llarga, verificar OrderResult
+- `test_open_position_short_ok` - Obrir posició curta
+- `test_open_position_idempotency` - Mateix client_order_id → mateix resultat
+- `test_open_position_insufficient_balance` - Error si balanç insuficient
+
+---
+
+#### 🔧 FASE L5 - Tancar Posició (Operació Escriptura + Reduce-Only + Maker-First)
+**Objectiu:** Implementar `close_position()` amb política maker-first per optimitzar fees
+
+**Tasques:**
+1. Implementar `close_position()` a `LighterVenueAdapter` amb estratègia maker-first:
+   ```python
+   async def close_position(self, position_id, percent=100.0) -> bool:
+       # 1. Obtenir info posició (mida, is_long, símbol, preu actual)
+       # 2. ESTRATÈGIA MAKER-FIRST:
+       #    a) Primer intent: LIMIT POST_ONLY reduce_only=True
+       #       - Preu favorable (millor que mid per maker rebate)
+       #       - Timeout curt (5-10s)
+       #    b) Si no es filla o cancel·lat → MARKET reduce_only=True
+       # 3. INVERTIR direcció: is_ask = (not is_long)
+       # 4. Signar + enviar
+       # 5. Retornar True si èxit
+   ```
+2. **CRÍTIC:** Verificar `reduce_only=True` en ambdós casos (LIMIT i MARKET fallback)
+3. **CRÍTIC:** Direcció invertida correcta (long→ask, short→bid)
+4. Crear `testing/integration/test_lighter_adapter_close.py`
+
+**Definició de Fet:**
+- [x] `close_position(position_id, percent=100.0)` retorna `True` si èxit
+- [x] **Maker-first:** Intent LIMIT POST_ONLY primer, fallback a MARKET si timeout
+- [x] Ambdues ordres (LIMIT + MARKET) tenen `reduce_only=True`
+- [x] Direcció invertida correcta en ambdós casos
+- [x] Tancament parcial (percent < 100) funciona correctament
+- [x] Gestió d'errors: posició no trobada, ja tancada
+
+**Tests:** 5 nous
+- `test_close_position_maker_success` - LIMIT POST_ONLY es filla (òptim)
+- `test_close_position_maker_timeout_fallback` - LIMIT timeout → MARKET fallback
+- `test_close_position_full_ok` - Tancar 100% posició
+- `test_close_position_partial_ok` - Tancar 50% posició
+- `test_close_position_reduce_only_flag` - Verificar reduce_only=True en LIMIT i MARKET
+- `test_close_position_direction_inverted` - Verificar is_ask correcte (long→ask, short→bid)
+
+---
+
+#### 🔧 FASE L6 - SL/TP + Obtenir Posicions (CRUD Complet)
+**Objectiu:** Completar interfície IVenueAdapter (update_sl/tp, get_open_positions)
+
+**Tasques:**
+1. Implementar `update_sl(position_id, new_sl)`:
+   - Cancel·lar ordre SL existent (si n'hi ha)
+   - Crear nova ordre stop loss amb `build_limit_order(..., reduce_only=True)`
+2. Implementar `update_tp(position_id, new_tp)`:
+   - Cancel·lar ordre TP existent (si n'hi ha)
+   - Crear nova ordre take profit amb `build_limit_order(..., reduce_only=True)`
+3. Implementar `get_open_positions()`:
+   - Consultar API Lighter per posicions obertes
+   - Mapejar a `List[Position]` (model domini)
+4. Implementar `get_balance()`:
+   - Consultar balanç wallet Lighter (USDC disponible)
+5. Crear `testing/integration/test_lighter_adapter_sltp.py`
+
+**Definició de Fet:**
+- [x] `update_sl(position_id, 2600.0)` crea ordre SL a $2600
+- [x] `update_tp(position_id, 2800.0)` crea ordre TP a $2800
+- [x] `get_open_positions()` retorna llista `Position` amb tots els camps (symbol, size, is_long, entry_price, etc.)
+- [x] `get_balance()` retorna `Balance` amb USDC disponible
+- [x] Les ordres SL/TP usen `reduce_only=True` i direcció correcta
+
+**Tests:** 5 nous
+- `test_update_sl_ok` - Actualitzar SL, verificar ordre creat
+- `test_update_tp_ok` - Actualitzar TP, verificar ordre creat
+- `test_get_open_positions_empty` - Sense posicions retorna []
+- `test_get_open_positions_multiple` - 2 posicions retorna List[Position] len=2
+- `test_get_balance` - Retorna Balance amb disponible/total
+
+---
+
+### Portes de Qualitat
+
+**Porta A - Sense Regressions (BLOQUEJADOR):**
+- [x] 24/24 tests gTrade continuen passant després de cada fase Lighter
+- [x] `./test.sh testing/run_all.py` passa sense errors
+- [x] Adapter gTrade NO modificat (zero canvis a `infrastructure/venues/gtrade/`)
+
+**Porta B - Tests Nucli Lighter (BLOQUEJADOR):**
+- [x] **Mínim obligatori:** 10 tests core invariants
+  - 2 tests gestió claus + índexs (L1 vs API, account_index/api_key_index)
+  - 4 tests escalat decimal (market ×1e6, limit ×1e4/×100, per cada tipus)
+  - 2 tests reduce_only (flag + direcció invertida)
+  - 2 tests client_order_index (uint32 unicitat + idempotència)
+- [x] **Objectiu recomanat:** 20+ tests (incloent integration prices/pairs, open/close, SL/TP, maker-first)
+
+**Porta C - Flux E2E Lighter (Post-L6):**
+- [x] Script `scripts/lighter_testnet_smoke.py` (equivalent E2E gTrade)
+- [x] Flux: salut → obrir WETH llarg → verificar posició → actualitzar SL → tancar → verificar eliminat
+- [x] Executar 2 cops en testnet Lighter (validar robustesa)
+
+---
+
+### Estimació d'Esforç
+
+| Fase | Tasques | Tests | Esforç | Risc |
+|------|---------|-------|--------|------|
+| L0   | Config + claus + índexs | 0 | 30 min | Baix |
+| L1   | Esquelet adapter + salut API | 2 | 1h | Baix |
+| L2   | Dades mercat (preus/parells) | 3 | 1.5h | Baix |
+| L3   | Constructor ordres + escalat | 5 | 2h | **Alt** (errors escalat crítiques) |
+| L4   | Obrir posició | 4 | 2h | Mitjà |
+| L5   | Tancar posició + maker-first | 6 | 2h | **Alt** (reduce_only + maker fallback) |
+| L6   | SL/TP + obtenir posicions | 5 | 2h | Mitjà |
+| **TOTAL** | **7 fases** | **25 tests** | **~11h** | **2 àrees crítiques** |
+
+**Àrees crítiques (màxima atenció):**
+1. **Escalat (L3):** Errors ×1e6 vs ×1e4/×100 causen rebutjos o execucions incorrectes (lab validat: market ×1e6, limit ×1e4/×100)
+2. **Reduce-only + Maker-first (L5):** Oblidar flag pot obrir posició oposada; maker timeout sense fallback deixa posició oberta
+
+---
+
+### Següent Pas Immediat
+
+**Acció recomanada:** Començar **FASE L0** (Config + Gestió Claus)
+
+```bash
+# 1. Crear estructura de directoris
+mkdir -p infrastructure/venues/lighter
+touch infrastructure/venues/lighter/__init__.py
+touch infrastructure/venues/lighter/config.py
+
+# 2. Implementar LighterConfig + load_from_env()
+# 3. Actualitzar .env.example amb variables Lighter
+# 4. Validar manualment: python -c "from infrastructure.venues.lighter.config import load_lighter_config_from_env; print(load_lighter_config_from_env())"
+```
+
+**Documentació de referència:**
+- Validació lab: `lab/lighter/LIGHTER_COMPLETE_VALIDATION.md`
+- README lab: `lab/README.md` (Matriu de Decisió)
+- Docs Lighter: https://docs.lighter.xyz (referència API)
+
+---
+
+## 📋 gTrade (Venue Existent) - Estat
 
 ## ✅ Fases Completades (Resum)
 

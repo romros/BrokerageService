@@ -47,13 +47,15 @@ def main():
 
     # Define test order
     tests = [
-        # Unit tests
+        # Unit tests - Core
         testing_dir / "unit" / "test_candle_store.py",
         testing_dir / "unit" / "test_gap_validator.py",
         testing_dir / "unit" / "test_candle_builder.py",
         testing_dir / "unit" / "test_backfill_provider.py",
         testing_dir / "unit" / "test_idempotency.py",
         testing_dir / "unit" / "test_cost_model.py",
+
+        # Unit tests - gTrade
         testing_dir / "unit" / "test_gtrade_price_feed_parser.py",
         testing_dir / "unit" / "test_chain_config.py",
         testing_dir / "unit" / "test_tx_sender.py",
@@ -61,6 +63,12 @@ def main():
         testing_dir / "unit" / "test_abi_encoder.py",
         testing_dir / "unit" / "test_market_status_provider.py",  # FASE 6B.1.B.6
         testing_dir / "unit" / "test_price_provider.py",  # FASE 6B.1.B.7.LAB
+
+        # Unit tests - Lighter (TASK 2 - L0/L1)
+        testing_dir / "unit" / "test_lighter_key_manager.py",
+        testing_dir / "unit" / "test_lighter_scaling.py",
+        testing_dir / "unit" / "test_lighter_order_builder.py",
+        testing_dir / "unit" / "test_lighter_idempotency.py",
 
         # Integration tests
         testing_dir / "integration" / "test_live_to_store_flow.py",
