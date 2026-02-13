@@ -16,10 +16,12 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, List, Optional, TextIO
+from typing import Callable, List, Optional
 
 from domain.interfaces import IVenueAdapter
 from domain.models import Position
+
+from loguru import logger as loguru_logger
 
 from application.services.bootstrap_service import run_bootstrap
 from application.services.reconcile_service import (
@@ -33,35 +35,6 @@ logger = get_logger(__name__)
 # Greppable canonical lines (M3.5)
 SMOKE_RESULT_PREFIX = "SMOKE_RESULT "
 SMOKE_SUMMARY_PREFIX = "SMOKE_SUMMARY "
-
-
-class _Tee:
-    """Write to both original stream and a file (for evidence log)."""
-
-    def __init__(self, stream: TextIO, path: str):
-        self._stream = stream
-        self._file: Optional[TextIO] = None
-        self._path = path
-
-    def start(self) -> None:
-        Path(self._path).parent.mkdir(parents=True, exist_ok=True)
-        self._file = open(self._path, "w", encoding="utf-8")
-
-    def stop(self) -> None:
-        if self._file:
-            self._file.close()
-            self._file = None
-
-    def write(self, data: str) -> int:
-        self._stream.write(data)
-        if self._file:
-            self._file.write(data)
-        return len(data)
-
-    def flush(self) -> None:
-        self._stream.flush()
-        if self._file:
-            self._file.flush()
 
 
 async def run_smoke(
@@ -147,14 +120,14 @@ def _build_mock_wiring():
 
 def _emit_smoke_result(venue: str, mode: str, run: int, total: int, seconds: float, status: str, errors: int) -> None:
     line = f"{SMOKE_RESULT_PREFIX}venue={venue} mode={mode} run={run}/{total} seconds={seconds} status={status} errors={errors}"
-    print(line, flush=True)
+    logger.info(line)
 
 
 def _emit_smoke_summary(venue: str, mode: str, runs: int, ok: int, failed: int, log_path: Optional[str] = None) -> None:
     parts = [f"{SMOKE_SUMMARY_PREFIX}venue={venue} mode={mode} runs={runs} ok={ok} failed={failed}"]
     if log_path is not None:
         parts.append(f" log_path={log_path}")
-    print("".join(parts), flush=True)
+    logger.info("".join(parts))
 
 
 def main() -> int:
@@ -178,22 +151,28 @@ def main() -> int:
         ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
         log_path = str(runs_dir / f"{ts}_{args.venue}_{repeat}x.log")
 
-    tee_stdout = _Tee(sys.stdout, log_path) if log_path else None
-    tee_stderr = _Tee(sys.stderr, log_path) if log_path else None
-    if tee_stdout:
-        tee_stdout.start()
-        tee_stderr.start()
-        sys.stdout = tee_stdout
-        sys.stderr = tee_stderr
+    # Loguru captura sys.stderr a la config; el Tee no rep els logs.
+    # Afegim un sink directe al fitxer perquè el log es vagi omplint durant el soak.
+    log_sink_id = None
+    if log_path:
+        Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+        # Banner immediat: l'usuari veu que el fitxer no és buit des del principi
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(f"Soak smoke started at {datetime.now().isoformat()}\n")
+            f.flush()
+        log_sink_id = loguru_logger.add(
+            log_path,
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function} - {message}",
+            level="INFO",
+            encoding="utf-8",
+            mode="a",  # append després del banner
+        )
 
     try:
         return _main_impl(args, repeat, pause_s, log_path)
     finally:
-        if tee_stdout:
-            sys.stdout = sys.__stdout__
-            sys.stderr = sys.__stderr__
-            tee_stdout.stop()
-            tee_stderr.stop()
+        if log_sink_id is not None:
+            loguru_logger.remove(log_sink_id)
 
 
 def _main_impl(args, repeat: int, pause_s: float, log_path: Optional[str]) -> int:

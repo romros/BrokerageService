@@ -183,9 +183,12 @@ class ReconcileService(IService):
         return self._running
 
     async def _reconcile_loop(self) -> None:
+        tick_num = 0
         while self._running:
             try:
                 result = await self._run_one_tick()
+                tick_num += 1
+                logger.info("Reconcile tick #{} ok", tick_num)
                 if result.has_diffs:
                     self._log_diffs(result)
                     if self._reconcile_sink is not None:

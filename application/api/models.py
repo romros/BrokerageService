@@ -56,6 +56,7 @@ class ModeResponse(BaseModel):
     is_paper: bool
     is_backtest: bool
     venue: str
+    market_data_env: str = "mainnet"  # mainnet|testnet — font de preus
 
 
 class ErrorResponse(BaseModel):

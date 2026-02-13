@@ -35,6 +35,10 @@ def load_config() -> dict:
     Returns:
         Configuration dictionary
     """
+    market_data_env = os.getenv("MARKET_DATA_ENV", "mainnet").lower()
+    if market_data_env not in ("mainnet", "testnet"):
+        market_data_env = "mainnet"
+
     config = {
         "mode": os.getenv("MODE", "paper"),
         "venue": os.getenv("VENUE", ""),
@@ -43,9 +47,14 @@ def load_config() -> dict:
         "symbols": os.getenv("SYMBOLS", "XAUUSD,EURUSD").split(","),
         "host": os.getenv("HOST", "0.0.0.0"),
         "port": int(os.getenv("PORT", "8000")),
+        "market_data_env": market_data_env,
+        "enable_live_trading": os.getenv("ENABLE_LIVE_TRADING", "0") == "1",
     }
 
-    logger.info(f"Configuration loaded: mode={config['mode']}, venue={config['venue']}")
+    logger.info(
+        f"Configuration loaded: mode={config['mode']}, venue={config['venue']}, "
+        f"market_data_env={config['market_data_env']}"
+    )
     return config
 
 
@@ -90,6 +99,7 @@ async def lifespan(app: FastAPI):
             adapter_factory=lambda v: adapter if v == "lighter" else None,
             mode=config["mode"],
             venue=venue,
+            market_data_env=config["market_data_env"],
         )
     else:
         set_broker_deps(
@@ -97,6 +107,7 @@ async def lifespan(app: FastAPI):
             adapter_factory=None,
             mode=config["mode"],
             venue=venue,
+            market_data_env=config["market_data_env"],
         )
 
     logger.info("✓ BrokerageService ready")

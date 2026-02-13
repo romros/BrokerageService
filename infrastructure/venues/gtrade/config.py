@@ -5,10 +5,18 @@ Constants and mappings for gTrade integration.
 No hardcoded values in business logic - all here.
 """
 
+import os
+
 # WebSocket URL for gTrade price feed
-DEFAULT_GTRADE_PRICE_WS_URL = "wss://backend-arbitrum.gains.trade"
+DEFAULT_GTRADE_PRICE_WS_URL_MAINNET = "wss://backend-arbitrum.gains.trade"
+DEFAULT_GTRADE_PRICE_WS_URL_TESTNET = "wss://backend-sepolia.gains.trade"
 # REST backend URL (open-trades, trading-variables)
-DEFAULT_GTRADE_BACKEND_URL = "https://backend-arbitrum.gains.trade"
+DEFAULT_GTRADE_BACKEND_URL_MAINNET = "https://backend-arbitrum.gains.trade"
+DEFAULT_GTRADE_BACKEND_URL_TESTNET = "https://backend-sepolia.gains.trade"
+
+# Legacy defaults (mainnet) for backward compatibility
+DEFAULT_GTRADE_PRICE_WS_URL = DEFAULT_GTRADE_PRICE_WS_URL_MAINNET
+DEFAULT_GTRADE_BACKEND_URL = DEFAULT_GTRADE_BACKEND_URL_MAINNET
 # Pair ID mapping: gTrade pairId -> our canonical symbol
 # Source: https://docs.gains.trade/
 #
@@ -33,3 +41,33 @@ DEFAULT_RECONNECT_DELAY_SECONDS = 5.0
 DEFAULT_MAX_RECONNECT_ATTEMPTS = 10
 # Ticker broadcast throttle (milliseconds)
 DEFAULT_TICKER_BROADCAST_MS = 200
+
+
+def get_gtrade_backend_url() -> str:
+    """
+    Backend REST URL from env.
+    - GTRADE_BACKEND_REST_URL: if set, use it
+    - Else: MARKET_DATA_ENV=mainnet → mainnet, testnet → testnet
+    """
+    url = os.getenv("GTRADE_BACKEND_REST_URL")
+    if url:
+        return url
+    env = os.getenv("MARKET_DATA_ENV", "mainnet").lower()
+    if env == "testnet":
+        return DEFAULT_GTRADE_BACKEND_URL_TESTNET
+    return DEFAULT_GTRADE_BACKEND_URL_MAINNET
+
+
+def get_gtrade_price_ws_url() -> str:
+    """
+    Price feed WS URL from env.
+    - GTRADE_PRICE_WS_URL: if set, use it
+    - Else: MARKET_DATA_ENV=mainnet → mainnet, testnet → testnet
+    """
+    url = os.getenv("GTRADE_PRICE_WS_URL")
+    if url:
+        return url
+    env = os.getenv("MARKET_DATA_ENV", "mainnet").lower()
+    if env == "testnet":
+        return DEFAULT_GTRADE_PRICE_WS_URL_TESTNET
+    return DEFAULT_GTRADE_PRICE_WS_URL_MAINNET

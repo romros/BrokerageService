@@ -36,6 +36,7 @@ _candle_store: Optional[Any] = None
 _adapter_factory: Optional[Callable[[str], Any]] = None
 _mode: str = "backtest"
 _venue: str = "gtrade"
+_market_data_env: str = "mainnet"
 
 
 def set_broker_deps(
@@ -43,9 +44,10 @@ def set_broker_deps(
     adapter_factory: Any = _UNSET,
     mode: str = _UNSET,
     venue: str = _UNSET,
+    market_data_env: str = _UNSET,
 ) -> None:
     """Inject dependencies for broker routes."""
-    global _candle_store, _adapter_factory, _mode, _venue
+    global _candle_store, _adapter_factory, _mode, _venue, _market_data_env
     if candle_store is not _UNSET:
         _candle_store = candle_store
     if adapter_factory is not _UNSET:
@@ -54,8 +56,10 @@ def set_broker_deps(
         _mode = mode
     if venue is not _UNSET:
         _venue = venue
+    if market_data_env is not _UNSET:
+        _market_data_env = market_data_env
     logger.info(
-        f"Broker API deps: mode={_mode}, venue={_venue}, "
+        f"Broker API deps: mode={_mode}, venue={_venue}, market_data_env={_market_data_env}, "
         f"adapter_factory={'set' if _adapter_factory else 'None'}"
     )
 
@@ -162,6 +166,7 @@ async def get_mode():
         is_paper=(_mode == "paper"),
         is_backtest=(_mode == "backtest"),
         venue=_venue,
+        market_data_env=_market_data_env,
     )
 
 

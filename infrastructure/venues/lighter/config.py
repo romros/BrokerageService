@@ -38,6 +38,11 @@ DEFAULT_LIGHTER_MARKETS = {
 # Default 500ms; configurable via LIGHTER_TICK_INTERVAL_MS
 DEFAULT_LIGHTER_TICK_INTERVAL_MS = 500
 
+# Default base URLs per MARKET_DATA_ENV (when LIGHTER_BASE_URL not set)
+# Source: apidocs.lighter.xyz, web search
+DEFAULT_LIGHTER_BASE_URL_MAINNET = "https://mainnet.zklighter.elliot.ai"
+DEFAULT_LIGHTER_BASE_URL_TESTNET = "https://testnet.zklighter.elliot.ai"
+
 
 @dataclass(frozen=True)
 class LighterConfig:
@@ -110,19 +115,28 @@ def load_lighter_config_from_env() -> LighterConfig:
     """
     Load Lighter configuration from environment variables
 
+    Base URL resolution:
+    - LIGHTER_BASE_URL: if set, use it (explicit override)
+    - Else: MARKET_DATA_ENV=mainnet → LIGHTER_BASE_URL_MAINNET or default mainnet
+    - Else: MARKET_DATA_ENV=testnet → LIGHTER_BASE_URL_TESTNET or default testnet
+
     Returns:
         LighterConfig with validated settings
 
     Raises:
         ValueError: If required environment variables are missing or invalid
     """
-    # Required variables
     base_url = os.getenv("LIGHTER_BASE_URL")
     if not base_url:
-        raise ValueError(
-            "LIGHTER_BASE_URL environment variable is required. "
-            "Set to https://testnet.zklighter.elliot.ai for testnet."
-        )
+        market_data_env = os.getenv("MARKET_DATA_ENV", "mainnet").lower()
+        if market_data_env == "testnet":
+            base_url = os.getenv(
+                "LIGHTER_BASE_URL_TESTNET", DEFAULT_LIGHTER_BASE_URL_TESTNET
+            )
+        else:
+            base_url = os.getenv(
+                "LIGHTER_BASE_URL_MAINNET", DEFAULT_LIGHTER_BASE_URL_MAINNET
+            )
 
     l1_address = os.getenv("LIGHTER_L1_ADDRESS")
     if not l1_address:

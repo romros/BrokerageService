@@ -90,6 +90,7 @@ def main():
         testing_dir / "unit" / "test_smoke_runner_lifecycle.py",  # M3.5.1 lifecycle hardening (start/stop per run)
         testing_dir / "unit" / "test_e2e_trade.py",  # M3.6 Real Paper E2E trading sanity
         testing_dir / "unit" / "test_broker_api.py",  # Broker API
+        testing_dir / "unit" / "test_mode_market_data_env.py",  # PAPER mainnet-data (Freqtrade)
 
         # Integration tests
         testing_dir / "integration" / "test_live_to_store_flow.py",

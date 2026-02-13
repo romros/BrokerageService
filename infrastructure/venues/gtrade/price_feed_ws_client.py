@@ -33,7 +33,7 @@ except ImportError:
 
 from foundation.logging import get_logger
 from .config import (
-    DEFAULT_GTRADE_PRICE_WS_URL,
+    get_gtrade_price_ws_url,
     GTRADE_PAIR_ID_TO_SYMBOL,
     DEFAULT_RECONNECT_DELAY_SECONDS,
     DEFAULT_MAX_RECONNECT_ATTEMPTS,
@@ -52,7 +52,7 @@ class GTradePriceFeedWSClient:
 
     def __init__(
         self,
-        ws_url: str = DEFAULT_GTRADE_PRICE_WS_URL,
+        ws_url: str | None = None,
         reconnect_delay: float = DEFAULT_RECONNECT_DELAY_SECONDS,
         max_reconnect_attempts: int = DEFAULT_MAX_RECONNECT_ATTEMPTS,
     ):
@@ -67,7 +67,7 @@ class GTradePriceFeedWSClient:
         if websockets is None:
             raise ImportError("websockets package required for GTradePriceFeedWSClient")
 
-        self.ws_url = ws_url
+        self.ws_url = ws_url if ws_url is not None else get_gtrade_price_ws_url()
         self.reconnect_delay = reconnect_delay
         self.max_reconnect_attempts = max_reconnect_attempts
 
@@ -84,7 +84,7 @@ class GTradePriceFeedWSClient:
         self._lock = asyncio.Lock()
 
         logger.info(
-            f"GTradePriceFeedWSClient initialized: url={ws_url}, "
+            f"GTradePriceFeedWSClient initialized: url={self.ws_url}, "
             f"reconnect_delay={reconnect_delay}s"
         )
 

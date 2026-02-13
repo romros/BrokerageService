@@ -50,7 +50,28 @@ Nota: `openPrice`/oracle zona sensible (veure §10 AGENTS si cal).
 ### BACKTEST
 Contracte previst, però pipeline no implementada encara.
 
-### 2.1 Principis d’arquitectura (SOLID + DI minimalista)
+### 2.2 Mode PAPER amb market data MAINNET (Freqtrade-first)
+
+Freqtrade es provarà primer en **PAPER**, però amb **market data real de MAINNET** perquè:
+- testnet no té tots els assets
+- testnet pot tenir preus "fake" o desalineats
+- volem candles/WS realistes per validar l'edge i el pipeline
+
+**Decisió:** PAPER = **mainnet market data** + **paper execution** (sense transaccions reals).
+
+**Invariants:**
+- market data = mainnet (per defecte en PAPER)
+- execution = paper (simulada)
+- zero tx reals en paper
+
+**Variables de config:**
+- `MODE=PAPER` — execució simulada
+- `MARKET_DATA_ENV=mainnet` — font de preus (mainnet|testnet; default mainnet)
+- `ENABLE_LIVE_TRADING=0` — kill switch (paper sempre 0)
+
+**Nota explícita:** paper ≠ testnet. PAPER pot usar mainnet per market data i paper per execució.
+
+### 2.3 Principis d’arquitectura (SOLID + DI minimalista)
 
 - **SOLID / SRP:** rutes primes (validate → deps → call → map response). Lògica i mapping en helpers/serveis petits.
 - **Ports & adapters:** `domain/*` defineix models + interfaces (ports); `infrastructure/*` implementa venue adapters i storage.
@@ -88,7 +109,7 @@ Contracte previst, però pipeline no implementada encara.
 | Path | Params | Response |
 |------|--------|----------|
 | `GET /health` | - | status, mode, venue, timestamp |
-| `GET /mode` | - | mode, is_live, is_paper, is_backtest, venue |
+| `GET /mode` | - | mode, is_live, is_paper, is_backtest, venue, market_data_env |
 | `GET /venues` | - | venues: string[] |
 
 **Market data**

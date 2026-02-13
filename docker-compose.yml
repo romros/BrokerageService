@@ -14,6 +14,9 @@ services:
       # Mode: live, paper, or backtest
       - MODE=${MODE:-backtest}
       - VENUE=${VENUE:-gtrade}
+      # Market data: mainnet|testnet (PAPER Freqtrade = mainnet data + paper execution)
+      - MARKET_DATA_ENV=${MARKET_DATA_ENV:-mainnet}
+      - ENABLE_LIVE_TRADING=${ENABLE_LIVE_TRADING:-0}
 
       # Storage
       - DATAFILES_ROOT=/datafiles
