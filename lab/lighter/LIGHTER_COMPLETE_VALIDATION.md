@@ -1779,6 +1779,6 @@ STEP 7: CLOSE POSITION        ✅
 
 ### Smoke / BrokerageService des de Docker
 
-- El smoke runner i la suite del BrokerageService es poden executar dins Docker (vegeu **ESTAT.md** — Comandes ràpides, i **AGENTS_ARQUITECTURA.md** §7). **Recorda:** si has canviat codi, reconstruir la imatge: `docker compose build brokerage`; si no, les comandes dins del contenidor continuaran amb el codi antic.
+- El smoke runner i la suite del BrokerageService es poden executar dins Docker (vegeu **docs/ESTAT.md** — Comandes ràpides, i **AGENTS_ARQUITECTURA.md** §7). **Recorda:** si has canviat codi, reconstruir la imatge: `docker compose build brokerage`; si no, les comandes dins del contenidor continuaran amb el codi antic.
 
 ---

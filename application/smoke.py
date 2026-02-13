@@ -120,14 +120,17 @@ def _build_mock_wiring():
 
 def _emit_smoke_result(venue: str, mode: str, run: int, total: int, seconds: float, status: str, errors: int) -> None:
     line = f"{SMOKE_RESULT_PREFIX}venue={venue} mode={mode} run={run}/{total} seconds={seconds} status={status} errors={errors}"
-    logger.info(line)
+    print(line, flush=True)  # stdout per test_smoke_repeat + grep
+    logger.info(line)  # log file quan --log-path
 
 
 def _emit_smoke_summary(venue: str, mode: str, runs: int, ok: int, failed: int, log_path: Optional[str] = None) -> None:
     parts = [f"{SMOKE_SUMMARY_PREFIX}venue={venue} mode={mode} runs={runs} ok={ok} failed={failed}"]
     if log_path is not None:
         parts.append(f" log_path={log_path}")
-    logger.info("".join(parts))
+    line = "".join(parts)
+    print(line, flush=True)  # stdout per test_smoke_repeat + grep
+    logger.info(line)  # log file quan --log-path
 
 
 def main() -> int:

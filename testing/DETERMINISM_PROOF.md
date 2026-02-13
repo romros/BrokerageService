@@ -139,7 +139,7 @@ Test Summary
 - [x] Test passes reliably (3/3 consecutive runs)
 - [x] No degradation of test quality (still tests trend behavior)
 - [x] Backward compatible (seed=None maintains old behavior)
-- [x] Documentation updated (docstrings, ESTAT.md)
+- [x] Documentation updated (docstrings, docs/ESTAT.md)
 
 ---
 

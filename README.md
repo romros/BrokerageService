@@ -4,7 +4,7 @@
 **Altres venues:** gTrade (paper-ready; live-hardening pendent)  
 **Dissenyat per:** Freqtrade adapter consumption
 
-**Docs:** [AGENTS_ARQUITECTURA.md](AGENTS_ARQUITECTURA.md) · [ESTAT.md](ESTAT.md) · [docs/SAFETY_RUNBOOK.md](docs/SAFETY_RUNBOOK.md)
+**Docs:** [AGENTS_ARQUITECTURA.md](AGENTS_ARQUITECTURA.md) · [docs/ESTAT.md](docs/ESTAT.md) · [docs/SAFETY_RUNBOOK.md](docs/SAFETY_RUNBOOK.md)
 
 ---
 
@@ -159,7 +159,7 @@ BrokerageService/
 ## Documentació
 
 - [AGENTS_ARQUITECTURA.md](AGENTS_ARQUITECTURA.md) — Referència d’arquitectura, contracte API, invariants
-- [ESTAT.md](ESTAT.md) — Estat del projecte, evidència, backlog
+- [docs/ESTAT.md](docs/ESTAT.md) — Estat del projecte, evidència, backlog
 - [docs/SAFETY_RUNBOOK.md](docs/SAFETY_RUNBOOK.md) — Runbook operatiu, soak, E2E
 - [testing/README.md](testing/README.md) — Testing
 
@@ -170,7 +170,7 @@ BrokerageService/
 1. Llegir [AGENTS_ARQUITECTURA.md](AGENTS_ARQUITECTURA.md)
 2. Implementar seguint principis SOLID + DI minimalista
 3. Afegir tests
-4. Actualitzar [ESTAT.md](ESTAT.md)
+4. Actualitzar [docs/ESTAT.md](docs/ESTAT.md)
 5. Executar `./test.sh testing/run_all.py`
 
 ---

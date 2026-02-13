@@ -1,6 +1,6 @@
 # ESTAT DEL PROJECTE — BrokerageService (Archive Snapshot 2026-Q1, fins 2026-02-13)
 
-> **Read-only.** Històric complet fins 2026-02-13. Estat actual → `ESTAT.md`.
+> **Read-only.** Històric complet fins 2026-02-13. Estat actual → [docs/ESTAT.md](../ESTAT.md).
 >
 > **Nota:** Aquest arxiu pot mencionar paths/docs legacy (ex. `/api/v1/ft`, `docs/BROKER_API.md`, `/broker/*`). La font canònica actual és `AGENTS_ARQUITECTURA.md` (API `/api/v1/broker/*`).
 

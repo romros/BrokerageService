@@ -10,7 +10,7 @@ Use when VENUE=lighter and MODE=paper (or live). Caller starts/stops services.
 
 References:
 - AGENTS_ARQUITECTURA.md - DI minimalista
-- ESTAT.md - Milestone M1 Lighter MarketData Pipeline
+- docs/ESTAT.md - Milestone M1 Lighter MarketData Pipeline
 """
 
 from zoneinfo import ZoneInfo

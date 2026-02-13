@@ -2,6 +2,8 @@
 
 **Objectiu:** Procediments operatius mínims per detectar incidents i actuar. No depèn de memòria.
 
+**Docs:** [ESTAT.md](ESTAT.md) · [AGENTS_ARQUITECTURA.md](../AGENTS_ARQUITECTURA.md) · [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
+
 ---
 
 ## 1) TZ i coherència
@@ -90,10 +92,12 @@ docker compose run --rm brokerage python3 -m application.smoke --venue lighter -
 # Smoke 3× (evidència Gate C)
 docker compose run --rm brokerage python3 -m application.smoke --venue lighter --mode PAPER --seconds 120 --repeat 3 --pause-s 5
 
-# Soak 10–15 min (recomanat)
+# Soak 10 min (default) o 15 min
 ./scripts/soak_smoke.sh
-# o manual:
-docker compose run --rm brokerage python3 -m application.smoke --venue lighter --mode PAPER --seconds 600 --log-path datafiles/smoke_runs/soak_$(date +%Y%m%d_%H%M%S).log
+./scripts/soak_smoke.sh 900
+
+# Manual amb log-path explícit:
+docker compose run --rm brokerage python3 -m application.smoke --venue lighter --mode PAPER --seconds 600 --log-path /datafiles/smoke_runs/soak_$(date +%Y%m%d_%H%M%S).log
 
 # E2E 1 run
 docker compose run --rm brokerage python3 -m application.e2e_trade \
@@ -114,3 +118,5 @@ docker compose run --rm brokerage python3 -m application.e2e_trade \
 - Smoke 3× (lighter, 120s) → ok=3 failed=0
 - E2E 3× → positions_after=0
 - Soak 10 min → log guardat, sense errors crítics ✅ (evidència: soak_20260213_212644.log)
+
+**Referència:** [docs/ESTAT.md](ESTAT.md)

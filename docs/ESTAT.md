@@ -5,9 +5,9 @@
 **Venues:** **Lighter (principal)** · gTrade (existent)  
 **TZ canònica (config):** `CANONICAL_TZ=America/New_York`  
 **TZ container (runtime/logs):** `TZ=America/New_York`  
-**Doc referència:** [AGENTS_ARQUITECTURA.md](AGENTS_ARQUITECTURA.md)  
-**Runbook operatiu:** [docs/SAFETY_RUNBOOK.md](docs/SAFETY_RUNBOOK.md)  
-**Històric complet (read-only):** [docs/_archive/ESTAT_2026Q1.md](docs/_archive/ESTAT_2026Q1.md)
+**Doc referència:** [AGENTS_ARQUITECTURA.md](../AGENTS_ARQUITECTURA.md)  
+**Runbook operatiu:** [SAFETY_RUNBOOK.md](SAFETY_RUNBOOK.md)  
+**Històric complet (read-only):** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 
 **Recorda Docker:** Si has canviat codi, reconstruir abans: `docker compose build brokerage`. Vegeu AGENTS_ARQUITECTURA.md §7.
 
@@ -18,7 +18,7 @@
 - ✅ **Lighter M1+M2+M3** DONE: marketdata, SL/TP, balance, reconcile, guards, bootstrap, smoke runner, e2e trade
 - ✅ **3× smoke real** + **3× e2e trade real** (paper testnet) — `positions_after=0`
 - ✅ **44 tests** passa (unit + integration mock + API smoke localhost); `test_broker_api` + `test_mode_market_data_env` a `run_all`
-- ✅ **Broker API canònic** `/api/v1/broker/*` (POST body únic per ordres)
+- ✅ **Broker API canònic** `/api/v1/broker/*` (POST body únic per ordres) — [API_BROKER.md](API_BROKER.md)
 - ✅ **Freqtrade P0** PAPER mainnet-data: `MARKET_DATA_ENV`, `ENABLE_LIVE_TRADING`, wiring Lighter/gTrade, `GET /mode` → `market_data_env`
 - 🟡 **gTrade**: paper OK; mainnet hardening pendent
 - ⛔ **Backtest**: pendent
@@ -84,7 +84,7 @@ docker compose run --rm brokerage python3 -m application.e2e_trade \
   --venue lighter --mode PAPER --symbol ETH --collateral 100 --leverage 20 \
   --settle-timeout-s 120 --poll-s 2
 
-# Soak smoke (10 min; veure docs/SAFETY_RUNBOOK.md)
+# Soak smoke (10 min; veure SAFETY_RUNBOOK.md)
 ./scripts/soak_smoke.sh
 # o 15 min: ./scripts/soak_smoke.sh 900
 ```
@@ -118,4 +118,4 @@ docker compose run --rm brokerage python3 -m application.e2e_trade \
 
 ## Arxiu
 
-**Històric complet (read-only):** [docs/_archive/ESTAT_2026Q1.md](docs/_archive/ESTAT_2026Q1.md) — milestones, invariants Lighter, notes gTrade openPrice, historial detallat, definició DONE.
+**Històric complet (read-only):** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md) — milestones, invariants Lighter, notes gTrade openPrice, historial detallat, definició DONE.

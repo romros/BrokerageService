@@ -9,7 +9,7 @@
 **TZ canònica (config):** `CANONICAL_TZ=America/New_York` (NY close style)  
 **TZ container (runtime/logs):** `TZ=America/New_York`  
 **API canònica:** REST `/api/v1/broker/*` (POST body únic per ordres)  
-**Objectiu:** Font única de referència estable. Operativa diària → `ESTAT.md`.
+**Objectiu:** Font única de referència estable. Operativa diària → [docs/ESTAT.md](docs/ESTAT.md).
 
 ---
 
@@ -207,7 +207,7 @@ Response 200: `{"success": true}`
 - **Gate B (bloquejador):** Integration mock SL/TP + Balance passa
 - **Gate C (post-milestone):** 3× smoke real OK; 3× e2e trade real OK (`positions_after=0`)
 
-Evidència concreta (logs, timestamps) → `ESTAT.md`
+Evidència concreta (logs, timestamps) → [docs/ESTAT.md](docs/ESTAT.md)
 
 ### 6.1 Testing (TDD scripts, sense pytest)
 
@@ -260,6 +260,8 @@ Regla: si el test falla, `assert` peta i el runner ho marca com FAILED.
 
 ## 7) Docker / Runtime (TZ del container)
 
+**Recorda:** Si has canviat codi, reconstruir abans: `docker compose build brokerage`.
+
 Per coherència (logs, display, NY close style):
 
 **docker-compose.yml** — al servei `brokerage`:
@@ -299,5 +301,5 @@ Hora NY i `('EST','EDT')` quan toca → OK.
 ## 9) Changelog curt
 
 * 2026-02-13 — Unificació API `/api/v1/broker/*`, POST body only, errors consistents, legacy eliminat
-* 2026-02-13 — Lighter M1+M2+M3 complet (smoke + e2e evidència a ESTAT.md)
+* 2026-02-13 — Lighter M1+M2+M3 complet (smoke + e2e evidència a docs/ESTAT.md)
 * 2026-02-13 — Docker TZ=America/New_York + tzdata + CANONICAL_TZ
