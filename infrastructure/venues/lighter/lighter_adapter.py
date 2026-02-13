@@ -23,7 +23,7 @@ References:
 import asyncio
 import math
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, AsyncIterator, Any, Tuple
 
 from domain.errors import (
@@ -41,7 +41,7 @@ from domain.models import (
     OrderResult,
     Balance,
     TradingPair,
-    TradeHistory,
+    TradeFill,
 )
 from foundation.logging import get_logger
 
@@ -770,12 +770,84 @@ class LighterVenueAdapter(IVenueAdapter):
 
     async def get_trade_history(
         self,
-        limit: int = 100,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-    ) -> List[TradeHistory]:
-        """Get trade history (TASK 3 or later)"""
-        raise NotImplementedError(
-            "get_trade_history() will be implemented in TASK 3 or later. "
-            "Query Lighter API for closed trades."
+        symbol: Optional[str] = None,
+        since: Optional[datetime] = None,
+        to: Optional[datetime] = None,
+        limit: int = 500,
+    ) -> List[TradeFill]:
+        """
+        Get trade history (fills). Best-effort via AccountApi.account_trades.
+        Si l'SDK no exposa fills o falla → retorna [] i log WARNING.
+        """
+        if self._account_api is None:
+            logger.warning("get_trade_history: adapter not started (AccountApi absent), returning []")
+            return []
+        try:
+            resp = await self._account_api.account_trades(
+                account_index=self._config.account_index,
+                limit=min(limit, 500),
+            )
+        except Exception as e:
+            logger.warning("get_trade_history: Lighter account_trades not supported or failed: %s", e)
+            return []
+        raw_trades = getattr(resp, "trades", None) or []
+        fills: List[TradeFill] = []
+        for t in raw_trades:
+            try:
+                fill = self._map_trade_to_fill(t)
+                if fill is None:
+                    continue
+                if symbol and normalize_symbol(fill.symbol) != normalize_symbol(symbol):
+                    continue
+                if since and fill.timestamp and fill.timestamp < since:
+                    continue
+                if to and fill.timestamp and fill.timestamp >= to:
+                    continue
+                fills.append(fill)
+            except Exception as ex:
+                logger.debug("get_trade_history: skip trade %s: %s", t, ex)
+        return fills[:limit]
+
+    def _map_trade_to_fill(self, t: Any) -> Optional[TradeFill]:
+        """Map Lighter trade object to TradeFill. Returns None if unmappable."""
+        trade_id = str(getattr(t, "trade_id", None) or getattr(t, "id", None) or getattr(t, "order_index", "") or "")
+        sym = str(getattr(t, "symbol", None) or getattr(t, "market_id", "") or "")
+        if not sym and hasattr(t, "market_id"):
+            sym = str(t.market_id)
+        price = float(getattr(t, "price", 0) or getattr(t, "avg_execution_price", 0) or 0)
+        size_str = str(getattr(t, "base_amount", 0) or getattr(t, "size", 0) or getattr(t, "remaining_base_amount", 0) or "0")
+        try:
+            size = float(size_str) / 10_000 if "e" not in size_str.lower() else float(size_str)
+        except (ValueError, TypeError):
+            size = 0.0
+        if size <= 0 and hasattr(t, "initial_base_amount"):
+            try:
+                size = float(str(getattr(t, "initial_base_amount", 0) or 0)) / 10_000
+            except (ValueError, TypeError):
+                pass
+        is_ask = getattr(t, "is_ask", None)
+        side = "sell" if is_ask else "buy"
+        if hasattr(t, "sign") and t.sign == -1:
+            side = "sell"
+        elif hasattr(t, "sign") and t.sign == 1:
+            side = "buy"
+        ts = getattr(t, "timestamp", None) or getattr(t, "transaction_time", None) or getattr(t, "created_at", None)
+        if ts is not None:
+            if isinstance(ts, (int, float)):
+                dt = datetime.fromtimestamp(float(ts), tz=timezone.utc)
+            else:
+                dt = ts
+        else:
+            dt = datetime.now(timezone.utc)
+        return TradeFill(
+            trade_id=trade_id or "unknown",
+            symbol=sym or "UNKNOWN",
+            side=side,
+            price=price,
+            size=size,
+            fee=0.0,
+            fee_currency="USDC",
+            timestamp=dt,
+            order_id=str(getattr(t, "order_index", "") or getattr(t, "order_id", "") or ""),
+            position_id=None,
         )

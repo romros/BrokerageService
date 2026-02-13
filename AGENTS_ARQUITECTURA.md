@@ -80,6 +80,39 @@ Freqtrade es provarà primer en **PAPER**, però amb **market data real de MAINN
   - `set_broker_deps(...)` injecta dependències globals de rutes (candle_store, adapter_factory, mode, venue).
 - **Evitar palla:** només abstraure quan hi ha 2 implementacions o un seam clar per testing.
 
+### 2.4 Coding standards (invariants)
+
+#### A) Imports a la capçalera (regla general)
+- Tots els imports han d'anar a la capçalera del fitxer.
+- Prohibit fer imports dins de funcions per estil.
+
+**Excepcions permeses (documentades):**
+- Evitar imports circulars (amb comentari `# local import to avoid circular dependency`).
+- Lazy import per evitar càrrega pesada (p.ex. llibreria molt costosa) amb comentari `# lazy import to reduce startup cost`.
+- Aquestes excepcions han de ser rares i justificades.
+
+#### B) Zero hardcode (regla general)
+- No posar valors màgics (strings, ints, floats, paths, timeouts, limits) dins la lògica.
+- Tot valor "policy" o "protocol" ha d'estar en:
+  1) Constants de mòdul (p.ex. `DEFAULT_LIMIT`, `MAX_LIMIT`)
+  2) Constants de classe (si té sentit)
+  3) Config (`foundation/config/...` o `application/config/...`) si pot ser compartit o sobreescrit per env.
+
+**Exemples de què és hardcode no permès:**
+- "America/New_York" repetit a mà en 5 fitxers
+- "1m" i rangs de limit repetits
+- codis d'error repetits
+- llistes de venues ("lighter","gtrade") repetides
+
+**Exemples permesos:**
+- literals en tests (fixtures)
+- strings de log no-crítics
+- literals ultra locals (p.ex. `side_lower in ("long","short")`) si no és policy de configuració
+
+**Fonts canòniques:**
+- `foundation/config/constants.py` — CANONICAL_TIMEZONE_NAME, SUPPORTED_TIMEFRAME, DEFAULT_*_LIMIT, MAX_*_LIMIT, KNOWN_VENUES
+- `application/api/error_codes.py` — codis d'error Broker API
+
 ---
 
 ## 3) Broker API — Contracte v0 (canònic)
@@ -99,6 +132,7 @@ Freqtrade es provarà primer en **PAPER**, però amb **market data real de MAINN
 | GET | `/ohlcv/{symbol}` | Candles OHLCV path style (sense venue) |
 | GET | `/balance` | Balance compte (requereix `venue`) |
 | GET | `/positions` | Posicions obertes (requereix `venue`) |
+| GET | `/trades` | Trade history (fills) — CCXT/Freqtrade compatible |
 | POST | `/orders/open` | Obrir posició (JSON body) |
 | POST | `/orders/close` | Tancar posició (JSON body) |
 
@@ -127,13 +161,14 @@ Freqtrade es provarà primer en **PAPER**, però amb **market data real de MAINN
 |------|-------------|-------|
 | `GET /balance` | `venue` | usdc, available_margin, used_margin, total_equity, margin_usage_percent |
 | `GET /positions` | `venue` | positions[] |
+| `GET /trades` | `venue`, `symbol?`, `since?`, `to?`, `limit` (1–5000) | trades[] (trade_id, symbol, side, price, size, fee, timestamp ISO8601) |
 | `POST /orders/open` | JSON body | venue, symbol, side (long\|short), collateral, leverage, sl_price?, tp_price? |
 | `POST /orders/close` | JSON body | venue, position_id, percent (0, 100] |
 
 ### 3.3 Invariants
 
 - **Candles:** no accepten venue; només `timeframe/tf=1m` → si ≠1m: 422 `TIMEFRAME_NOT_SUPPORTED`
-- **Adapter:** `/pairs`, `/price/latest`, `/balance`, `/positions`, `/orders/open`, `/orders/close` requereixen `adapter_factory`; si no wired → 503 `ADAPTER_NOT_AVAILABLE`; venue incorrecte → 422 `VENUE_NOT_CONFIGURED`
+- **Adapter:** `/pairs`, `/price/latest`, `/balance`, `/positions`, `/trades`, `/orders/open`, `/orders/close` requereixen `adapter_factory`; si no wired → 503 `ADAPTER_NOT_AVAILABLE`; venue incorrecte → 422 `VENUE_NOT_CONFIGURED`
 
 ### 3.4 Errors
 
@@ -291,7 +326,7 @@ Hora NY i `('EST','EDT')` quan toca → OK.
 
 ## 8) Roadmap curt (no canònic)
 
-- Trade history (IVenueAdapter, si cal)
+- ~~Trade history (IVenueAdapter)~~ ✅ P1 DONE
 - Maker-first close (opcional)
 - Backtest pipeline complet
 - gTrade mainnet hardening

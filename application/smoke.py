@@ -115,6 +115,9 @@ def _build_mock_wiring():
         async def get_open_positions(self):
             return []
 
+        async def get_trade_history(self, symbol=None, since=None, to=None, limit=500):
+            return []
+
     return FakeAdapter(), InMemoryPositionTracker()
 
 

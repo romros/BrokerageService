@@ -9,6 +9,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from domain.models import CandleRange
+from foundation.config.constants import CANONICAL_TIMEZONE
 
 
 def resolve_candle_range(
@@ -16,7 +17,7 @@ def resolve_candle_range(
     limit: int,
     since_epoch: Optional[int] = None,
     to_epoch: Optional[int] = None,
-    tz: ZoneInfo = ZoneInfo("America/New_York"),
+    tz: ZoneInfo = CANONICAL_TIMEZONE,
 ) -> tuple[datetime, datetime]:
     """
     Resol start/end per a lectura de candles.

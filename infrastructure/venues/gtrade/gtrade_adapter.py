@@ -38,7 +38,7 @@ from domain.models import (
     OrderResult,
     Balance,
     TradingPair,
-    TradeHistory,
+    TradeFill,
 )
 from foundation.logging import get_logger
 
@@ -702,12 +702,14 @@ class GTradeVenueAdapter(IVenueAdapter):
 
     async def get_trade_history(
         self,
-        limit: int = 100,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-    ) -> List[TradeHistory]:
-        """NOT IMPLEMENTED"""
-        raise NotImplementedError("get_trade_history - FASE 6B.1")
+        symbol: Optional[str] = None,
+        since: Optional[datetime] = None,
+        to: Optional[datetime] = None,
+        limit: int = 500,
+    ) -> List[TradeFill]:
+        """Stub: retorna [] (gTrade trade history pendent)."""
+        logger.info("get_trade_history: gTrade stub, returning [] (not implemented)")
+        return []
 
     # ============ MODE INFO ============
 

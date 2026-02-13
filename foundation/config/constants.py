@@ -23,6 +23,17 @@ CANONICAL_TIMEZONE_NAME = "America/New_York"
 CANONICAL_TIMEZONE = ZoneInfo(CANONICAL_TIMEZONE_NAME)
 
 # ============================================
+# BROKER API (candles, trades, limits)
+# ============================================
+SUPPORTED_TIMEFRAME = "1m"
+DEFAULT_CANDLES_LIMIT = 100
+MAX_CANDLES_LIMIT = 10_000
+DEFAULT_OHLCV_LIMIT = 1000  # /ohlcv/{symbol} default
+DEFAULT_TRADES_LIMIT = 500
+MAX_TRADES_LIMIT = 5000
+KNOWN_VENUES = ("lighter", "gtrade")
+
+# ============================================
 # FINANCIAL & TRADING
 # ============================================
 

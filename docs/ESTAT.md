@@ -18,7 +18,7 @@
 - ✅ **Lighter M1+M2+M3** DONE: marketdata, SL/TP, balance, reconcile, guards, bootstrap, smoke runner, e2e trade
 - ✅ **3× smoke real** + **3× e2e trade real** (paper testnet) — `positions_after=0`
 - ✅ **44 tests** passa (unit + integration mock + API smoke localhost); `test_broker_api` + `test_mode_market_data_env` a `run_all`
-- ✅ **Broker API canònic** `/api/v1/broker/*` (POST body únic per ordres) — [API_BROKER.md](API_BROKER.md)
+- ✅ **Broker API canònic** `/api/v1/broker/*` (POST body únic per ordres) — AGENTS §3
 - ✅ **Freqtrade P0** PAPER mainnet-data: `MARKET_DATA_ENV`, `ENABLE_LIVE_TRADING`, wiring Lighter/gTrade, `GET /mode` → `market_data_env`
 - 🟡 **gTrade**: paper OK; mainnet hardening pendent
 - ⛔ **Backtest**: pendent
@@ -103,7 +103,7 @@ docker compose run --rm brokerage python3 -m application.e2e_trade \
 
 ### P1
 
-* trade history (IVenueAdapter)
+* ~~trade history (IVenueAdapter)~~ ✅ P1 DONE — GET /trades, TradeFill, Lighter account_trades, gTrade stub
 * idempotència SL/TP (si cal)
 * maker-first close (opcional)
 

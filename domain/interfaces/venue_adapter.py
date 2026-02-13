@@ -13,8 +13,6 @@ from datetime import datetime
 from typing import List, Optional, AsyncIterator
 
 from domain.models import (
-
-
     PriceData,
     Position,
     PositionMetrics,
@@ -22,7 +20,7 @@ from domain.models import (
     OrderResult,
     Balance,
     TradingPair,
-    TradeHistory,
+    TradeFill,
 )
 
 
@@ -238,20 +236,22 @@ class IVenueAdapter(ABC):
     @abstractmethod
     async def get_trade_history(
         self,
-        limit: int = 100,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-    ) -> List[TradeHistory]:
+        symbol: Optional[str] = None,
+        since: Optional[datetime] = None,
+        to: Optional[datetime] = None,
+        limit: int = 500,
+    ) -> List[TradeFill]:
         """
-        Get closed trade history
+        Get trade history (fills) — CCXT/Freqtrade compatible
 
         Args:
-            limit: Max number of trades to return
-            start_date: Filter from date
-            end_date: Filter to date
+            symbol: Filter per symbol (optional)
+            since: Filter from datetime (UTC)
+            to: Filter to datetime (UTC)
+            limit: Max fills to return (default 500)
 
         Returns:
-            List of TradeHistory
+            List of TradeFill
         """
         pass
 

@@ -10,13 +10,15 @@ from typing import List, Optional, Dict
 
 from pydantic import BaseModel, Field, field_validator
 
+from foundation.config.constants import SUPPORTED_TIMEFRAME, DEFAULT_OHLCV_LIMIT, MAX_CANDLES_LIMIT
+
 
 class OHLCVRequest(BaseModel):
     """Request parameters for /ohlcv endpoint"""
-    tf: str = Field(default="1m", description="Timeframe (only '1m' supported)")
+    tf: str = Field(default=SUPPORTED_TIMEFRAME, description=f"Timeframe (only {SUPPORTED_TIMEFRAME} supported)")
     since: Optional[datetime] = Field(default=None, description="Start timestamp (inclusive)")
     to: Optional[datetime] = Field(default=None, description="End timestamp (exclusive)")
-    limit: int = Field(default=1000, ge=1, le=10000, description="Max candles to return")
+    limit: int = Field(default=DEFAULT_OHLCV_LIMIT, ge=1, le=MAX_CANDLES_LIMIT, description="Max candles to return")
 
 
 class OHLCVCandle(BaseModel):
@@ -185,6 +187,25 @@ class OrderOpenRequest(BaseModel):
         if s not in ("long", "short"):
             raise ValueError("side must be long or short")
         return s
+
+
+class TradeItem(BaseModel):
+    """Single trade fill (API response)"""
+    trade_id: str
+    symbol: str
+    side: str  # "buy" | "sell"
+    price: float
+    size: float
+    fee: float = 0.0
+    fee_currency: Optional[str] = None
+    timestamp: str  # ISO8601
+    order_id: Optional[str] = None
+    position_id: Optional[str] = None
+
+
+class TradesResponse(BaseModel):
+    """Response per GET /trades"""
+    trades: List["TradeItem"]
 
 
 class OrderCloseRequest(BaseModel):

@@ -5,14 +5,21 @@ Prefix: /api/v1/broker
 POST /orders/open i /orders/close amb JSON body.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Callable, Any
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel
 
 from application.api.candle_helpers import resolve_candle_range, read_candles
+from application.api.error_codes import (
+    ADAPTER_NOT_AVAILABLE,
+    CANDLE_STORE_NOT_AVAILABLE,
+    VENUE_NOT_CONFIGURED,
+    TIMEFRAME_NOT_SUPPORTED,
+    SYMBOL_NOT_FOUND,
+    POSITION_NOT_FOUND,
+)
 from application.api.models import (
     HealthResponse,
     ModeResponse,
@@ -21,8 +28,20 @@ from application.api.models import (
     BalanceResponse,
     OrderOpenRequest,
     OrderCloseRequest,
+    TradeItem,
+    TradesResponse,
 )
 from domain.errors import PositionNotFoundError, MarketNotFoundError
+from foundation.config.constants import (
+    CANONICAL_TIMEZONE,
+    SUPPORTED_TIMEFRAME,
+    DEFAULT_CANDLES_LIMIT,
+    DEFAULT_OHLCV_LIMIT,
+    MAX_CANDLES_LIMIT,
+    DEFAULT_TRADES_LIMIT,
+    MAX_TRADES_LIMIT,
+    KNOWN_VENUES,
+)
 from foundation.logging import get_logger
 
 logger = get_logger(__name__)
@@ -78,7 +97,7 @@ def _get_adapter_or_http_error(venue: str):
     if _adapter_factory is None:
         _http_error(
             503,
-            "ADAPTER_NOT_AVAILABLE",
+            ADAPTER_NOT_AVAILABLE,
             "adapter_factory not configured (VENUE=...). Set VENUE=lighter to enable.",
         )
     adapter = _adapter_factory(venue)
@@ -86,19 +105,17 @@ def _get_adapter_or_http_error(venue: str):
         available = _get_available_venues()
         _http_error(
             422,
-            "VENUE_NOT_CONFIGURED",
+            VENUE_NOT_CONFIGURED,
             f"venue not configured: {venue}. Available: {available}",
         )
     return adapter
 
 
 def _get_available_venues() -> list[str]:
-    """Venues disponibles. Només lighter per ara."""
+    """Venues disponibles segons wiring."""
     if _adapter_factory is None:
         return []
-    if _adapter_factory("lighter") is not None:
-        return ["lighter"]
-    return []
+    return [v for v in KNOWN_VENUES if _adapter_factory(v) is not None]
 
 
 # ============ Response models ============
@@ -223,7 +240,7 @@ async def get_price_latest(
             timestamp=px.timestamp.isoformat() if px.timestamp else datetime.now().isoformat(),
         )
     except MarketNotFoundError as e:
-        _http_error(404, "SYMBOL_NOT_FOUND", str(e))
+        _http_error(404, SYMBOL_NOT_FOUND, str(e))
     except Exception as e:
         logger.error("get_price_latest %s %s: %s", venue, symbol, e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -239,9 +256,8 @@ def _read_candles_response(
     """Lògica compartida per candles/ohlcv."""
     store = _require_candle_store()
     symbol = _normalize_symbol(symbol)
-    tz = ZoneInfo("America/New_York")
-    end = datetime.now(tz)
-    start, end = resolve_candle_range(end=end, limit=limit, since_epoch=since, to_epoch=to, tz=tz)
+    end = datetime.now(CANONICAL_TIMEZONE)
+    start, end = resolve_candle_range(end=end, limit=limit, since_epoch=since, to_epoch=to, tz=CANONICAL_TIMEZONE)
     r = read_candles(store, symbol=symbol, start=start, end=end, validate_gaps=validate_gaps)
     return _map_ohlcv_response(r, symbol, start, end)
 
@@ -249,14 +265,14 @@ def _read_candles_response(
 @router.get("/ohlcv/{symbol}", response_model=OHLCVResponse)
 async def get_ohlcv(
     symbol: str,
-    tf: str = Query(default="1m"),
+    tf: str = Query(default=SUPPORTED_TIMEFRAME),
     since: Optional[int] = Query(None),
     to: Optional[int] = Query(None),
-    limit: int = Query(default=1000, ge=1, le=10000),
+    limit: int = Query(default=DEFAULT_OHLCV_LIMIT, ge=1, le=MAX_CANDLES_LIMIT),
 ):
     """Candles OHLCV per símbol (path). Compatible amb test_rest_smoke."""
-    if tf != "1m":
-        _http_error(422, "TIMEFRAME_NOT_SUPPORTED", "Only 1m timeframe supported")
+    if tf != SUPPORTED_TIMEFRAME:
+        _http_error(422, TIMEFRAME_NOT_SUPPORTED, f"Only {SUPPORTED_TIMEFRAME} timeframe supported")
     try:
         return _read_candles_response(symbol, limit, since, to, validate_gaps=True)
     except HTTPException:
@@ -269,14 +285,14 @@ async def get_ohlcv(
 @router.get("/candles", response_model=OHLCVResponse)
 async def get_candles(
     symbol: str = Query(...),
-    timeframe: str = Query(default="1m"),
-    limit: int = Query(default=100, ge=1, le=10000),
+    timeframe: str = Query(default=SUPPORTED_TIMEFRAME),
+    limit: int = Query(default=DEFAULT_CANDLES_LIMIT, ge=1, le=MAX_CANDLES_LIMIT),
     since: Optional[int] = Query(None),
     to: Optional[int] = Query(None),
 ):
     """Candles OHLCV (query param symbol). Sense venue (candle_store)."""
-    if timeframe != "1m":
-        _http_error(422, "TIMEFRAME_NOT_SUPPORTED", "Only 1m timeframe supported")
+    if timeframe != SUPPORTED_TIMEFRAME:
+        _http_error(422, TIMEFRAME_NOT_SUPPORTED, f"Only {SUPPORTED_TIMEFRAME} timeframe supported")
     try:
         return _read_candles_response(symbol, limit, since, to, validate_gaps=True)
     except HTTPException:
@@ -313,6 +329,46 @@ async def get_positions(venue: str = Query(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/trades", response_model=TradesResponse)
+async def get_trades(
+    venue: str = Query(..., description="Venue (lighter)"),
+    symbol: Optional[str] = Query(None, description="Filter per symbol"),
+    since: Optional[int] = Query(None, description="Epoch seconds (inclusive)"),
+    to: Optional[int] = Query(None, description="Epoch seconds (exclusive)"),
+    limit: int = Query(default=DEFAULT_TRADES_LIMIT, ge=1, le=MAX_TRADES_LIMIT, description="Max fills"),
+):
+    """Trade history (fills) — CCXT/Freqtrade compatible."""
+    adapter = _get_adapter_or_http_error(venue)
+    since_dt = datetime.fromtimestamp(since, tz=timezone.utc) if since else None
+    to_dt = datetime.fromtimestamp(to, tz=timezone.utc) if to else None
+    try:
+        fills = await adapter.get_trade_history(
+            symbol=symbol,
+            since=since_dt,
+            to=to_dt,
+            limit=limit,
+        )
+        items = [
+            TradeItem(
+                trade_id=f.trade_id,
+                symbol=f.symbol,
+                side=f.side,
+                price=f.price,
+                size=f.size,
+                fee=f.fee,
+                fee_currency=f.fee_currency,
+                timestamp=f.timestamp.isoformat() if f.timestamp else "",
+                order_id=f.order_id,
+                position_id=f.position_id,
+            )
+            for f in fills
+        ]
+        return TradesResponse(trades=items)
+    except Exception as e:
+        logger.error("get_trades %s: %s", venue, e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============ Orders ============
 
 
@@ -339,7 +395,7 @@ async def _do_order_open(req: OrderOpenRequest) -> OrderOpenResponse:
             tx_hash=getattr(result, "tx_hash", "") or "",
         )
     except MarketNotFoundError as e:
-        _http_error(404, "SYMBOL_NOT_FOUND", str(e))
+        _http_error(404, SYMBOL_NOT_FOUND, str(e))
     except Exception as e:
         logger.error("order_open %s %s: %s", req.venue, req.symbol, e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -355,7 +411,7 @@ async def _do_order_close(req: OrderCloseRequest) -> OrderCloseResponse:
         ok = await adapter.close_position(position_id, percent=req.percent)
         return OrderCloseResponse(success=ok)
     except PositionNotFoundError as e:
-        _http_error(404, "POSITION_NOT_FOUND", str(e))
+        _http_error(404, POSITION_NOT_FOUND, str(e))
     except Exception as e:
         logger.error("order_close %s %s: %s", req.venue, position_id, e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -379,7 +435,7 @@ async def order_close(body: OrderCloseRequest = Body(...)):
 def _require_candle_store():
     """Retorna candle_store o llança 503 + CANDLE_STORE_NOT_AVAILABLE."""
     if _candle_store is None:
-        _http_error(503, "CANDLE_STORE_NOT_AVAILABLE", "Candle store not available")
+        _http_error(503, CANDLE_STORE_NOT_AVAILABLE, "Candle store not available")
     return _candle_store
 
 
@@ -403,7 +459,7 @@ def _map_ohlcv_response(candle_range: Any, symbol: str, start: datetime, end: da
     ]
     return OHLCVResponse(
         symbol=symbol,
-        timeframe="1m",
+        timeframe=SUPPORTED_TIMEFRAME,
         start=start,
         end=end,
         count=len(candles),
