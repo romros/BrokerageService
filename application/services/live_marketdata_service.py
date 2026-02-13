@@ -27,7 +27,7 @@ import time
 from datetime import datetime
 from typing import Dict, Optional
 
-from domain.interfaces import ICandleStore
+from domain.interfaces import ICandleStore, IPriceFeedClient
 from domain.models import Tick, Candle
 from foundation.config.constants import (
     CANONICAL_TIMEZONE,
@@ -37,8 +37,6 @@ from foundation.config.constants import (
 from foundation.lifecycle import IService
 from foundation.logging import get_logger
 from infrastructure.builders.candle_builder import CandleBuilder
-from infrastructure.venues.gtrade.price_feed_ws_client import GTradePriceFeedWSClient
-from infrastructure.venues.gtrade.config import GTRADE_SUPPORTED_SYMBOLS
 
 # Avoid circular import for WebSocketHub
 from typing import TYPE_CHECKING
@@ -61,7 +59,7 @@ class LiveMarketDataService(IService):
 
     def __init__(
         self,
-        price_feed_client: GTradePriceFeedWSClient,
+        price_feed_client: IPriceFeedClient,
         candle_store: ICandleStore,
         symbols: list[str],
         tz = None,
@@ -72,9 +70,9 @@ class LiveMarketDataService(IService):
         Initialize live market data service
 
         Args:
-            price_feed_client: WebSocket client for gTrade price feed
+            price_feed_client: Tick feed (gTrade WS or Lighter polling)
             candle_store: Storage for completed candles
-            symbols: List of symbols to track (e.g., ["XAUUSD", "EURUSD"])
+            symbols: List of symbols to track (e.g., ["XAUUSD", "EURUSD"] or ["ETH", "BTC"])
             tz: Timezone for candles (default: America/New_York)
             ticker_broadcast_ms: Ticker broadcast throttle interval (default: 200ms)
             hub: WebSocket hub for broadcasting (optional)

@@ -1,0 +1,46 @@
+{
+  "timestamp": "2026-02-12T07:36:08.103658",
+  "operation": "market_open",
+  "create_order": {
+    "account_index": 210,
+    "order_book_index": null,
+    "base_amount": 10000,
+    "price": 1970610000,
+    "is_ask": 0,
+    "order_type": null,
+    "expired_at": 1770882366834,
+    "nonce": 34,
+    "sig": "v8v8lWlbNvoZynCu+COxCdzLhVMo5PmFKp4ONvi4DMexzo6jYr0CcTrkrJZJ5ET6SVfWi/bO6I6uhuB5kFq3A8H8yqgWRTUU9WmXgoOeCmc="
+  },
+  "tx_response": {
+    "code": 200,
+    "message": "{\"ratelimit\": \"didn't use volume quota\"}",
+    "tx_hash": "beae1f3d59d09552cb9646388d6bcbacc04226c893f00b14b6d2b726a1fc643f6d660d3b60932af1",
+    "predicted_execution_time_ms": 1770881768484,
+    "volume_quota_remaining": null,
+    "additional_properties": {}
+  },
+  "error": null,
+  "create_order_type": "<class 'lighter.transactions.create_order.CreateOrder'>",
+  "create_order_fields": [
+    "account_index",
+    "order_book_index",
+    "base_amount",
+    "price",
+    "is_ask",
+    "order_type",
+    "expired_at",
+    "nonce",
+    "sig"
+  ],
+  "tx_response_type": "<class 'lighter.models.resp_send_tx.RespSendTx'>",
+  "tx_response_fields": [
+    "code",
+    "message",
+    "tx_hash",
+    "predicted_execution_time_ms",
+    "volume_quota_remaining",
+    "additional_properties"
+  ],
+  "tx_hash": "beae1f3d59d09552cb9646388d6bcbacc04226c893f00b14b6d2b726a1fc643f6d660d3b60932af1"
+}

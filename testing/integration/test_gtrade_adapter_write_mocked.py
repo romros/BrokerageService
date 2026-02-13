@@ -18,6 +18,7 @@ import os
 
 from application.services.backend_trade_verifier import OpenConfirmResult, CloseConfirmResult
 from infrastructure.venues.gtrade.chain_config import ChainConfig, ContractAddresses
+from infrastructure.venues.gtrade.config import GTRADE_SYMBOL_TO_PAIR_ID
 from infrastructure.venues.gtrade.gtrade_adapter import GTradeVenueAdapter
 from infrastructure.venues.gtrade.tx_sender import TxResult
 
@@ -79,9 +80,13 @@ async def test_open_position_mocked():
         status=1,
     )
 
+    # Write-plumbing test: mock symbol mapping so XAUUSD is tradable (independent of mainnet/Sepolia).
+    mock_symbol_to_pair = {**GTRADE_SYMBOL_TO_PAIR_ID, "XAUUSD": 0, "EURUSD": 2}
+
     with patch("infrastructure.venues.gtrade.gtrade_adapter.AsyncWeb3", return_value=mock_w3), \
          patch("infrastructure.venues.gtrade.gtrade_adapter.TxSender") as mock_tx_sender_class, \
          patch("infrastructure.venues.gtrade.gtrade_adapter.BackendTradeVerifier") as mock_verifier_class, \
+         patch("infrastructure.venues.gtrade.gtrade_adapter.GTRADE_SYMBOL_TO_PAIR_ID", mock_symbol_to_pair), \
          patch.dict(os.environ, {"ENABLE_LIVE_TRADING": "1"}):
 
         # Mock TxSender instance
@@ -100,7 +105,6 @@ async def test_open_position_mocked():
 
         await adapter.start()
 
-        # Call open_position
         result = await adapter.open_position(
             symbol="XAUUSD",
             is_long=True,

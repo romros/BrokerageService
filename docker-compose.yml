@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Brokerage Service
   brokerage:
@@ -7,9 +5,11 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: brokerage-service
+    working_dir: /app
     ports:
       - "8000:8000"  # REST API + WebSocket
     environment:
+      - PYTHONPATH=/app
       # Mode: live, paper, or backtest
       - MODE=${MODE:-backtest}
       - VENUE=${VENUE:-gtrade}

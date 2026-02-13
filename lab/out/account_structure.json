@@ -1,0 +1,56 @@
+{
+  "code": 0,
+  "account_type": 0,
+  "index": 210,
+  "l1_address": "0xD9fC17C093614D20976EFb1535A7142081A031b2",
+  "cancel_all_time": 0,
+  "total_order_count": 0,
+  "total_isolated_order_count": 0,
+  "pending_order_count": 0,
+  "available_balance": "9706.180806",
+  "status": 0,
+  "collateral": "9706.180806",
+  "transaction_time": 1770924655836047,
+  "account_index": 210,
+  "name": "",
+  "description": "",
+  "can_invite": true,
+  "referral_points_percentage": "",
+  "positions": [
+    {
+      "market_id": 0,
+      "symbol": "ETH",
+      "initial_margin_fraction": "4.00",
+      "open_order_count": 0,
+      "pending_order_count": 0,
+      "position_tied_order_count": 0,
+      "sign": 1,
+      "position": "0.0000",
+      "avg_entry_price": "0.00",
+      "position_value": "-0.000000",
+      "unrealized_pnl": "0.000000",
+      "realized_pnl": "0.000000",
+      "liquidation_price": "0",
+      "margin_mode": 0,
+      "allocated_margin": "0.000000"
+    }
+  ],
+  "assets": [
+    {
+      "symbol": "ETH",
+      "asset_id": 1,
+      "balance": "3.00000000",
+      "locked_balance": "0.00000000"
+    },
+    {
+      "symbol": "LIT",
+      "asset_id": 2,
+      "balance": "1000000.00000000",
+      "locked_balance": "0.00000000"
+    }
+  ],
+  "total_asset_value": "9706.180806",
+  "cross_asset_value": "9706.180806",
+  "shares": [],
+  "pending_unlocks": []
+}

@@ -29,7 +29,10 @@ async def main():
     print("Step 1: Checking open positions...")
     try:
         account_api = lighter.AccountApi(client)
-        account = await account_api.account(by="index", value=str(ACCOUNT_INDEX))
+        # La UI fa servir by=l1_address; amb by=index el testnet no retorna totes les posicions
+        l1 = os.getenv("LIGHTER_L1_ADDRESS")
+        acc_resp = await account_api.account(by="l1_address" if l1 else "index", value=l1 or str(ACCOUNT_INDEX))
+        account = acc_resp.accounts[0] if getattr(acc_resp, "accounts", None) else acc_resp
 
         print(f"✅ Account data retrieved")
         print(f"\nAccount Info:")
@@ -106,7 +109,9 @@ async def main():
 
     print("Step 5: Verifying position closed...")
     try:
-        account = await account_api.account(by="index", value=str(ACCOUNT_INDEX))
+        by, val = ("l1_address", L1_ADDRESS) if L1_ADDRESS else ("index", str(ACCOUNT_INDEX))
+        acc_resp = await account_api.account(by=by, value=val)
+        account = acc_resp.accounts[0] if getattr(acc_resp, "accounts", None) else acc_resp
 
         if hasattr(account, 'positions'):
             positions = account.positions

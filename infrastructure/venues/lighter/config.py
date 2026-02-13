@@ -34,6 +34,10 @@ DEFAULT_LIGHTER_MARKETS = {
     "LINK-USDC": 3,
 }
 
+# Market data tick interval (polling) for LiveMarketDataService pipeline
+# Default 500ms; configurable via LIGHTER_TICK_INTERVAL_MS
+DEFAULT_LIGHTER_TICK_INTERVAL_MS = 500
+
 
 @dataclass(frozen=True)
 class LighterConfig:
@@ -83,6 +87,23 @@ class LighterConfig:
         # Keys validated in key_manager (length checks)
 
         logger.info(f"Lighter config loaded: base_url={self.base_url}, account_index={self.account_index}, api_key_index={self.api_key_index}")
+
+
+def get_lighter_tick_interval_ms() -> int:
+    """Tick interval in ms for Lighter price feed polling (from LIGHTER_TICK_INTERVAL_MS)."""
+    try:
+        return int(os.getenv("LIGHTER_TICK_INTERVAL_MS", str(DEFAULT_LIGHTER_TICK_INTERVAL_MS)))
+    except ValueError:
+        return DEFAULT_LIGHTER_TICK_INTERVAL_MS
+
+
+def get_lighter_symbols_from_env() -> list[str]:
+    """
+    Symbols for Lighter market data (from LIGHTER_SYMBOLS or SYMBOLS).
+    Comma-separated, stripped; e.g. "ETH,BTC" or "XAUUSD,EURUSD".
+    """
+    raw = os.getenv("LIGHTER_SYMBOLS") or os.getenv("SYMBOLS") or "ETH,BTC"
+    return [s.strip() for s in raw.split(",") if s.strip()]
 
 
 def load_lighter_config_from_env() -> LighterConfig:

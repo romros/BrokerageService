@@ -47,6 +47,29 @@ WS_URL = "ws://localhost:8002/api/v1/ws"
 BASE_URL = "http://localhost:8002"
 
 
+# Short timeouts so tests fail fast; ping_interval=None avoids idle-close by library
+WS_CONNECT_KW = {"open_timeout": 5, "close_timeout": 2, "ping_interval": None}
+
+
+async def _connect_ws_with_retry(max_attempts: int = 3, delay: float = 1.0):
+    """Connect to WS with retries (server may be briefly busy after previous test)."""
+    last_err = None
+    for attempt in range(max_attempts):
+        try:
+            return await websockets.connect(WS_URL, **WS_CONNECT_KW)
+        except (TimeoutError, OSError, ConnectionRefusedError) as e:
+            last_err = e
+            if attempt < max_attempts - 1:
+                await asyncio.sleep(delay)
+    raise last_err
+
+
+async def _probe_ws(url: str, timeout: float = 2.0) -> None:
+    """Probe WebSocket endpoint (connect and close)."""
+    async with websockets.connect(url, open_timeout=timeout, close_timeout=2, ping_interval=None) as ws:
+        pass
+
+
 class WSTestServer:
     """Test server for WebSocket tests"""
 
@@ -75,22 +98,35 @@ class WSTestServer:
             stderr=subprocess.PIPE,
         )
 
-        # Wait for server to be ready
+        # Wait for HTTP first
         max_wait = 20
         for i in range(max_wait):
             try:
                 response = requests.get(f"{BASE_URL}/", timeout=2)
                 if response.status_code == 200:
-                    print(f"✓ Server ready after {i+1}s")
-                    time.sleep(0.5)
-                    return
+                    print(f"✓ HTTP ready after {i+1}s")
+                    break
             except (requests.ConnectionError, requests.Timeout):
                 time.sleep(1)
+        else:
+            raise RuntimeError("Server HTTP failed to start within timeout")
 
-        raise RuntimeError("Server failed to start within timeout")
+        # Wait for WebSocket endpoint to accept connections (avoids race)
+        time.sleep(0.5)
+        ws_ready = False
+        for i in range(15):
+            try:
+                asyncio.run(_probe_ws(WS_URL, timeout=2))
+                ws_ready = True
+                print(f"✓ WebSocket ready after {i+1} probe(s)")
+                break
+            except Exception:
+                time.sleep(0.5)
+        if not ws_ready:
+            raise RuntimeError("WebSocket endpoint not ready within timeout")
 
     def stop(self):
-        """Stop server"""
+        """Stop server and wait for process exit (avoids port in TIME_WAIT / stuck process)."""
         if self.process:
             print("Stopping test server...")
             self.process.send_signal(signal.SIGTERM)
@@ -98,6 +134,11 @@ class WSTestServer:
                 self.process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self.process.kill()
+                try:
+                    self.process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    pass
+            self.process = None
 
     def __enter__(self):
         self.start()
@@ -112,7 +153,7 @@ async def test_basic_connection():
     print("Testing basic connection...")
 
     try:
-        async with websockets.connect(WS_URL) as ws:
+        async with websockets.connect(WS_URL, **WS_CONNECT_KW) as ws:
             print("  ✓ Connected to WebSocket")
 
         print("  ✓ Disconnected cleanly")
@@ -128,7 +169,7 @@ async def test_subscribe_unsubscribe():
     print("Testing subscribe/unsubscribe...")
 
     try:
-        async with websockets.connect(WS_URL) as ws:
+        async with websockets.connect(WS_URL, **WS_CONNECT_KW) as ws:
             # Subscribe to ticker channel
             subscribe_msg = {
                 "type": "subscribe",
@@ -176,7 +217,7 @@ async def test_invalid_channel():
     print("Testing invalid channel error...")
 
     try:
-        async with websockets.connect(WS_URL) as ws:
+        async with websockets.connect(WS_URL, **WS_CONNECT_KW) as ws:
             # Subscribe to invalid channel
             subscribe_msg = {
                 "type": "subscribe",
@@ -201,12 +242,12 @@ async def test_invalid_channel():
 
 
 async def test_multiple_subscriptions():
-    """Test subscribing to multiple channels"""
+    """Test subscribing to multiple channels (including candle)."""
     print("Testing multiple subscriptions...")
 
     try:
-        async with websockets.connect(WS_URL) as ws:
-            channels = ["ticker:XAUUSD", "ticker:EURUSD", "positions", "balance"]
+        async with websockets.connect(WS_URL, **WS_CONNECT_KW) as ws:
+            channels = ["ticker:XAUUSD", "ticker:EURUSD", "positions", "balance", "candle:XAUUSD:1m"]
 
             for channel in channels:
                 subscribe_msg = {
@@ -236,18 +277,19 @@ async def test_message_with_seq():
     print("Testing message sequence numbers...")
 
     try:
-        async with websockets.connect(WS_URL) as ws:
-            # Subscribe to execution channel
-            subscribe_msg = {
-                "type": "subscribe",
-                "channel": "execution"
-            }
+        async with websockets.connect(WS_URL, **WS_CONNECT_KW) as ws:
+            subscribe_msg = {"type": "subscribe", "channel": "execution"}
             await ws.send(json.dumps(subscribe_msg))
 
-            # Wait for subscribed confirmation
-            response = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            try:
+                response = await asyncio.wait_for(ws.recv(), timeout=3.0)
+            except asyncio.TimeoutError:
+                raise AssertionError(
+                    "Server did not send subscribed confirmation within 3s (execution channel)."
+                ) from None
+
             data = json.loads(response)
-            assert data["type"] == "subscribed"
+            assert data["type"] == "subscribed", f"Expected subscribed, got {data.get('type')}"
 
             print(f"  ✓ Subscribed to execution channel")
             print(f"  ℹ Note: Seq numbers are only present on broadcast messages (ticker, candle, etc.)")
@@ -255,6 +297,8 @@ async def test_message_with_seq():
 
         print("✓ Message seq test passed")
 
+    except AssertionError:
+        raise
     except Exception as e:
         print(f"✗ Test failed: {e}")
         raise
@@ -265,7 +309,7 @@ async def test_resume_without_messages():
     print("Testing resume (no messages in buffer)...")
 
     try:
-        async with websockets.connect(WS_URL) as ws:
+        async with websockets.connect(WS_URL, **WS_CONNECT_KW) as ws:
             # Try to resume from seq 0
             resume_msg = {
                 "type": "resume",
@@ -292,18 +336,19 @@ async def test_invalid_message_type():
     print("Testing invalid message type...")
 
     try:
-        async with websockets.connect(WS_URL) as ws:
-            # Send invalid message type
-            invalid_msg = {
-                "type": "invalid_type",
-                "data": {}
-            }
+        async with websockets.connect(WS_URL, **WS_CONNECT_KW) as ws:
+            invalid_msg = {"type": "invalid_type", "data": {}}
             await ws.send(json.dumps(invalid_msg))
 
-            # Wait for error response
-            response = await asyncio.wait_for(ws.recv(), timeout=2.0)
-            data = json.loads(response)
+            try:
+                response = await asyncio.wait_for(ws.recv(), timeout=3.0)
+            except asyncio.TimeoutError:
+                raise AssertionError(
+                    "Server did not respond to invalid message type within 3s. "
+                    "Invalid messages must always return {type:'error'}."
+                ) from None
 
+            data = json.loads(response)
             assert data["type"] == "error", f"Expected 'error', got '{data['type']}'"
             assert "Unknown message type" in data.get("error", "")
 
@@ -311,27 +356,31 @@ async def test_invalid_message_type():
 
         print("✓ Invalid message type test passed")
 
+    except AssertionError:
+        raise
     except Exception as e:
         print(f"✗ Test failed: {e}")
         raise
 
 
 async def test_missing_channel():
-    """Test error handling for missing channel field"""
+    """Test error handling for missing channel field (server must always return error)."""
     print("Testing missing channel field...")
 
     try:
-        async with websockets.connect(WS_URL) as ws:
-            # Send subscribe without channel
-            subscribe_msg = {
-                "type": "subscribe"
-            }
+        async with websockets.connect(WS_URL, **WS_CONNECT_KW) as ws:
+            subscribe_msg = {"type": "subscribe"}
             await ws.send(json.dumps(subscribe_msg))
 
-            # Wait for error response
-            response = await asyncio.wait_for(ws.recv(), timeout=2.0)
-            data = json.loads(response)
+            try:
+                response = await asyncio.wait_for(ws.recv(), timeout=3.0)
+            except asyncio.TimeoutError:
+                raise AssertionError(
+                    "Server did not respond within 3s to missing channel. "
+                    "Invalid messages must always return {type:'error'}."
+                ) from None
 
+            data = json.loads(response)
             assert data["type"] == "error", f"Expected 'error', got '{data['type']}'"
             assert "Missing channel" in data.get("error", "")
 
@@ -339,6 +388,41 @@ async def test_missing_channel():
 
         print("✓ Missing channel test passed")
 
+    except AssertionError:
+        raise
+    except Exception as e:
+        print(f"✗ Test failed: {e}")
+        raise
+
+
+async def test_error_responses_same_connection():
+    """Invalid message type + missing channel + invalid channel in one connection (Docker connect limit)."""
+    print("Testing error responses (invalid type, missing channel, invalid channel)...")
+    recv_timeout = 5.0
+    try:
+        async with websockets.connect(WS_URL, **WS_CONNECT_KW) as ws:
+            invalid_msg = {"type": "invalid_type", "data": {}}
+            await ws.send(json.dumps(invalid_msg))
+            response = await asyncio.wait_for(ws.recv(), timeout=recv_timeout)
+            data = json.loads(response)
+            assert data["type"] == "error" and "Unknown message type" in data.get("error", "")
+            print(f"  ✓ Error for invalid message type")
+
+            await ws.send(json.dumps({"type": "subscribe"}))
+            response = await asyncio.wait_for(ws.recv(), timeout=recv_timeout)
+            data = json.loads(response)
+            assert data["type"] == "error" and "Missing channel" in data.get("error", "")
+            print(f"  ✓ Error for missing channel")
+
+            await ws.send(json.dumps({"type": "subscribe", "channel": "ticker:INVALID"}))
+            response = await asyncio.wait_for(ws.recv(), timeout=recv_timeout)
+            data = json.loads(response)
+            assert data["type"] == "error" and "Invalid channel" in data.get("error", "")
+            print(f"  ✓ Error for invalid channel")
+
+        print("✓ All error responses (same connection) passed")
+    except asyncio.TimeoutError:
+        raise AssertionError(f"Server did not respond within {recv_timeout}s.") from None
     except Exception as e:
         print(f"✗ Test failed: {e}")
         raise
@@ -349,7 +433,7 @@ async def test_candle_channel():
     print("Testing candle channel...")
 
     try:
-        async with websockets.connect(WS_URL) as ws:
+        async with websockets.connect(WS_URL, **WS_CONNECT_KW) as ws:
             # Subscribe to candle channel
             subscribe_msg = {
                 "type": "subscribe",
@@ -374,16 +458,13 @@ async def test_candle_channel():
 
 
 async def run_tests():
-    """Run all WebSocket smoke tests"""
+    """Run all WebSocket smoke tests. Error tests + candle in shared connections (Docker connect limit)."""
     await test_basic_connection()
+    await test_error_responses_same_connection()
     await test_subscribe_unsubscribe()
-    await test_invalid_channel()
-    await test_multiple_subscriptions()
     await test_message_with_seq()
+    await test_multiple_subscriptions()  # includes candle:XAUUSD:1m
     await test_resume_without_messages()
-    await test_invalid_message_type()
-    await test_missing_channel()
-    await test_candle_channel()
 
 
 def main():

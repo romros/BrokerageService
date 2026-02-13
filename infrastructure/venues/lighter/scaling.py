@@ -2,43 +2,46 @@
 Lighter Decimal Scaling
 
 Lighter SDK requires different scaling factors per order type:
-- Market orders: ×1,000,000 (1e6) for BOTH size and price
+- Market orders: base_amount ×10_000 (1e4), avg_execution_price ×100 (2 decimals, "acceptable price")
 - Limit/SL/TP orders: ×10,000 (1e4) for size, ×100 (1e2) for price
 
-This is a CRITICAL invariant discovered during lab validation.
-Using incorrect scaling causes order rejections or incorrect fills.
+avg_execution_price is NOT ×1e6: it is the "acceptable price" with 2 decimals (×100).
+BUY: maximum acceptable; SELL: minimum acceptable. Use acceptable_price_int() with slippage.
 
 References:
 - lab/lighter/LIGHTER_COMPLETE_VALIDATION.md - Integer Scaling Summary
-- Production Pitfalls: "Always use helper functions (avoid magic numbers)"
-
-Example:
-    # Market order: 0.1 ETH @ $2700
-    size, price = scale_market(0.1, 2700.0)
-    # → (100_000, 2_700_000_000)
-
-    # Limit order: 0.1 ETH @ $2700
-    size, price = scale_limit(0.1, 2700.0)
-    # → (1_000, 270_000)
+- DeepWiki: Creating and Managing Orders (lighter-python)
 """
+
+
+def acceptable_price_int(mid: float, is_ask: bool, slippage_bps: int = 50) -> int:
+    """
+    Preu acceptable per market order (avg_execution_price): ×100.
+    is_ask=True => SELL (mínim acceptable); is_ask=False => BUY (màxim acceptable).
+    """
+    slip = slippage_bps / 10_000
+    if is_ask:
+        px = mid * (1 - slip)
+    else:
+        px = mid * (1 + slip)
+    return int(round(px * 100))
 
 
 def scale_market(base: float, price: float) -> tuple[int, int]:
     """
-    Scale parameters for market orders
+    Scale parameters for market orders.
+
+    - base_amount: ×10_000 (same as UI / testnet).
+    - For avg_execution_price use acceptable_price_int(mid, is_ask, slippage_bps), not this.
 
     Args:
         base: Base amount (e.g., 0.1 ETH)
-        price: Price in USD (e.g., 2700.0)
+        price: Unused; kept for API. Use acceptable_price_int() for price.
 
     Returns:
-        Tuple of (scaled_size, scaled_price) both ×1e6
-
-    Example:
-        >>> scale_market(0.1, 2700.0)
-        (100000, 2700000000)
+        (scaled_base ×10_000, dummy); callers must set avg_execution_price via acceptable_price_int().
     """
-    return int(base * 1_000_000), int(price * 1_000_000)
+    return int(base * 10_000), int(round(price * 100))
 
 
 def scale_limit(base: float, price: float) -> tuple[int, int]:
@@ -88,7 +91,7 @@ def scale_sl_tp(base: float, trigger_price: float, exec_price: float) -> tuple[i
 
 
 # Scaling constants (for reference/documentation, not direct use)
-MARKET_SIZE_SCALE = 1_000_000
-MARKET_PRICE_SCALE = 1_000_000
+MARKET_SIZE_SCALE = 10_000
+MARKET_PRICE_SCALE = 100  # avg_execution_price: 2 decimals, use acceptable_price_int()
 LIMIT_SIZE_SCALE = 10_000
 LIMIT_PRICE_SCALE = 100

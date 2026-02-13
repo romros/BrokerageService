@@ -10,11 +10,12 @@ Tests backend API integration for open positions:
 """
 
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 import asyncio
 
 from infrastructure.venues.gtrade.backend_client import GTradeBackendClient
 from infrastructure.venues.gtrade.chain_config import ChainConfig, ContractAddresses
+from infrastructure.venues.gtrade.config import GTRADE_PAIR_ID_TO_SYMBOL
 from infrastructure.venues.gtrade.gtrade_adapter import GTradeVenueAdapter
 
 
@@ -46,14 +47,15 @@ async def test_get_open_positions_empty():
         mode="live"
     )
 
-    # Mock Web3 provider (not needed for backend calls, but start() needs it)
-    mock_w3 = AsyncMock()
-    mock_w3.eth.chain_id = AsyncMock(return_value=42161)()
+    # Mock Web3: adapter does await self._w3.eth.chain_id — must be a real awaitable
+    async def _chain_id():
+        return 42161
+    mock_w3 = MagicMock()
+    mock_w3.eth.chain_id = _chain_id()
 
     with patch("infrastructure.venues.gtrade.gtrade_adapter.AsyncWeb3", return_value=mock_w3):
         await adapter.start()
 
-        # Get positions (should be empty)
         positions = await adapter.get_open_positions()
         assert positions == []
 
@@ -75,25 +77,29 @@ async def test_get_open_positions_two_trades():
         wallet_private_key="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
     )
 
-    # Mock backend response
+    # pairIndex 0 and 2: symbols come from config (mainnet: XAUUSD/EURUSD, Sepolia: BTCUSD/LINKUSD)
+    symbol0 = GTRADE_PAIR_ID_TO_SYMBOL.get(0)
+    symbol2 = GTRADE_PAIR_ID_TO_SYMBOL.get(2)
+    assert symbol0 and symbol2, "pairId 0 and 2 must be in GTRADE_PAIR_ID_TO_SYMBOL"
+
     mock_response = [
         {
-            "pairIndex": 0,  # XAUUSD
+            "pairIndex": 0,
             "index": 1,
             "buy": True,  # LONG
             "openPrice": "2700.50",
-            "initialPosToken": "1000.0",  # 1000 USDC collateral
+            "initialPosToken": "1000.0",
             "leverage": "10.0",
             "sl": "2650.0",
             "tp": "2800.0",
             "openedAt": 1707500000,
         },
         {
-            "pairIndex": 2,  # EURUSD
+            "pairIndex": 2,
             "index": 2,
             "buy": False,  # SHORT
             "openPrice": "1.0850",
-            "initialPosToken": "500.0",  # 500 USDC collateral
+            "initialPosToken": "500.0",
             "leverage": "20.0",
             "sl": "1.0900",
             "tp": "1.0800",
@@ -110,34 +116,32 @@ async def test_get_open_positions_two_trades():
         mode="live"
     )
 
-    # Mock Web3 provider
-    mock_w3 = AsyncMock()
-    mock_w3.eth.chain_id = AsyncMock(return_value=42161)()
+    async def _chain_id():
+        return 42161
+    mock_w3 = MagicMock()
+    mock_w3.eth.chain_id = _chain_id()
 
     with patch("infrastructure.venues.gtrade.gtrade_adapter.AsyncWeb3", return_value=mock_w3):
         await adapter.start()
 
-        # Get positions
         positions = await adapter.get_open_positions()
 
-        # Assertions
         assert len(positions) == 2
 
-        # First position (XAUUSD LONG)
+        # First position (pair_id 0)
         pos1 = positions[0]
-        assert pos1.symbol == "XAUUSD"
+        assert pos1.pair_id == 0
+        assert pos1.symbol == symbol0
         assert pos1.side == "LONG"
         assert pos1.is_long is True
         assert pos1.open_price == 2700.50
         assert pos1.collateral == 1000.0
         assert pos1.leverage == 10.0
-        assert pos1.notional == 10000.0  # collateral * leverage
+        assert pos1.notional == 10000.0
         assert pos1.sl_price == 2650.0
         assert pos1.tp_price == 2800.0
-        assert pos1.pair_id == 0  # XAUUSD
         assert pos1.trade_index == 1
-        assert "0:1" == pos1.position_id
-        # Check wallet_address and PositionRef
+        assert pos1.position_id == "0:1"
         assert pos1.wallet_address == "0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb"
         ref1 = pos1.get_ref()
         assert ref1 is not None
@@ -145,21 +149,20 @@ async def test_get_open_positions_two_trades():
         assert ref1.pair_id == 0
         assert ref1.trade_index == 1
 
-        # Second position (EURUSD SHORT)
+        # Second position (pair_id 2)
         pos2 = positions[1]
-        assert pos2.symbol == "EURUSD"
+        assert pos2.pair_id == 2
+        assert pos2.symbol == symbol2
         assert pos2.side == "SHORT"
         assert pos2.is_long is False
         assert pos2.open_price == 1.0850
         assert pos2.collateral == 500.0
         assert pos2.leverage == 20.0
-        assert pos2.notional == 10000.0  # collateral * leverage
+        assert pos2.notional == 10000.0
         assert pos2.sl_price == 1.0900
         assert pos2.tp_price == 1.0800
-        assert pos2.pair_id == 2  # EURUSD
         assert pos2.trade_index == 2
-        assert "2:2" == pos2.position_id
-        # Check wallet_address and PositionRef
+        assert pos2.position_id == "2:2"
         assert pos2.wallet_address == "0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb"
         ref2 = pos2.get_ref()
         assert ref2 is not None
@@ -169,7 +172,7 @@ async def test_get_open_positions_two_trades():
 
         await adapter.stop()
 
-    print("✓ Get open positions (2 trades: XAUUSD long + EURUSD short)")
+    print("✓ Get open positions (2 trades: pair_id 0 long + pair_id 2 short)")
 
 
 async def test_get_open_positions_malformed_trade():
@@ -185,10 +188,10 @@ async def test_get_open_positions_malformed_trade():
         wallet_private_key="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
     )
 
-    # Mock backend response with 1 valid + 1 invalid trade
+    # 1 valid trade (pairIndex 0) + 1 invalid (missing pairIndex)
     mock_response = [
         {
-            "pairIndex": 0,  # XAUUSD (valid)
+            "pairIndex": 0,
             "index": 1,
             "buy": True,
             "openPrice": "2700.50",
@@ -196,7 +199,6 @@ async def test_get_open_positions_malformed_trade():
             "leverage": "10.0",
         },
         {
-            # Missing pairIndex (invalid)
             "index": 2,
             "buy": True,
             "openPrice": "1.0850",
@@ -212,17 +214,18 @@ async def test_get_open_positions_malformed_trade():
         mode="live"
     )
 
-    # Mock Web3 provider
-    mock_w3 = AsyncMock()
-    mock_w3.eth.chain_id = AsyncMock(return_value=42161)()
+    async def _chain_id():
+        return 42161
+    mock_w3 = MagicMock()
+    mock_w3.eth.chain_id = _chain_id()
 
     with patch("infrastructure.venues.gtrade.gtrade_adapter.AsyncWeb3", return_value=mock_w3):
         await adapter.start()
 
-        # Get positions (should only get 1 valid position)
         positions = await adapter.get_open_positions()
         assert len(positions) == 1
-        assert positions[0].symbol == "XAUUSD"
+        assert positions[0].pair_id == 0
+        assert positions[0].symbol == GTRADE_PAIR_ID_TO_SYMBOL[0]
 
         await adapter.stop()
 
@@ -250,18 +253,17 @@ async def test_get_open_positions_no_wallet():
         mode="live"
     )
 
-    # Mock Web3 provider
-    mock_w3 = AsyncMock()
-    mock_w3.eth.chain_id = AsyncMock(return_value=42161)()
+    async def _chain_id():
+        return 42161
+    mock_w3 = MagicMock()
+    mock_w3.eth.chain_id = _chain_id()
 
     with patch("infrastructure.venues.gtrade.gtrade_adapter.AsyncWeb3", return_value=mock_w3):
         await adapter.start()
 
-        # Get positions (should be empty without wallet)
         positions = await adapter.get_open_positions()
         assert positions == []
 
-        # Backend should NOT have been called
         mock_backend.get_open_trades.assert_not_called()
 
         await adapter.stop()

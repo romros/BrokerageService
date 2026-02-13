@@ -10,9 +10,19 @@ Returns exit code 0 if all pass, 1 if any fail.
 """
 
 
+import os
 from pathlib import Path
 import subprocess
 import sys
+
+# Project root (run_all.py lives in testing/)
+ROOT = Path(__file__).resolve().parent.parent
+# Ensure child processes find infrastructure/domain/application
+if str(ROOT) not in os.environ.get("PYTHONPATH", "").split(os.pathsep):
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join([str(ROOT), env.get("PYTHONPATH", "")])
+else:
+    env = os.environ.copy()
 
 
 def run_test(script_path: Path) -> bool:
@@ -31,7 +41,8 @@ def run_test(script_path: Path) -> bool:
 
     result = subprocess.run(
         [sys.executable, str(script_path)],
-        cwd=script_path.parent.parent.parent,  # Project root
+        cwd=str(ROOT),
+        env=env,
     )
 
     return result.returncode == 0
@@ -69,17 +80,26 @@ def main():
         testing_dir / "unit" / "test_lighter_scaling.py",
         testing_dir / "unit" / "test_lighter_order_builder.py",
         testing_dir / "unit" / "test_lighter_idempotency.py",
+        testing_dir / "unit" / "test_reconcile_service.py",  # M3 Reconcile loop (detect/report)
+        testing_dir / "unit" / "test_reconcile_autorepair.py",  # M3.1 auto-repair v1 (stale + resync)
 
         # Integration tests
         testing_dir / "integration" / "test_live_to_store_flow.py",
         testing_dir / "integration" / "test_backfill_patch_flow.py",
         testing_dir / "integration" / "test_paper_positions_flow.py",
         testing_dir / "integration" / "test_gtrade_ticks_to_candles_flow.py",
+        testing_dir / "integration" / "test_lighter_ticks_to_candles_flow.py",  # M1 Lighter market data
         testing_dir / "integration" / "test_gtrade_adapter_readonly.py",
         testing_dir / "integration" / "test_gtrade_backend_positions.py",
         testing_dir / "integration" / "test_gtrade_adapter_write_mocked.py",
         testing_dir / "integration" / "test_gtrade_backend_verification_loop.py",  # FASE 6B.1.B.4
         testing_dir / "integration" / "test_adapter_fallback_flow.py",  # FASE 6B.1.B.6
+
+        # Integration tests - Lighter (TASK 3 - L2 Market Data, TASK 4A - Open Position)
+        testing_dir / "integration" / "test_lighter_adapter_prices.py",
+        testing_dir / "integration" / "test_lighter_adapter_open.py",
+        testing_dir / "integration" / "test_lighter_adapter_close.py",
+        testing_dir / "integration" / "test_lighter_adapter_sltp.py",  # M2 SL/TP + Balance
 
         # API smoke tests
         testing_dir / "api" / "test_rest_smoke.py",

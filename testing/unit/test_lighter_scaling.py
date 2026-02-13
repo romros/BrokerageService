@@ -2,10 +2,10 @@
 Unit tests for Lighter Decimal Scaling
 
 Tests:
-- Market orders: ×1e6 for both size and price
+- Market orders: base_amount ×10_000; avg_execution_price via acceptable_price_int (×100, slippage)
+- scale_market returns (size ×10_000, price ×100) for compatibility
 - Limit orders: ×1e4 for size, ×1e2 for price
 - SL/TP orders: same as limit
-- Regression: catch wrong scaling
 """
 
 from pathlib import Path
@@ -14,32 +14,45 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from infrastructure.venues.lighter.scaling import (
+    acceptable_price_int,
     scale_market,
     scale_limit,
     scale_sl_tp,
 )
 
 
+def test_acceptable_price_int():
+    """avg_execution_price: ×100, BUY = max acceptable, SELL = min acceptable (slippage)"""
+    # BUY (is_ask=False): mid * (1 + 0.005) = 2010 → 201000
+    assert acceptable_price_int(2000.0, is_ask=False, slippage_bps=50) == 201_000
+    # SELL (is_ask=True): mid * (1 - 0.005) = 1990 → 199000
+    assert acceptable_price_int(2000.0, is_ask=True, slippage_bps=50) == 199_000
+    # no slippage
+    assert acceptable_price_int(2700.0, is_ask=False, slippage_bps=0) == 270_000
+    assert acceptable_price_int(2700.0, is_ask=True, slippage_bps=0) == 270_000
+    print("✓ acceptable_price_int test passed")
+
+
 def test_market_scaling_basic():
-    """Market orders scale both size and price by 1e6"""
+    """Market: base_amount ×10_000, price ×100 (use acceptable_price_int for real orders)"""
     print("Testing market scaling...")
 
     size, price = scale_market(0.1, 2700.0)
 
-    assert size == 100_000, f"Expected 100_000, got {size}"
-    assert price == 2_700_000_000, f"Expected 2_700_000_000, got {price}"
+    assert size == 1_000, f"Expected 1_000, got {size}"  # 0.1 * 10_000
+    assert price == 270_000, f"Expected 270_000, got {price}"  # 2700 * 100
 
     print("✓ Market scaling test passed")
 
 
 def test_market_scaling_precision():
-    """Market scaling maintains precision"""
+    """Market scaling: size ×10_000, price ×100"""
     print("Testing market scaling precision...")
 
     size, price = scale_market(0.123456, 2750.25)
 
-    assert size == 123_456, f"Expected 123_456, got {size}"
-    assert price == 2_750_250_000, f"Expected 2_750_250_000, got {price}"
+    assert size == 1_234, f"Expected 1_234, got {size}"  # int(0.123456 * 10_000)
+    assert price == 275_025, f"Expected 275_025, got {price}"  # round(2750.25 * 100)
 
     print("✓ Market scaling precision test passed")
 
@@ -95,19 +108,15 @@ def test_sl_tp_scaling_different_prices():
 
 
 def test_regression_market_vs_limit():
-    """Regression: market and limit scaling are DIFFERENT"""
+    """Regression: market base_amount and limit size use same scale (×10_000); price ×100"""
     print("Testing market vs limit regression...")
 
     market_size, market_price = scale_market(0.1, 2700.0)
     limit_size, limit_price = scale_limit(0.1, 2700.0)
 
-    # Market uses ×1e6, limit uses ×1e4/×1e2 → MUST differ
-    assert market_size != limit_size, "Market size should differ from limit size"
-    assert market_price != limit_price, "Market price should differ from limit price"
-
-    # Verify ratios
-    assert market_size == limit_size * 100, "Market size = limit size × 100"
-    assert market_price == limit_price * 10_000, "Market price = limit price × 10_000"
+    # Market base_amount and limit size both ×10_000; price both ×100
+    assert market_size == limit_size == 1_000
+    assert market_price == limit_price == 270_000
 
     print("✓ Market vs limit regression test passed")
 
@@ -131,10 +140,10 @@ def test_large_values():
     """Edge case: large values"""
     print("Testing large values...")
 
-    # Market: 100 ETH @ $10,000
+    # Market: 100 ETH @ $10,000 → ×10_000, ×100
     size, price = scale_market(100.0, 10000.0)
-    assert size == 100_000_000
-    assert price == 10_000_000_000
+    assert size == 1_000_000
+    assert price == 1_000_000
 
     # Limit: same input
     size, price = scale_limit(100.0, 10000.0)
@@ -148,10 +157,10 @@ def test_small_fractional_values():
     """Edge case: small fractional values"""
     print("Testing small fractional values...")
 
-    # Market: 0.001 ETH @ $1.5
+    # Market: 0.001 ETH @ $1.5 → ×10_000, ×100
     size, price = scale_market(0.001, 1.5)
-    assert size == 1_000, f"Expected 1_000, got {size}"
-    assert price == 1_500_000, f"Expected 1_500_000, got {price}"
+    assert size == 10, f"Expected 10, got {size}"
+    assert price == 150, f"Expected 150, got {price}"
 
     # Limit: same input
     size, price = scale_limit(0.001, 1.5)
@@ -168,6 +177,7 @@ def main():
     print("="*60 + "\n")
 
     try:
+        test_acceptable_price_int()
         test_market_scaling_basic()
         test_market_scaling_precision()
         test_limit_scaling_basic()

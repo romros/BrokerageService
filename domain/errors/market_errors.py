@@ -95,3 +95,51 @@ class NoTradableSymbolError(MarketError):
             message=message,
             details=details,
         )
+
+
+class MarketNotFoundError(MarketError):
+    """
+    Market/symbol not found in venue
+
+    This error indicates the requested symbol does not exist
+    in the venue's available markets.
+    """
+
+    def __init__(
+        self,
+        symbol: str,
+        market_id: Optional[int] = None,
+        reason: str = "Symbol not found",
+        details: Optional[dict] = None,
+    ):
+        self.market_id = market_id
+        self.reason = reason
+        message = f"Market not found: {symbol}"
+        if market_id is not None:
+            message += f" (market_id={market_id})"
+        message += f": {reason}"
+        super().__init__(symbol, message, details)
+
+
+class NoLiquidityError(MarketError):
+    """
+    No liquidity available for market (empty orderbook)
+
+    This error indicates the market exists but has no bids or asks,
+    making it impossible to determine a price or execute trades.
+    """
+
+    def __init__(
+        self,
+        symbol: str,
+        market_id: Optional[int] = None,
+        reason: str = "No bids or asks in orderbook",
+        details: Optional[dict] = None,
+    ):
+        self.market_id = market_id
+        self.reason = reason
+        message = f"No liquidity for {symbol}"
+        if market_id is not None:
+            message += f" (market_id={market_id})"
+        message += f": {reason}"
+        super().__init__(symbol, message, details)

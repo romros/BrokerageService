@@ -1,0 +1,40 @@
+{
+  "timestamp": "2026-02-12T07:36:17.910658",
+  "operation": "limit_cancel",
+  "create_order": {
+    "account_index": 210,
+    "order_book_index": null,
+    "order_nonce": null,
+    "expired_at": 1770882376661,
+    "nonce": 37,
+    "sig": "kI3CHXEg3qmDgF8cg/YSmOtfxxjFH4F4OD3rmbrhpuf8C1X+g+GkX5LmiTXCqSdMUJtgUcemaBar2tCX/GUiTGtLdUKEVRpZMZVkKP+OZ1s="
+  },
+  "tx_response": {
+    "code": 200,
+    "message": "{\"ratelimit\": \"didn't use volume quota\"}",
+    "tx_hash": "fbd54c386076a11efa9ceee07b189027902e239fb8959b11e492fb65461b691ffcef47cf760004c0",
+    "predicted_execution_time_ms": 1770881777891,
+    "volume_quota_remaining": null,
+    "additional_properties": {}
+  },
+  "error": null,
+  "create_order_type": "<class 'lighter.transactions.cancel_order.CancelOrder'>",
+  "create_order_fields": [
+    "account_index",
+    "order_book_index",
+    "order_nonce",
+    "expired_at",
+    "nonce",
+    "sig"
+  ],
+  "tx_response_type": "<class 'lighter.models.resp_send_tx.RespSendTx'>",
+  "tx_response_fields": [
+    "code",
+    "message",
+    "tx_hash",
+    "predicted_execution_time_ms",
+    "volume_quota_remaining",
+    "additional_properties"
+  ],
+  "tx_hash": "fbd54c386076a11efa9ceee07b189027902e239fb8959b11e492fb65461b691ffcef47cf760004c0"
+}

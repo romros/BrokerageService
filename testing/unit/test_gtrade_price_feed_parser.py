@@ -13,23 +13,28 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from infrastructure.venues.gtrade.config import GTRADE_PAIR_ID_TO_SYMBOL
 from infrastructure.venues.gtrade.price_feed_ws_client import GTradePriceFeedWSClient
 
 
 def test_parse_price_updates():
-    """Test parsing of valid price updates"""
+    """Test parsing of valid price updates (agnostic of mainnet vs testnet mapping)."""
     print("Testing parse price updates...")
 
     client = GTradePriceFeedWSClient()
 
-    # Mock message: [pairId0, price0, pairId2, price2]
-    message = json.dumps([0, 2700.50, 2, 1.0500])
+    # pairId 0 and 2: use mapping from config (Sepolia: 0=BTCUSD, 2=LINKUSD; mainnet: 0=XAUUSD, 2=EURUSD)
+    pair0, price0_expected = 0, 2700.50
+    pair2, price2_expected = 2, 1.0500
+    symbol0_expected = GTRADE_PAIR_ID_TO_SYMBOL.get(pair0)
+    symbol2_expected = GTRADE_PAIR_ID_TO_SYMBOL.get(pair2)
+    assert symbol0_expected and symbol2_expected, "pairId 0 and 2 must be in GTRADE_PAIR_ID_TO_SYMBOL"
 
-    # Parse (direct call to private method for testing)
+    message = json.dumps([pair0, price0_expected, pair2, price2_expected])
+
     async def parse_and_check():
         await client._handle_message(message)
 
-        # Check ticks were queued
         ticks = []
         while not client._tick_queue.empty():
             tick = await client._tick_queue.get()
@@ -37,15 +42,13 @@ def test_parse_price_updates():
 
         assert len(ticks) == 2, f"Expected 2 ticks, got {len(ticks)}"
 
-        # Check XAUUSD (pairId 0)
         symbol0, price0, ts0 = ticks[0]
-        assert symbol0 == "XAUUSD", f"Expected XAUUSD, got {symbol0}"
-        assert abs(price0 - 2700.50) < 0.01, f"Expected 2700.50, got {price0}"
+        assert symbol0 == symbol0_expected, f"Expected {symbol0_expected}, got {symbol0}"
+        assert abs(price0 - price0_expected) < 0.01, f"Expected {price0_expected}, got {price0}"
 
-        # Check EURUSD (pairId 2)
         symbol1, price1, ts1 = ticks[1]
-        assert symbol1 == "EURUSD", f"Expected EURUSD, got {symbol1}"
-        assert abs(price1 - 1.0500) < 0.0001, f"Expected 1.0500, got {price1}"
+        assert symbol1 == symbol2_expected, f"Expected {symbol2_expected}, got {symbol1}"
+        assert abs(price1 - price2_expected) < 0.0001, f"Expected {price2_expected}, got {price1}"
 
         print(f"  ✓ Parsed 2 ticks: {symbol0}={price0}, {symbol1}={price1}")
 
@@ -159,28 +162,30 @@ def test_parse_malformed_json():
 
 
 def test_latest_price_cache():
-    """Test latest price cache update"""
+    """Test latest price cache update (uses mapping from config)."""
     print("Testing latest price cache...")
 
     client = GTradePriceFeedWSClient()
 
-    # Send price update
-    message = json.dumps([0, 2700.00, 2, 1.0500])
+    symbol0 = GTRADE_PAIR_ID_TO_SYMBOL.get(0)
+    symbol2 = GTRADE_PAIR_ID_TO_SYMBOL.get(2)
+    assert symbol0 and symbol2, "pairId 0 and 2 must be in GTRADE_PAIR_ID_TO_SYMBOL"
+    price0_expected, price2_expected = 2700.00, 1.0500
+    message = json.dumps([0, price0_expected, 2, price2_expected])
 
     async def parse_and_check():
         await client._handle_message(message)
 
-        # Check cache was updated
-        price_xau = await client.get_latest_price("XAUUSD")
-        price_eur = await client.get_latest_price("EURUSD")
+        price_a = await client.get_latest_price(symbol0)
+        price_b = await client.get_latest_price(symbol2)
 
-        assert price_xau is not None, "XAUUSD price should be cached"
-        assert abs(price_xau - 2700.00) < 0.01, f"Expected 2700.00, got {price_xau}"
+        assert price_a is not None, f"{symbol0} price should be cached"
+        assert abs(price_a - price0_expected) < 0.01, f"Expected {price0_expected}, got {price_a}"
 
-        assert price_eur is not None, "EURUSD price should be cached"
-        assert abs(price_eur - 1.0500) < 0.0001, f"Expected 1.0500, got {price_eur}"
+        assert price_b is not None, f"{symbol2} price should be cached"
+        assert abs(price_b - price2_expected) < 0.0001, f"Expected {price2_expected}, got {price_b}"
 
-        print(f"  ✓ Cache updated: XAUUSD={price_xau}, EURUSD={price_eur}")
+        print(f"  ✓ Cache updated: {symbol0}={price_a}, {symbol2}={price_b}")
 
     asyncio.run(parse_and_check())
     print("✓ Latest price cache test passed")

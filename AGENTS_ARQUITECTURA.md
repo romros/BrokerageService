@@ -160,6 +160,8 @@ RECONNECT_DELAY = 5.0  # També definit a un altre fitxer
 * Candles: construcció 1m des de live + persistència a CSV
 * Backfill: periòdic (si hi ha endpoint històric disponible) per garantir “no gaps”
 
+**LIVE hardening (reconcile):** El venue és source of truth per posicions. El *ReconcileService* compara periòdicament `get_open_positions()` (venue) amb el tracking local; si hi ha divergències genera *ReconcileAction* (mark stale, request resync). Un *IReconcileSink* rep les accions i pot cridar *IPositionTracker.mark_stale* i/o emetre resync (sense fer trades ni auto-open/close). Implementació per defecte: *LoggingReconcileSink* (stale + log de resync). Això permet detect/report + auto-repair segur (stale + resync) sense overreach.
+
 ### 3.2 PAPER
 
 * Data: live real (igual que LIVE)

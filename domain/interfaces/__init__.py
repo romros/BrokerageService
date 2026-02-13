@@ -16,5 +16,8 @@ from .brokerage import IBrokerageService  # Legacy
 from .candle_builder import ICandleBuilder
 from .candle_store import ICandleStore
 from .execution_engine import IExecutionEngine
+from .price_feed_client import IPriceFeedClient
 from .venue_adapter import IVenueAdapter  # New
+from .position_tracker import IPositionTracker
+from .reconcile_sink import IReconcileSink
 
