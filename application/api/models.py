@@ -8,7 +8,7 @@ These are API-specific models that map to/from domain models.
 from datetime import datetime
 from typing import List, Optional, Dict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class OHLCVRequest(BaseModel):
@@ -45,7 +45,7 @@ class HealthResponse(BaseModel):
     """Response for /health endpoint"""
     status: str  # "ok" | "degraded" | "error"
     mode: str  # "live" | "paper" | "backtest"
-    venue: str  # "gtrade" | "ostium" | etc.
+    venue: str  # "lighter" | etc.
     timestamp: datetime
 
 
@@ -162,3 +162,32 @@ class BalanceResponse(BaseModel):
     used_margin: float
     total_equity: float
     margin_usage_percent: float
+
+
+# ============ BROKER API REQUEST MODELS (canònic) ============
+
+
+class OrderOpenRequest(BaseModel):
+    """Request per POST /orders/open"""
+    venue: str = Field(description="Venue (lighter)")
+    symbol: str = Field(description="Símbol (ex: ETH)")
+    side: str = Field(description="long o short")
+    collateral: float = Field(gt=0, description="USDC collateral")
+    leverage: float = Field(ge=1, le=100, description="Leverage 1-100")
+    sl_price: Optional[float] = Field(default=None, description="Stop loss price")
+    tp_price: Optional[float] = Field(default=None, description="Take profit price")
+
+    @field_validator("side")
+    @classmethod
+    def side_must_be_long_or_short(cls, v: str) -> str:
+        s = v.lower()
+        if s not in ("long", "short"):
+            raise ValueError("side must be long or short")
+        return s
+
+
+class OrderCloseRequest(BaseModel):
+    """Request per POST /orders/close"""
+    venue: str = Field(description="Venue (lighter)")
+    position_id: str = Field(description="ID de la posició (ex: lighter:0)")
+    percent: float = Field(default=100.0, gt=0, le=100, description="Percentatge (0, 100]")

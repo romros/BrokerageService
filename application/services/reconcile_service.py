@@ -13,6 +13,11 @@ import asyncio
 import os
 from typing import Awaitable, Callable, List, Optional
 
+# Optional bootstrap run before loop (restart safety)
+BootstrapFn = Callable[[], Awaitable[None]]
+# Optional callback when a reconcile tick raises (for smoke runner error count)
+OnTickErrorFn = Callable[[Exception], None]
+
 from domain.interfaces import IVenueAdapter, IReconcileSink
 from domain.models import (
     Position,
@@ -132,6 +137,8 @@ class ReconcileService(IService):
         sleep_fn: Optional[Callable[[float], Awaitable[None]]] = None,
         reconcile_sink: Optional[IReconcileSink] = None,
         venue_name: Optional[str] = None,
+        bootstrap_fn: Optional[BootstrapFn] = None,
+        on_tick_error: Optional[OnTickErrorFn] = None,
     ):
         self.adapter = adapter
         self.local_provider = local_provider
@@ -139,6 +146,8 @@ class ReconcileService(IService):
         self._sleep_fn = sleep_fn or asyncio.sleep
         self._reconcile_sink = reconcile_sink
         self._venue_name = venue_name
+        self._bootstrap_fn = bootstrap_fn
+        self._on_tick_error = on_tick_error
         self._running = False
         self._task: Optional[asyncio.Task] = None
 
@@ -147,9 +156,11 @@ class ReconcileService(IService):
             logger.warning("ReconcileService already running")
             return
         logger.info(
-            "ReconcileService starting interval_sec=%s",
+            "ReconcileService starting interval_sec={}",
             self.interval_sec,
         )
+        if self._bootstrap_fn is not None:
+            await self._bootstrap_fn()
         self._running = True
         self._task = asyncio.create_task(self._reconcile_loop())
 
@@ -183,7 +194,9 @@ class ReconcileService(IService):
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.exception("Reconcile tick failed: %s", e)
+                logger.exception("Reconcile tick failed: {}", e)
+                if self._on_tick_error is not None:
+                    self._on_tick_error(e)
             await self._sleep_fn(self.interval_sec)
 
     async def _run_one_tick(self) -> ReconcileResult:

@@ -164,7 +164,7 @@ def build_signer_client(config):
         for health checks and future trading operations.
     """
     try:
-        # Lazy import to avoid requiring lighter SDK if not using Lighter venue
+        # Lazy: evita carregar lighter SDK si no s'usa venue Lighter
         from lighter import SignerClient
     except ImportError as e:
         raise ImportError(
@@ -179,7 +179,7 @@ def build_signer_client(config):
     # Note: SignerClient expects api_private_keys as dict {index: key}
     try:
         client = SignerClient(
-            base_url=config.base_url,
+            url=config.base_url,
             account_index=config.account_index,
             api_private_keys={config.api_key_index: api_private_key_normalized}
         )

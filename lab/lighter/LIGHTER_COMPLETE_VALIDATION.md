@@ -1777,4 +1777,8 @@ STEP 7: CLOSE POSITION        ✅
 
 - **Market**: `base_amount` ×10_000; `avg_execution_price` ×100 (preu acceptable, no ×1e6). BUY = màxim acceptable; SELL = mínim acceptable. Sempre des de bid/ask real abans de cada market order.
 
+### Smoke / BrokerageService des de Docker
+
+- El smoke runner i la suite del BrokerageService es poden executar dins Docker (vegeu **ESTAT.md** — Comandes ràpides, i **AGENTS_ARQUITECTURA.md** §7). **Recorda:** si has canviat codi, reconstruir la imatge: `docker compose build brokerage`; si no, les comandes dins del contenidor continuaran amb el codi antic.
+
 ---

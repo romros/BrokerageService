@@ -23,6 +23,7 @@ import time
 
 
 try:
+    # Dep opcional: websockets no sempre instal·lat (tests poden mockejar)
     import websockets
     from websockets.exceptions import ConnectionClosed
 except ImportError:

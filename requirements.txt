@@ -19,8 +19,11 @@ pandas==2.2.0
 pyarrow==15.0.0
 numpy==1.26.3
 
-# Blockchain (for LIVE mode - gTrade on Arbitrum)
-web3==6.15.1
+# Blockchain (for LIVE mode - gTrade on Arbitrum, Lighter)
+web3>=7.0.0
+
+# Lighter DEX SDK (for LIVE mode - Lighter venue)
+lighter-sdk>=1.0.0
 
 # Testing (optional - we use simple scripts, not pytest)
 # pytest==8.0.0

@@ -1,11 +1,6 @@
 """
 IVenueAdapter - Abstract interface for venue implementations
 
-This replaces IBrokerageService and is more generic to support multiple venues:
-- gTrade (primary)
-- Ostium (legacy, can be maintained)
-- Future venues (Hyperliquid, etc.)
-
 Responsibilities:
 - Market data (ticker/mark)
 - Trading operations (open/close positions)
@@ -36,7 +31,7 @@ class IVenueAdapter(ABC):
     Abstract venue adapter interface
 
     All methods are async to support:
-    - Blockchain operations (Ostium, gTrade)
+    - Blockchain operations (Lighter, etc.)
     - REST/WebSocket APIs
     - Simulated operations (backtest/paper)
     """
@@ -297,6 +292,6 @@ class IVenueAdapter(ABC):
         Get venue name
 
         Returns:
-            Venue identifier (e.g., "gtrade", "ostium", "hyperliquid")
+            Venue identifier (e.g., "lighter")
         """
         pass

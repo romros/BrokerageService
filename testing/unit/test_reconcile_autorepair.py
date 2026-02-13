@@ -138,10 +138,16 @@ class FakeSink:
 
 
 class FakeTracker:
-    """Records mark_stale calls."""
+    """Records mark_stale calls; implements IPositionTracker for tests."""
 
     def __init__(self):
         self.mark_stale_calls = []
+
+    def upsert(self, position):
+        pass
+
+    def get_positions(self):
+        return []
 
     def mark_stale(self, position_id: str, reason: str) -> None:
         self.mark_stale_calls.append((position_id, reason))

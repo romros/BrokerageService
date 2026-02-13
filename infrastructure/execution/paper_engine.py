@@ -398,6 +398,7 @@ class PaperExecutionEngine(IExecutionEngine):
             return
 
         try:
+            # Lazy: evita circular infrastructure.ws ↔ paper_engine
             from infrastructure.ws import create_position_message
 
             position = self._positions.get(position_id)
@@ -454,6 +455,7 @@ class PaperExecutionEngine(IExecutionEngine):
             return
 
         try:
+            # Lazy: evita circular infrastructure.ws ↔ paper_engine
             from infrastructure.ws import create_execution_message
 
             data = {
@@ -479,6 +481,7 @@ class PaperExecutionEngine(IExecutionEngine):
             return
 
         try:
+            # Lazy: evita circular infrastructure.ws ↔ paper_engine
             from infrastructure.ws import create_balance_message
 
             balance = await self.get_balance()

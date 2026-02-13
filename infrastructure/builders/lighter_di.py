@@ -44,6 +44,7 @@ def build_lighter_paper_market_data(
         (price_feed_client, live_market_data_service)
     """
     if hub is None:
+        # Lazy: evita circular infrastructure.ws ↔ builders
         from infrastructure.ws import get_hub
         hub = get_hub()
 
@@ -77,4 +78,4 @@ def build_lighter_paper_adapter() -> LighterVenueAdapter:
     """
     config = load_lighter_config_from_env()
     market_data_client = LighterMarketDataClient(config.base_url)
-    return LighterVenueAdapter(config=config, market_data_client=market_data_client)
+    return LighterVenueAdapter(config=config, mode="paper", market_data_client=market_data_client)

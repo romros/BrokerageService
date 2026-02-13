@@ -50,7 +50,7 @@ class CSVCandleStore(ICandleStore):
 
         Args:
             root_path: Root directory for datafiles (e.g., "/datafiles")
-            broker: Broker/venue name (e.g., "gtrade", "ostium")
+            broker: Broker/venue name (e.g., "lighter")
             canonical_tz: Timezone for storage (default: America/New_York)
         """
         self.root_path = Path(root_path)

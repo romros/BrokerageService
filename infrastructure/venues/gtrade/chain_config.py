@@ -59,6 +59,7 @@ class ContractAddresses:
 
     def __post_init__(self):
         """Validate addresses are checksummed"""
+        # Lazy: web3 només es necessita per validar checksum (evita carregar si no es crea config)
         from web3 import Web3
 
         for field_name in ["diamond", "trading", "usdc"]:

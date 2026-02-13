@@ -9,6 +9,7 @@ services:
     ports:
       - "8000:8000"  # REST API + WebSocket
     environment:
+      - TZ=America/New_York
       - PYTHONPATH=/app
       # Mode: live, paper, or backtest
       - MODE=${MODE:-backtest}
@@ -29,6 +30,14 @@ services:
 
       # Logging
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+      # Lighter (per --venue lighter)
+      - LIGHTER_BASE_URL=${LIGHTER_BASE_URL:-}
+      - LIGHTER_L1_ADDRESS=${LIGHTER_L1_ADDRESS:-}
+      - LIGHTER_L1_PRIVATE_KEY=${LIGHTER_L1_PRIVATE_KEY:-}
+      - LIGHTER_ACCOUNT_INDEX=${LIGHTER_ACCOUNT_INDEX:-}
+      - LIGHTER_API_KEY_INDEX=${LIGHTER_API_KEY_INDEX:-}
+      - LIGHTER_API_PRIVATE_KEY=${LIGHTER_API_PRIVATE_KEY:-}
     volumes:
       - ./datafiles:/datafiles
       - ./logs:/app/logs
@@ -36,7 +45,7 @@ services:
       - trading
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/broker/health"]
       interval: 30s
       timeout: 10s
       retries: 3

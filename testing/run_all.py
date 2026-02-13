@@ -82,6 +82,14 @@ def main():
         testing_dir / "unit" / "test_lighter_idempotency.py",
         testing_dir / "unit" / "test_reconcile_service.py",  # M3 Reconcile loop (detect/report)
         testing_dir / "unit" / "test_reconcile_autorepair.py",  # M3.1 auto-repair v1 (stale + resync)
+        testing_dir / "unit" / "test_live_guards.py",  # M3.2 kill switch + risk limits
+        testing_dir / "unit" / "test_bootstrap_service.py",  # M3.3a bootstrap tracker
+        testing_dir / "unit" / "test_sltp_persistence.py",  # M3.3b SL/TP persistence
+        testing_dir / "unit" / "test_smoke_runner.py",  # M3.4 smoke runner + interval
+        testing_dir / "unit" / "test_smoke_repeat.py",  # M3.5 smoke --repeat N + log path + SMOKE_RESULT/SUMMARY
+        testing_dir / "unit" / "test_smoke_runner_lifecycle.py",  # M3.5.1 lifecycle hardening (start/stop per run)
+        testing_dir / "unit" / "test_e2e_trade.py",  # M3.6 Real Paper E2E trading sanity
+        testing_dir / "unit" / "test_broker_api.py",  # Broker API
 
         # Integration tests
         testing_dir / "integration" / "test_live_to_store_flow.py",

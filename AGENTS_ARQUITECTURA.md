@@ -1,767 +1,282 @@
-A continuació tens el **pla complet reescrit** incorporant:
+# AGENTS_ARQUITECTURA.md — BrokerageService (Reference)
 
-* **TZ canònica = New York (NY close style)** com a convenció de storage
-* Històrics en **CSV 1m tancades**, sense gaps, amb backfill periòdic
-* **Testing simple amb scripts Python** (sense pytest): unitari + integració + smoke d’endpoints
-* **SOLID + DI “tipus Java” però minimalista**, sense palla
-* Estructura perquè **cada agent/tasca** pugui començar–acabar i **tancar amb tests** del que ha fet
-
----
-
-# AGENTS_PLA.md — gTrade BrokerageService (Freqtrade Adapter Ready)
-
-**Data:** 2026-02-08
-**Objectiu:** BrokerageService extensible (gTrade primer) amb REST + WebSocket i 3 modes (LIVE / PAPER / BACKTEST), dissenyat per consumir-se des d’un adapter de Freqtrade.
-**Scope inicial:** `XAUUSD` i `EURUSD`, **candles 1m only**, **TZ canònica = America/New_York**.
+**Data:** 2026-02-13  
+**Repo/Path:** `/mnt/volume-SQ/dev/BrokerageService`  
+**Venue principal:** **Lighter** (paper-ready + live-hardening complet)  
+**Altres venues:** gTrade (paper-ready; live-hardening pendent)  
+**Modes:** LIVE / PAPER / BACKTEST  
+**Timeframe:** 1m only  
+**TZ canònica (config):** `CANONICAL_TZ=America/New_York` (NY close style)  
+**TZ container (runtime/logs):** `TZ=America/New_York`  
+**API canònica:** REST `/api/v1/broker/*` (POST body únic per ordres)  
+**Objectiu:** Font única de referència estable. Operativa diària → `ESTAT.md`.
 
 ---
 
-## 1) Objectius del MVP
+## 0) TL;DR
 
-### 1.1 Funcionalitats mínimes
-
-El servei ha de permetre:
-
-* **Market data**
-
-  * Ticker/mark actual per símbol
-  * OHLCV 1m històric i recent
-
-* **Trading position-based**
-
-  * Obrir posició **market** (long/short)
-  * Tancar posició
-  * Consultar posicions
-  * Actualitzar SL/TP (si el venue o mode ho suporta)
-
-* **Account**
-
-  * Balance
-  * Trade history (recomanat)
-
-* **Resiliència**
-
-  * Reconnect WS (servei intern)
-  * Backfill periòdic per omplir gaps
-  * Idempotència a l’obertura/tancament (client_order_id)
-
-### 1.2 No objectius del MVP (evitar dispersió)
-
-* Multi-timeframe natiu (només 1m)
-* Limit orders
-* Orderbook
-* Forks de CCXT o Freqtrade
+- ✅ **API Broker canònica** a `broker_routes.py` (prefix `/api/v1/broker`)
+- ✅ **Candles**: candle_store (sense venue), 1m only, OHLCV unificat
+- ✅ **Lighter**: open/close + SL/TP + balance + reconcile + guards + restart-safety + smoke + e2e → **DONE**
+- ✅ **Quality gates**: run_all passa; evidència 3× smoke real + 3× e2e real (paper testnet)
+- 🟡 **gTrade**: paper OK; mainnet hardening pendent
+- ⛔ **Backtest**: pendent
 
 ---
 
-## 2) Principis d’arquitectura i estil
+## 1) Decisions tancades (invariants)
 
-### 2.1 SOLID + DI minimalista (tipus “Java”, però curt)
-
-* Interfícies petites i clares (ports)
-* Implementacions concretes a `infrastructure/`
-* Injecció per constructor a `application/` (sense frameworks pesats)
-* Cap classe “god object”; cada classe amb responsabilitat única
-* Només afegir abstraccions quan realment calgui (evitar palla)
-
-### 2.2 Cada tasca d'agent ha de tancar cicle complet
-
-Per cada feature/target:
-
-* Implementació
-* Integració (wired up)
-* **Testing (scripts)** que demostri que funciona
-
-### 2.3 Regla de constants i valors hardcoded (ZERO TOLERANCE)
-
-**Principi:** **NO hardcoded values** — Tot valor màgic ha de ser configurable i traçable.
-
-**Classificació de constants:**
-
-1. **Constants locals del fitxer/classe** (comportament propi):
-   - Definides com a constants a la **capçalera del fitxer** (abans de la classe)
-   - Format: `UPPERCASE_WITH_UNDERSCORES`
-   - Exemple: `DEFAULT_BUFFER_SIZE = 1000`, `MAX_RETRIES = 3`
-   - Ús: Comportament intern del mòdul que no necessita configuració externa
-
-2. **Constants del projecte** (configuració global):
-   - Definides en **fitxer de configuració centralitzat** (e.g., `config.py`)
-   - Font única de veritat per tot el projecte
-   - Exemple: `infrastructure/venues/gtrade/config.py` per gTrade
-   - Importades explícitament: `from .config import DEFAULT_TIMEOUT`
-
-3. **Constants d'entorn** (deployment/runtime):
-   - Llegides de `.env` via `os.getenv()` o `pydantic-settings`
-   - Valors per defecte definits a `.env.example`
-   - Exemple: `MODE`, `SYMBOLS`, `GTRADE_PRICE_WS_URL`
-
-**Regles estrictes:**
-
-✅ **CORRECTE:**
-```python
-# infrastructure/venues/gtrade/config.py (font de veritat)
-DEFAULT_GTRADE_PRICE_WS_URL = "wss://backend-arbitrum.gains.trade"
-GTRADE_PAIR_ID_TO_SYMBOL = {0: "XAUUSD", 2: "EURUSD"}
-DEFAULT_RECONNECT_DELAY_SECONDS = 5.0
-
-# infrastructure/venues/gtrade/price_feed_ws_client.py
-from .config import DEFAULT_GTRADE_PRICE_WS_URL, DEFAULT_RECONNECT_DELAY_SECONDS
-
-# Constants locals del fitxer
-MAX_QUEUE_SIZE = 1000  # Comportament intern del WebSocket client
-
-class GTradePriceFeedWSClient:
-    def __init__(self, ws_url: str = DEFAULT_GTRADE_PRICE_WS_URL):
-        self._tick_queue = asyncio.Queue(maxsize=MAX_QUEUE_SIZE)
-```
-
-❌ **INCORRECTE:**
-```python
-# Hardcoded URL (no traçable)
-ws_url = "wss://backend-arbitrum.gains.trade"
-
-# Magic number (no semàntica)
-queue = asyncio.Queue(maxsize=1000)
-
-# Constant duplicada (múltiples fonts de veritat)
-RECONNECT_DELAY = 5.0  # També definit a un altre fitxer
-```
-
-**Detecció de violacions:**
-
-- **Code review:** Buscar literals numèrics/strings sense context
-- **Grep check:** `grep -r "wss://" --include="*.py"` → Ha de retornar NOMÉS config files
-- **Magic numbers:** Qualsevol literal numeric > 1 fora de tests ha de tenir nom
-- **Duplicats:** `grep -r "= 1000" --include="*.py"` → Validar que són contextos diferents
-
-**Excepcions permeses:**
-
-- **Tests:** Fixtures amb valors literals (però preferiblement importats de config)
-- **Constants matemàtiques:** `PI = 3.14159`, `DEGREES_IN_CIRCLE = 360`
-- **Booleans òbvies:** `enabled = True`, `is_valid = False`
-- **Índexs i increments:** `i + 1`, `range(0, 10)`
-
-**Refactoring de codi legacy:**
-
-1. Identificar tots els hardcoded values
-2. Classificar: local vs projecte vs entorn
-3. Extraure a constants amb noms semàntics
-4. Crear config.py si no existeix
-5. Verificar: `git grep -E '"[^"]{10,}"' | grep -v test | grep -v config`
+1. **Timeframe únic:** `1m`
+2. **Candles sense venue:** `GET /candles` i `GET /ohlcv/{symbol}` venen del `candle_store`
+3. **TZ canònica:** `America/New_York` (rang/particionat, NY close style)
+4. **`ts` canònic:** epoch UTC (start-of-minute); partició en fitxer en NY
+5. **API Broker:** prefix `/api/v1/broker`; decorators sense duplicar `/broker`
+6. **Ordres:** només POST body (`/orders/open`, `/orders/close`); sense query legacy
+7. **Errors:** `{"detail": "...", "code": "..."}` amb 503/422/404
+8. **Single-writer** per símbol al storage CSV
 
 ---
 
-## 3) Modes d’operació
+## 2) Estat implementat
 
-### 3.1 LIVE
+### Lighter (principal)
+✅ paper-ready · ✅ live-hardening complet · ⛔ backtest pendent  
+Market data, open/close, SL/TP, balance, reconcile, guards, bootstrap, smoke, e2e.
 
-* Data: gTrade live feeds (ticker/mark) via backend/SDK
-* Execució: real al venue (obrir/tancar posició)
-* Candles: construcció 1m des de live + persistència a CSV
-* Backfill: periòdic (si hi ha endpoint històric disponible) per garantir “no gaps”
+### gTrade (existent)
+✅ paper-ready · 🟡 live-hardening pendent · ⛔ backtest pendent  
+Nota: `openPrice`/oracle zona sensible (veure §10 AGENTS si cal).
 
-**LIVE hardening (reconcile):** El venue és source of truth per posicions. El *ReconcileService* compara periòdicament `get_open_positions()` (venue) amb el tracking local; si hi ha divergències genera *ReconcileAction* (mark stale, request resync). Un *IReconcileSink* rep les accions i pot cridar *IPositionTracker.mark_stale* i/o emetre resync (sense fer trades ni auto-open/close). Implementació per defecte: *LoggingReconcileSink* (stale + log de resync). Això permet detect/report + auto-repair segur (stale + resync) sense overreach.
+### BACKTEST
+Contracte previst, però pipeline no implementada encara.
 
-### 3.2 PAPER
+### 2.1 Principis d’arquitectura (SOLID + DI minimalista)
 
-* Data: live real (igual que LIVE)
-* Execució: simulada (fills + fees + slippage modelats)
-* Candles: igual que LIVE (persistència + backfill) per tenir dataset consistent
-
-### 3.3 BACKTEST
-
-* Data: històric 1m de Dukascopy (o storage existent)
-* Execució: simulada amb backtest engine (fills OHLC, SL/TP intrabar amb high/low)
-* Candles: llegeix CSV canònic del dataset (mateix format que live)
-
----
-
-## 4) Decisió de dades i storage (CANÒNIC)
-
-### 4.1 Timezone canònica
-
-**TZ canònica de storage: `America/New_York`**.
-
-* Totes les candles guardades i servides per `/ohlcv` estan en aquesta TZ.
-* Timestamps representen l’**inici del minut** (`ts` = start-of-minute).
-* Candle representa `[ts, ts+60s)` i només s’escriu quan està **tancada**.
-
-> Nota: NY té DST. Per mantenir la invariant “no gaps” i increments de 60s, es defineix que:
->
-> * l’índex temporal canònic intern és **epoch UTC**,
-> * i la representació i particionat a fitxer és per “timezone NY”.
->   Això evita discontinuïtats lògiques però manté convenció NY a nivell d’arxius i API.
-
-### 4.2 Layout de fitxers (CSV 1m)
-
-```
-datafiles/
-  {broker}/
-    {asset}/
-      {timezone}/
-        {YYYY}/
-          {MM}.csv
-```
-
-Exemple:
-
-```
-datafiles/gtrade/XAUUSD/America_New_York/2026/02.csv
-datafiles/gtrade/EURUSD/America_New_York/2026/02.csv
-```
-
-Format CSV:
-
-* `ts,open,high,low,close,volume`
-* `volume` = 0 quan no existeix volum real
-
-### 4.3 Invariant “NO GAPS”
-
-* El dataset d’un rang demanat ha de ser contigu a nivell de minuts.
-* El sistema sempre sap si toca:
-
-  * **append** (nou minut)
-  * **patch** (finestra correctiva N minuts)
-  * **backfill** (si detecta forat)
-* Mai es considera “complet” fins que s’ha validat seqüència.
-
-### 4.4 Regles d’escriptura
-
-* **Single-writer per símbol** (evita corrupció)
-* Escriure atòmicament: `tmp + rename`
-* Lock per fitxer (file lock o Redis lock)
-
-### 4.5 Backfill periòdic (restart + cada 10 min)
-
-* En startup:
-
-  * calcula `from = last_ts - corrective_window`
-  * `to = last_closed_minute`
-  * demana històric (si existeix) i patch
-* Cada 10 minuts:
-
-  * repeteix patch per garantir integritat
-* Si no hi ha històric disponible:
-
-  * registra estat “NEEDS_BACKFILL”
-  * manté dataset amb WS i marca el gap com a pendent
-
-**Corrective window (MVP):** N=3..5 minuts (decisió fixa al config).
+- **SOLID / SRP:** rutes primes (validate → deps → call → map response). Lògica i mapping en helpers/serveis petits.
+- **Ports & adapters:** `domain/*` defineix models + interfaces (ports); `infrastructure/*` implementa venue adapters i storage.
+- **DI minimalista (estil Java, sense framework):**
+  - Injecció per constructor/on-startup (FastAPI lifespan).
+  - `set_broker_deps(...)` injecta dependències globals de rutes (candle_store, adapter_factory, mode, venue).
+- **Evitar palla:** només abstraure quan hi ha 2 implementacions o un seam clar per testing.
 
 ---
 
-## 5) Contracte REST (Endpoints)
-
-### 5.1 Core
-
-* `GET /health`
-* `GET /mode`
-* `GET /capabilities`
-
-### 5.2 Instruments
-
-* `GET /pairs`
-
-  * XAUUSD, EURUSD (precisions, min size/notional, leverage min/max)
-
-### 5.3 Market Data
-
-* `GET /ticker/{symbol}`
-
-  * bid/ask/mid(or mark), spread, ts
-
-**5.4 OHLCV (1m only)** (al final del punt)
-
-**Política de completitud de dades (`/ohlcv`):**
-
-* L’endpoint `/ohlcv` **mai** retornarà un rang que contingui gaps.
-* Si es detecta un gap i **no es pot omplir** en aquell moment, el servei respon amb **HTTP 409 (Conflict)** i un payload que inclou `reason="DATA_GAP"` i `missing_ranges=[...]`.
-* Això reforça la invariant “NO GAPS” i evita consum de dades incompletes.
-
-### 5.5 Trading (market-only, position-based)
-
-* `POST /positions`
-* `GET /positions`
-* `GET /positions/{position_id}`
-* `DELETE /positions/{position_id}`
-* `PATCH /positions/{position_id}/sl`
-* `PATCH /positions/{position_id}/tp`
-
-**Idempotència obligatòria:** `client_order_id`.
-
-### 5.6 Account
-
-* `GET /balance`
-* `GET /trade-history?since&limit`
-
-### 5.7 Backtest controls (només BACKTEST)
-
-* `POST /backtest/load`
-* `POST /backtest/reset`
-* `POST /backtest/play?speed=...`
-* `POST /backtest/pause`
-* `POST /backtest/seek?ts=...`
-* `GET /backtest/state`
-
----
-
-## 6) WebSocket (WS)
-
-### 6.1 Endpoint únic
-
-* `WS /ws`
-
-### 6.2 Canals
-
-* `ticker:XAUUSD`
-* `ticker:EURUSD`
-* `candle:XAUUSD:1m`
-* `candle:EURUSD:1m`
-* `positions`
-* `balance`
-* `execution`
-
-### 6.3 Seq + resume + resync
-
-* Cada event té `seq`.
-* Client pot enviar `resume(last_seq)`.
-* Si no es pot replay, el servei envia `resync_required`.
-* Client refà estat amb REST.
-
----
-
-## 7) Componentització (classes i responsabilitats)
-
-### 7.1 Domain (models + interfaces)
-
-**Models:** Candle, PriceData, Position, OrderRequest/Result, Balance, TradeHistory, TradingPair.
-
-**Interfaces (ports):**
-
-* `IVenueAdapter`
-
-  * get_pairs, get_latest_price, open_position, close_position, update_sl/tp, get_positions, get_balance, get_trade_history
-* `ICandleStore`
-
-  * read_range(symbol, start, end), append(candle), patch(range)
-* `ICandleBuilder`
-
-  * on_tick → updates; finalize_minute → candle tancada
-* `IBackfillProvider`
-
-  * fetch_ohlcv(symbol, start, end) (si el venue ho permet)
-* `IExecutionEngine`
-
-  * paper/backtest execution logic
-* `IClock`
-
-  * real clock (live/paper), virtual clock (backtest)
-
-### 7.2 Application (orquestració)
-
-* `BrokerFacade` (façana)
-
-  * rep requests API/WS
-  * crida adapters/engines
-  * aplica idempotència
-* `MarketDataService`
-
-  * ticker + candles + backfill scheduler
-* `TradingService`
-
-  * open/close + positions + reconcile
-* `BacktestService`
-
-  * controls + virtual clock + feed de candles
-
-### 7.3 Infrastructure
-
-* `venues/gtrade/` (nou)
-* `data/dukascopy/` (lector/importer)
-* `storage/csv_candlestore/` (writer/reader per layout definit)
-* `ws/hub/` (broadcast + seq)
-* `locks/` (file/redis lock)
-
----
-
-## 8) Docker i instal·lació
-
-### 8.1 Components a docker-compose
-
-* `brokerage-service` (FastAPI+WS)
-* `redis` (recomanat per seq buffer + locks + idempotència; opcional en MVP però molt útil)
-
-**Model de desplegament (per broker):**
-
-* Cada instància del servei opera **un únic broker/venue actiu** (ex. `broker-gtrade`).
-* Si en el futur volem Ostium en paral·lel, aixequem **una segona instància** (`broker-ostium`) amb el seu `.env` i volums separats.
-* El `broker` dins del path `datafiles/{broker}/...` es manté com a *namespace* de storage, però en runtime el servei treballa amb un sol `BROKER_ID` (p.ex. `gtrade`).
-
-### 8.2 Volums
-
-* `./datafiles:/datafiles` (candles)
-* `./logs:/logs`
-
-### 8.3 Config via `.env`
-
-* `MODE=paper|live|backtest`
-* `SYMBOLS=XAUUSD,EURUSD`
-* `CANONICAL_TZ=America/New_York`
-* `DATAFILES_ROOT=/datafiles`
-* `BACKFILL_INTERVAL_SECONDS=600`
-* `CORRECTIVE_WINDOW_MINUTES=5`
-* `WS_TICK_INTERVAL_MS=200` (si aplica)
-* Secrets live (wallet/rpc) només en LIVE
-
-### 8.4 Instal·lació simple
-
-* `cp .env.example .env`
-* `docker compose up -d`
-* validar `GET /health`
-
-
-
----
-
-## 9) gTrade Specifics (Fees + Price Feed)
-
-### 9.1 Market Data Source
-
-**Recomanat per integradors - Pricing Backend:**
-- **REST**: `https://backend-pricing.eu.gains.trade/charts`
-- **WebSocket**: `wss://backend-pricing.eu.gains.trade`
-- **Purpose**: Optimitzat per pricing, menys càrrega, recomanat per integradors
-
-**Alternatiu/Resiliència - Network-specific Backend:**
-- Pattern: `https://backend-<network>.gains.trade` i `wss://backend-<network>.gains.trade`
-- Networks: `arbitrum`, `polygon`, `base`, `sepolia`
-- **Purpose**: Per resilience, failover, o si necessites dades específiques de network
-
-**Endpoints clau (ambdós backends):**
-- `GET /trading-variables` - Fee parameters, pair configs, open interest
-- `GET /open-trades/<address>` - Active positions per address (checksummed)
-- `GET /charts` - Historical OHLC data (REST, rate limited)
-
-**WebSocket data format:**
-- **Price updates**: `[pairId, price, pairId, price, ...]` every ~25ms
-- **Ping messages**: `[<timestamp_ms>]` every ~1000ms
-- No authentication required, but rate limiting applies to REST
-
-**Integration approach:**
-- **LIVE mode**: WS feed → tick stream → CandleBuilder → CSVCandleStore (1m, TZ=NY)
-- **Primary WS**: `wss://backend-pricing.eu.gains.trade` (recomanat)
-- **Fallback WS**: `wss://backend-arbitrum.gains.trade` (si primary falla)
-- **REST `/charts`**: Support per backfill (si és útil per omplir micro-gaps o startup)
-  - Format: `{ time, opens: [], highs: [], lows: [], closes: [] }` (array indexat per pairId)
-  - ⚠️ Rate limiting: prefer WS stream per real-time updates
-
-### 9.2 Cost Model (Fees + Spread)
-
-**Càlcul base:** Fees s'apliquen sobre `position_size = collateral × leverage`
-
-**Fee structure per asset class (Fixed fees):**
-
-| Asset       | Class      | Spread (Fixed) | Open Fee | Close Fee | Notes                          |
-|-------------|------------|----------------|----------|-----------|--------------------------------|
-| EURUSD      | Forex Major| 0.01%          | 0.012%   | 0.012%    | Total cost: ~0.034% per trade |
-| XAUUSD      | Commodity T1| 0.01%         | 0.05%    | 0.05%     | Total cost: ~0.11% per trade  |
-
-**⚠️ Dynamic Spread / Price Impact (MVP: placeholder):**
-- gTrade aplica **Dynamic Spread** addicional al fixed spread
-- Factors: OI ratio (longOi/shortOi), position size, market conditions
-- Obtingut de `/trading-variables` (pair-level i group-level)
-- **MVP approach**: Ignorat a Fase 4 (paper trading amb fixed spread només)
-- **Fase 6**: Integrar dynamic spread calculation via SDK o `/trading-variables`
-
-**Configuració de referència (MVP - fixed fees només):**
-
-```yaml
-cost_model:
-  EURUSD:
-    spread_pct: 0.01      # Applied at execution (bid/ask)
-    open_fee_pct: 0.012   # Charged on position_size at open
-    close_fee_pct: 0.012  # Charged on position_size at close
-    asset_class: "forex_major"
-
-  XAUUSD:
-    spread_pct: 0.01
-    open_fee_pct: 0.05
-    close_fee_pct: 0.05
-    asset_class: "commodity_tier1"
-```
-
-**Breakdown en API responses:**
+## 3) Broker API — Contracte v0 (canònic)
+
+**Base URL:** `http://localhost:8000/api/v1/broker`
+
+### 3.1 Paths
+
+| Mètode | Path | Descripció |
+|--------|------|-------------|
+| GET | `/health` | Health check |
+| GET | `/mode` | Mode actual |
+| GET | `/venues` | Llista venues disponibles |
+| GET | `/pairs` | Llista pairs (requereix `venue`) |
+| GET | `/price/latest` | Preu actual (requereix `venue`, `symbol`) |
+| GET | `/candles` | Candles OHLCV (sense venue) |
+| GET | `/ohlcv/{symbol}` | Candles OHLCV path style (sense venue) |
+| GET | `/balance` | Balance compte (requereix `venue`) |
+| GET | `/positions` | Posicions obertes (requereix `venue`) |
+| POST | `/orders/open` | Obrir posició (JSON body) |
+| POST | `/orders/close` | Tancar posició (JSON body) |
+
+### 3.2 Endpoints detallats
+
+**Health i meta**
+
+| Path | Params | Response |
+|------|--------|----------|
+| `GET /health` | - | status, mode, venue, timestamp |
+| `GET /mode` | - | mode, is_live, is_paper, is_backtest, venue |
+| `GET /venues` | - | venues: string[] |
+
+**Market data**
+
+| Path | Params | Notes |
+|------|--------|-------|
+| `GET /pairs` | `venue` (required) | Requereix venue; per aquesta instància, només `lighter` |
+| `GET /price/latest` | `venue`, `symbol` | bid, ask, mid, timestamp |
+| `GET /candles` | `symbol`, `timeframe=1m`, `limit`, `since?`, `to?` | Sense venue. Només 1m |
+| `GET /ohlcv/{symbol}` | `tf=1m`, `since?`, `to?`, `limit` | Sense venue. Només 1m |
+
+**Account / Trading**
+
+| Path | Params/Body | Notes |
+|------|-------------|-------|
+| `GET /balance` | `venue` | usdc, available_margin, used_margin, total_equity, margin_usage_percent |
+| `GET /positions` | `venue` | positions[] |
+| `POST /orders/open` | JSON body | venue, symbol, side (long\|short), collateral, leverage, sl_price?, tp_price? |
+| `POST /orders/close` | JSON body | venue, position_id, percent (0, 100] |
+
+### 3.3 Invariants
+
+- **Candles:** no accepten venue; només `timeframe/tf=1m` → si ≠1m: 422 `TIMEFRAME_NOT_SUPPORTED`
+- **Adapter:** `/pairs`, `/price/latest`, `/balance`, `/positions`, `/orders/open`, `/orders/close` requereixen `adapter_factory`; si no wired → 503 `ADAPTER_NOT_AVAILABLE`; venue incorrecte → 422 `VENUE_NOT_CONFIGURED`
+
+### 3.4 Errors
+
+Format: `{"detail": "...", "code": "..."}`
+
+| code | status | Descripció |
+|------|--------|-------------|
+| `ADAPTER_NOT_AVAILABLE` | 503 | adapter_factory no configurat |
+| `CANDLE_STORE_NOT_AVAILABLE` | 503 | candle_store no disponible |
+| `VENUE_NOT_CONFIGURED` | 422 | venue no configurat en aquesta instància |
+| `TIMEFRAME_NOT_SUPPORTED` | 422 | timeframe != "1m" |
+| `INVALID_SIDE` | 422 | side no és long ni short |
+| `INVALID_PERCENT` | 422 | percent fora de (0, 100] |
+| `POSITION_NOT_FOUND` | 404 | position_id no existeix |
+| `SYMBOL_NOT_FOUND` | 404 | symbol no existeix |
+
+### 3.5 Samples
+
+**POST /orders/open**
 
 ```json
 {
-  "fees_breakdown": {
-    "open_fee": 12.0,         // collateral × leverage × open_fee_pct
-    "close_fee": 12.0,        // collateral × leverage × close_fee_pct
-    "spread_cost": 10.0,      // position_size × fixed_spread_pct
-    "dynamic_spread": 0.0,    // MVP: placeholder (Fase 6)
-    "borrowing_cost": 0.0     // MVP: placeholder (Fase 6)
-  },
-  "pnl_gross": 150.0,         // Price movement PnL
-  "pnl_net": 116.0            // pnl_gross - all fees
+  "venue": "lighter",
+  "symbol": "ETH",
+  "side": "long",
+  "collateral": 100,
+  "leverage": 20,
+  "sl_price": null,
+  "tp_price": null
 }
 ```
 
-### 9.3 Borrowing Fees (Placeholder per futures fases)
+Response 200: `{ "success": true, "position_id": "lighter:0", "order_id": "...", "executed_price": 3950.0, "executed_size": 0.506, "tx_hash": "0x..." }`
 
-**Formula oficial:** `feePerBlock × (abs(longOi - shortOi) / maxOi) ** feeExponent`
+**POST /orders/close**
 
-**Key parameters (obtinguts de `/trading-variables`):**
-- `feePerBlock`: Base fee rate (denominated in 1e10)
-- `longOi` / `shortOi`: Open interest per side
-- `maxOi`: Maximum open interest capacity
-- `feeExponent`: Exponent aplicat al OI ratio (típicament 1)
-
-**Per-block to time-based conversion:**
-- Fees acumulen **per block** mentre la posició està oberta
-- Conversió a hourly/daily: `feePerBlock × blocks_per_timeunit × OI_ratio`
-- Block rate és **network-dependent** (configurable via backend data, no hardcoded)
-
-**MVP approach:**
-- ✅ Add `borrowing_cost: 0.0` field to API responses (reservat)
-- ⏸️ **Not implemented** in Fase 4 Paper Trading
-- 🔜 Implement in Fase 6 (Live adapter) amb real-time OI data from `/trading-variables`
-
-**Data source (Fase 6):**
-- `GET /trading-variables` provides:
-  - Pair-level and group-level OI windows
-  - Fee parameters (`feePerBlock`, `feeExponent`, block timing)
-  - Current longOi/shortOi values
-- **Greater of pair-level or group-level fee applies** (never combined)
-- **Only the side with higher OI pays fees**
-
-### 9.4 Liquidation Price (Future Integration)
-
-**SDK function:** `getLiquidationPrice(trade, fees, initialAccFees, context)`
-
-**How fees affect liquidation:**
-- Accumulated borrowing fees erode collateral buffer
-- Higher fees → closer liquidation price
-- Formula incorporates:
-  - Open/close fee percentages
-  - Spread parameters
-  - Current borrowing costs (pair + group level)
-
-**MVP:**
-- ⏸️ Liquidation calculation not critical for paper trading
-- 🔜 Implement in Fase 6 using `@gainsnetwork/sdk` helpers
-
-### 9.5 Implementation Phases
-
-**Fase 4 (Paper Trading) — Fees MVP:**
-- ✅ Implement `CostModel` class (configurable per symbol)
-- ✅ Apply spread + open_fee + close_fee to PaperExecutionEngine
-- ✅ Return `fees_breakdown` in API responses
-- ⏸️ `borrowing_cost: 0.0` (placeholder)
-- Result: Realistic PnL calculations immediately
-
-**Fase 6 (Live Adapter) — Full Integration:**
-- 🔜 Integrate WS pricing backend (`wss://backend-arbitrum.gains.trade`)
-  - Price updates → tick stream → CandleBuilder
-  - Ping/pong handling (~1s interval)
-- 🔜 Optional: REST `/charts` for startup OHLC backfill
-- 🔜 Fetch `/trading-variables` for real fee parameters
-- 🔜 Implement borrowing fee calculation (per-block → hourly)
-- 🔜 Use `@gainsnetwork/sdk` for:
-  - `transformGlobalTradingVariables()`
-  - `getLiquidationPrice()`
-  - `convertFees()`
-
-### 9.6 Configuration Example
-
-```bash
-# .env
-MODE=paper
-VENUE=gtrade
-ARBITRUM_RPC_URL=https://arb1.arbitrum.io/rpc  # Only for LIVE mode
-
-# Cost model (defaults match official docs)
-GTRADE_EURUSD_SPREAD_PCT=0.01
-GTRADE_EURUSD_OPEN_FEE_PCT=0.012
-GTRADE_EURUSD_CLOSE_FEE_PCT=0.012
-
-GTRADE_XAUUSD_SPREAD_PCT=0.01
-GTRADE_XAUUSD_OPEN_FEE_PCT=0.05
-GTRADE_XAUUSD_CLOSE_FEE_PCT=0.05
+```json
+{
+  "venue": "lighter",
+  "position_id": "lighter:0",
+  "percent": 100
+}
 ```
 
-**Notes:**
-- Fee percentages expressen-se sobre `position_size = collateral × leverage`
-- Spread s'aplica al preu d'execució (adverse slippage simulat)
-- Borrowing fees són **time-based** i acumulen mentre la posició està oberta
-- Source of truth per paper/backtest: BrokerageService CostModel
-- Source of truth per live: gTrade smart contracts + `/trading-variables`
+Response 200: `{"success": true}`
 
 ---
 
-## 10) Testing simple (sense pytest) — scripts Python
+## 4) Wiring (main.py / set_broker_deps / VENUE)
 
-### 9.1 Filosofia de testing
+- `set_broker_deps(candle_store, adapter_factory, mode, venue)` s’executa al startup (lifespan)
+- `GET /venues` reflecteix wiring: `[]` si no hi ha adapter_factory, `["lighter"]` si wired
+- **VENUE=lighter:** crea `LighterVenueAdapter`, `adapter.start()`, injecta `adapter_factory`, `adapter.stop()` al shutdown
+- **VENUE≠lighter** (o buit): `adapter_factory=None` → endpoints adapter retornen 503; venue incorrecte en query → 422
 
-* **Unit tests**: scripts que testen classes “pures” (store, builder, gaps validator).
-* **Integration tests**: scripts que aixequen components (en memòria o docker) i validen fluxos.
-* **API smoke tests**: scripts que fan requests HTTP/WS i validen respostes.
+---
 
-Tot plegat “simple”: `python testing/run_all.py` i retorna exit code 0/1.
+## 5) Data / Storage (TZ NY + ts epoch UTC + 1m only)
 
-### 9.2 Estructura de testing
+- **TZ canònica:** `America/New_York` (partició, queries, NY close style)
+- **`ts`:** epoch UTC (segons), start-of-minute; candle = `[ts, ts+60s)` tancada
+- **Layout CSV:** `datafiles/{broker}/{asset}/{timezone}/{YYYY}/{MM}.csv`
+- **Format:** `ts,open,high,low,close,volume`; `volume=0` si no existeix
+- **Invariant NO GAPS:** seqüència validada; single-writer + escriptura atòmica
+
+---
+
+## 6) Quality Gates
+
+- **Gate A (bloquejador):** `./test.sh testing/run_all.py` passa
+- **Gate B (bloquejador):** Integration mock SL/TP + Balance passa
+- **Gate C (post-milestone):** 3× smoke real OK; 3× e2e trade real OK (`positions_after=0`)
+
+Evidència concreta (logs, timestamps) → `ESTAT.md`
+
+### 6.1 Testing (TDD scripts, sense pytest)
+
+**Filosofia:** tests simples en scripts Python (no pytest). Cada test té `main()`, fa `assert`, imprimeix resum, i retorna exit code.
+
+**On són els tests:**
 
 ```
 testing/
-  unit/
-    test_candle_store.py
-    test_gap_validator.py
-    test_candle_builder.py
-    test_idempotency.py
-  integration/
-    test_backfill_patch_flow.py
-    test_live_to_store_flow.py
-    test_reconcile_positions.py
-  api/
-    test_rest_smoke.py
-    test_ws_smoke.py
-  run_all.py
-  README.md
+  unit/           # tests purament en memòria (0 network)
+  integration/    # fluxos de components (normalment mock)
+  api/            # smoke REST/WS contra localhost
+  run_all.py      # runner: executa i falla si hi ha errors
 ```
 
-### 9.3 Regles
+**Com executar:**
 
-* Sense pytest.
-* Cada script:
+```bash
+# Suite completa (unit + integration mock + alguns api local)
+./test.sh testing/run_all.py
 
-  * té `main()`
-  * fa asserts
-  * imprimeix resum
-  * retorna exit code (0 ok / 1 fail)
-* `run_all.py` executa tot en ordre i falla al primer error (o acumula i reporta).
+# Un test concret
+./test.sh testing/unit/test_broker_api.py
+./test.sh testing/integration/test_lighter_adapter_sltp.py
+```
 
-### 9.4 “Done” per cada tasca d’agent
+**"Done" per feature (regla):** Cap feature es considera feta si no inclou: mínim 1 unit/integration test nou, i si toca API: smoke test de l'endpoint.
 
-Cap tasca es considera feta si no inclou:
+### 6.2 Plantilla de test (sense pytest)
 
-* com a mínim 1 unit test o 1 integration test que valida la nova peça
-* si toca API: 1 smoke test de l’endpoint
+Exemple de test unitari mínim:
 
----
+```python
+# testing/unit/test_example.py
+import sys
 
-## 11) Roadmap per fases (cada fase amb "tanca amb tests")
+def main() -> int:
+    x = 2 + 2
+    assert x == 4
+    print("OK test_example")
+    return 0
 
-### Fase 1 — Storage CSV + Gap invariant + OHLCV read
+if __name__ == "__main__":
+    sys.exit(main())
+```
 
-* Implementar `CSVCandleStore` + reader/writer atòmic + lock
-* Implementar `GapValidator`
-* Endpoint `/ohlcv/{symbol}` (backtest data)
-* Tests:
-
-  * unit: store read/write, gap validator
-  * api: smoke `/ohlcv`
-
-### Fase 2 — Live ingestion → CandleBuilder → store
-
-* Implementar `CandleBuilder` (tick → 1m candle tancada)
-* “Writer loop” que escriu candles tancades
-* Tests:
-
-  * unit: candle builder
-  * integration: tick replay → store → ohlcv range sense gaps
-
-### Fase 3 — Backfill scheduler + patch policy
-
-* Implementar `BackfillProvider` (si gTrade ho permet; sinó stub)
-* Startup backfill + cada 10 min
-* Corrective window patch
-* Tests:
-
-  * integration: injectar “forat” → backfill omple → gap validator OK
-
-### Fase 4 — Trading service (paper) + idempotència + positions endpoints + Cost Model
-
-* **Core endpoints:**
-  * `POST /positions` (paper execution)
-  * `GET /positions` (list amb unrealized PnL)
-  * `DELETE /positions/{id}` (close position)
-  * `PATCH /positions/{id}/sl` i `/tp` (update stops)
-  * `GET /balance` (account balance + margin usage)
-
-* **Idempotència:**
-  * `client_order_id` obligatori per open/close
-  * IdempotencyStore amb TTL (in-memory o Redis)
-
-* **Cost Model (fees realistes):**
-  * Implementar `CostModel` class amb configuració per símbol
-  * Spread: 0.01% (EURUSD, XAUUSD)
-  * Open fee: 0.012% (EURUSD), 0.05% (XAUUSD)
-  * Close fee: 0.012% (EURUSD), 0.05% (XAUUSD)
-  * Càlcul sobre `position_size = collateral × leverage`
-  * API response inclou `fees_breakdown` detallat
-  * `borrowing_cost: 0.0` (placeholder per futures fases)
-
-* **Tests:**
-  * unit: idempotency store, cost model calculations
-  * integration: open/close flow amb fees, duplicate request handling
-  * api: complete positions flow (open → update SL/TP → close)
-
-### Fase 5 — WS hub (ticker/candle/positions) + seq/resync
-
-* WS subscribe + seq increments
-* resync_required behaviour
-* Tests:
-
-  * api/ws smoke: connect, subscribe, receive messages
-
-### Fase 6 — gTrade live adapter + reconcile loop (LIVE) + Real Fees
-
-* **Price feed integration:**
-  * WS connection a `wss://backend-arbitrum.gains.trade`
-  * Parse price updates format: `[pairId, price, pairId, price, ...]`
-  * Ping/pong handling (~1s interval)
-  * Tick stream → CandleBuilder → CSVCandleStore
-
-* **Fee integration:**
-  * Fetch `/trading-variables` per real fee parameters
-  * Implement borrowing fee calculation:
-    * Formula: `feePerBlock × (abs(longOi - shortOi) / maxOi) ** feeExponent`
-    * Arbitrum: 12,000 blocks/hour
-    * Greater of pair-level or group-level applies
-  * Update API responses amb `borrowing_cost` real
-
-* **SDK integration:**
-  * Use `@gainsnetwork/sdk` helpers:
-    * `transformGlobalTradingVariables()`
-    * `getLiquidationPrice()`
-    * `convertFees()`
-
-* **Execució real:**
-  * Integrar smart contract calls per open/close
-  * Transaction handling + confirmations
-  * Reconcile loop cada N segons (compare local vs blockchain state)
-
-* **Optional: REST backfill:**
-  * `GET /charts` per startup OHLC recovery
-  * Rate limiting awareness (prefer WS stream)
-
-* **Tests:**
-  * integration: mock venue adapter + reconcile repairs state
-  * integration: fee calculation accuracy (vs known scenarios)
-  * api: health + open/close flow (live or mocked)
+Regla: si el test falla, `assert` peta i el runner ho marca com FAILED.
 
 ---
 
-## 12) Decisions tancades (de la conversa)
+## 7) Docker / Runtime (TZ del container)
 
-* Timeframe únic: **1m**
-* Assets inicials: **XAUUSD, EURUSD**
-* Storage CSV per minuts tancats, layout: `broker/asset/tz/year/month.csv`
-* TZ canònica per storage i API: **America/New_York**
-* Live WS escriu i crea històric propi; backfill en restart i cada 10 min si hi ha històric
-* Invariant: **no gaps** (validat i corregit)
-* Testing: scripts simples Python, sense pytest
-* Cada tasca d’agent: implementació + integració + testing final
-* **Deployment:** **una instància per broker** (gTrade ara; Ostium futur en un altre container), per simplicitat, seguretat i garantia del model “single-writer/no gaps”.
+Per coherència (logs, display, NY close style):
 
-Copia/enganxa aquests 3 blocs tal qual (són els únics afegits que jo faria):
+**docker-compose.yml** — al servei `brokerage`:
+```yaml
+environment:
+  - TZ=America/New_York
+  - CANONICAL_TZ=America/New_York
+  # ... resta
+```
 
+**Dockerfile** (base `python:3.11-slim`):
+```dockerfile
+RUN apt-get update && apt-get install -y tzdata && rm -rf /var/lib/apt/lists/*
+ENV TZ=America/New_York
+```
+
+**Verificació:**
+```bash
+docker compose run --rm brokerage date
+docker compose run --rm brokerage python3 -c "import time, datetime; print(datetime.datetime.now()); print(time.tzname)"
+```
+Hora NY i `('EST','EDT')` quan toca → OK.
+
+> El dataset canònic no depèn del TZ del container: `ts` és epoch UTC. El TZ del container és per display i logs.
+
+---
+
+## 8) Roadmap curt (no canònic)
+
+- Trade history (IVenueAdapter, si cal)
+- Maker-first close (opcional)
+- Backtest pipeline complet
+- gTrade mainnet hardening
+
+---
+
+## 9) Changelog curt
+
+* 2026-02-13 — Unificació API `/api/v1/broker/*`, POST body only, errors consistents, legacy eliminat
+* 2026-02-13 — Lighter M1+M2+M3 complet (smoke + e2e evidència a ESTAT.md)
+* 2026-02-13 — Docker TZ=America/New_York + tzdata + CANONICAL_TZ

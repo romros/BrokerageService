@@ -71,20 +71,28 @@ class OrderResult:
 
     @property
     def pair_id(self) -> Optional[int]:
-        """Extract pair_id from position_id (backward compatibility)"""
-        if ":" in self.position_id:
+        """Extract pair_id from position_id. Supports lighter:{pair_id} or {pair_id}:{trade_index}."""
+        pid = self.position_id.strip()
+        if pid.lower().startswith("lighter:"):
+            pid = pid[8:].strip()
+        parts = pid.split(":")
+        if parts:
             try:
-                return int(self.position_id.split(":")[0])
+                return int(parts[0])
             except ValueError:
-                return None
+                pass
         return None
 
     @property
     def trade_index(self) -> Optional[int]:
-        """Extract trade_index from position_id (backward compatibility)"""
-        if ":" in self.position_id:
+        """Extract trade_index from position_id (backward compatibility). None for lighter:{pair_id}."""
+        pid = self.position_id.strip()
+        if pid.lower().startswith("lighter:"):
+            pid = pid[8:].strip()
+        parts = pid.split(":")
+        if len(parts) >= 2:
             try:
-                return int(self.position_id.split(":")[1])
+                return int(parts[1])
             except ValueError:
-                return None
+                pass
         return None

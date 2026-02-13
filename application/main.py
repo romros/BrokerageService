@@ -13,10 +13,11 @@ Responsibilities:
 from contextlib import asynccontextmanager
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from application.api.routes import router, set_dependencies
+from application.api.broker_routes import router as broker_router, set_broker_deps
 from application.api.ws_routes import router as ws_router
 from foundation.logging import get_logger
 from infrastructure.storage.csv_store import CSVCandleStore
@@ -35,8 +36,8 @@ def load_config() -> dict:
         Configuration dictionary
     """
     config = {
-        "mode": os.getenv("MODE", "backtest"),
-        "venue": os.getenv("VENUE", "gtrade"),
+        "mode": os.getenv("MODE", "paper"),
+        "venue": os.getenv("VENUE", ""),
         "datafiles_root": os.getenv("DATAFILES_ROOT", "/datafiles"),
         "canonical_tz": os.getenv("CANONICAL_TZ", "America/New_York"),
         "symbols": os.getenv("SYMBOLS", "XAUUSD,EURUSD").split(","),
@@ -70,25 +71,41 @@ async def lifespan(app: FastAPI):
     config = load_config()
 
     # Initialize storage
+    venue = config["venue"] or ""
     candle_store = CSVCandleStore(
         root_path=config["datafiles_root"],
-        broker=config["venue"],
+        broker=venue or "gtrade",
         canonical_tz=config["canonical_tz"],
     )
 
-    # Set API dependencies
-    set_dependencies(
-        candle_store=candle_store,
-        mode=config["mode"],
-        venue=config["venue"],
-    )
+    # Set broker API dependencies. Només VENUE=lighter té adapter.
+    adapter = None
+    if venue == "lighter":
+        # Lazy: evita carregar lighter si --venue gtrade
+        from infrastructure.builders.lighter_di import build_lighter_paper_adapter
+        adapter = build_lighter_paper_adapter()
+        await adapter.start()
+        set_broker_deps(
+            candle_store=candle_store,
+            adapter_factory=lambda v: adapter if v == "lighter" else None,
+            mode=config["mode"],
+            venue=venue,
+        )
+    else:
+        set_broker_deps(
+            candle_store=candle_store,
+            adapter_factory=None,
+            mode=config["mode"],
+            venue=venue,
+        )
 
     logger.info("✓ BrokerageService ready")
 
     yield  # App is running
 
     logger.info("🛑 Shutting down BrokerageService...")
-    # Future: cleanup venue adapter, close connections, etc.
+    if adapter:
+        await adapter.stop()
 
 
 # ============ APP INITIALIZATION ============
@@ -102,10 +119,17 @@ def create_app() -> FastAPI:
     """
     app = FastAPI(
         title="BrokerageService",
-        description="Trading brokerage service with REST + WebSocket API (gTrade adapter ready)",
+        description="Trading brokerage service with REST + WebSocket API (Lighter)",
         version="0.1.0",
         lifespan=lifespan,
     )
+
+    # Exception handler: HTTPException amb detail dict {detail, code} → retorna directament
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request, exc):
+        if isinstance(exc.detail, dict) and "code" in exc.detail:
+            return JSONResponse(status_code=exc.status_code, content=exc.detail)
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
     # CORS middleware
     app.add_middleware(
@@ -116,8 +140,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Include routes
-    app.include_router(router, prefix="/api/v1")
+    # Include routes (broker_router ja té prefix /api/v1/broker)
+    app.include_router(broker_router)
     app.include_router(ws_router, prefix="/api/v1")
 
     # Root endpoint
@@ -139,6 +163,7 @@ app = create_app()
 # ============ DEV SERVER ============
 
 if __name__ == "__main__":
+    # Lazy: uvicorn només per dev server (no es carrega a runtime normal)
     import uvicorn
 
     config = load_config()

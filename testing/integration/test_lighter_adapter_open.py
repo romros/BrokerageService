@@ -119,7 +119,7 @@ async def test_open_position_long_ok():
     )
 
     assert res.success is True
-    assert res.position_id.startswith("lighter:0:")
+    assert res.position_id == "lighter:0"
     assert res.tx_hash == "0xTX"
     assert res.executed_price == 2000.0
     assert res.executed_size == 0.05

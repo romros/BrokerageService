@@ -7,6 +7,8 @@ No hardcoded values in business logic - all here.
 
 # WebSocket URL for gTrade price feed
 DEFAULT_GTRADE_PRICE_WS_URL = "wss://backend-arbitrum.gains.trade"
+# REST backend URL (open-trades, trading-variables)
+DEFAULT_GTRADE_BACKEND_URL = "https://backend-arbitrum.gains.trade"
 # Pair ID mapping: gTrade pairId -> our canonical symbol
 # Source: https://docs.gains.trade/
 #

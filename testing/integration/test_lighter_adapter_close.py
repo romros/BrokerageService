@@ -77,7 +77,15 @@ def make_adapter(
 ) -> LighterVenueAdapter:
     config = make_config()
     mock_account_api = AsyncMock()
-    mock_account_api.account = AsyncMock(return_value=account_response)
+    # close_position per crida: 1) _get_raw 2) get_open_positions 3) loop poll → flat
+    # test_close_position_percent_clamped fa 2 crides → necessitem 2 cicles
+    resp_empty = make_fake_account_response([])
+    mock_account_api.account = AsyncMock(
+        side_effect=(
+            [account_response, account_response, resp_empty] * 2  # 2 crides close
+            + [resp_empty] * 10
+        )
+    )
     adapter = LighterVenueAdapter(
         config=config,
         mode="live",
@@ -112,7 +120,7 @@ async def test_close_position_full_ok():
     ])
     adapter = make_adapter(signer=signer, account_response=resp, mid=2010.0)
 
-    result = await adapter.close_position("0:0", percent=100.0)
+    result = await adapter.close_position("lighter:0", percent=100.0)
 
     assert result is True
     call = signer.calls[-1]
@@ -132,7 +140,7 @@ async def test_close_position_partial_ok():
     ])
     adapter = make_adapter(signer=signer, account_response=resp, mid=2000.0)
 
-    result = await adapter.close_position("0:0", percent=50.0)
+    result = await adapter.close_position("lighter:0", percent=50.0)
 
     assert result is True
     call = signer.calls[-1]
@@ -148,7 +156,7 @@ async def test_close_position_reduce_only_flag():
     ])
     adapter = make_adapter(signer=signer, account_response=resp)
 
-    await adapter.close_position("0:0", percent=100.0)
+    await adapter.close_position("lighter:0", percent=100.0)
 
     assert signer.calls[-1]["reduce_only"] is True
     print("✓ test_close_position_reduce_only_flag")
@@ -161,7 +169,7 @@ async def test_close_position_direction_inverted():
         make_fake_position(position="1.0", sign=1, avg_entry_price="2000.0", position_value="2000.0"),
     ])
     adapter_long = make_adapter(signer=signer_long, account_response=resp_long)
-    await adapter_long.close_position("0:0", percent=100.0)
+    await adapter_long.close_position("lighter:0", percent=100.0)
     assert signer_long.calls[-1]["is_ask"] is True
 
     signer_short = DummySigner()
@@ -169,7 +177,7 @@ async def test_close_position_direction_inverted():
         make_fake_position(position="1.0", sign=-1, avg_entry_price="2000.0", position_value="2000.0"),
     ])
     adapter_short = make_adapter(signer=signer_short, account_response=resp_short)
-    await adapter_short.close_position("0:0", percent=100.0)
+    await adapter_short.close_position("lighter:0", percent=100.0)
     assert signer_short.calls[-1]["is_ask"] is False
 
     print("✓ test_close_position_direction_inverted")
@@ -182,10 +190,10 @@ async def test_close_position_not_found():
     adapter = make_adapter(signer=signer, account_response=resp_empty)
 
     try:
-        await adapter.close_position("0:0", percent=100.0)
+        await adapter.close_position("lighter:0", percent=100.0)
         assert False, "Expected PositionNotFoundError"
     except PositionNotFoundError as e:
-        assert "0:0" in str(e) or e.position_id == "0:0"
+        assert "lighter:0" in str(e) or e.position_id == "lighter:0"
 
     assert len(signer.calls) == 0
     print("✓ test_close_position_not_found")
@@ -199,11 +207,11 @@ async def test_close_position_percent_clamped():
     ])
     adapter = make_adapter(signer=signer, account_response=resp)
 
-    await adapter.close_position("0:0", percent=0.0)  # clamped to 0.01 -> minimal close
+    await adapter.close_position("lighter:0", percent=0.0)  # clamped to 0.01 -> minimal close
     call = signer.calls[-1]
     assert call["base_amount"] >= 1  # some small amount
 
-    await adapter.close_position("0:0", percent=150.0)  # clamped to 100 -> full close
+    await adapter.close_position("lighter:0", percent=150.0)  # clamped to 100 -> full close
     assert signer.calls[-1]["base_amount"] == int(1.0 * 10_000)
 
     print("✓ test_close_position_percent_clamped")
@@ -261,7 +269,7 @@ async def test_close_position_regression_reduce_only_and_inverted_direction():
             make_fake_position(position="1.0", sign=1, avg_entry_price="2000.0", position_value="2000.0"),
         ]),
     )
-    await adapter_long.close_position("0:0", percent=100.0)
+    await adapter_long.close_position("lighter:0", percent=100.0)
     call_long = signer_long.calls[-1]
     assert call_long["reduce_only"] is True and call_long["is_ask"] is True
 
@@ -273,7 +281,7 @@ async def test_close_position_regression_reduce_only_and_inverted_direction():
             make_fake_position(position="1.0", sign=-1, avg_entry_price="2000.0", position_value="2000.0"),
         ]),
     )
-    await adapter_short.close_position("0:0", percent=100.0)
+    await adapter_short.close_position("lighter:0", percent=100.0)
     call_short = signer_short.calls[-1]
     assert call_short["reduce_only"] is True and call_short["is_ask"] is False
     print("✓ test_close_position_regression_reduce_only_and_inverted_direction")
@@ -289,7 +297,7 @@ async def test_close_position_regression_uses_market_scaling_not_limit():
         ]),
         mid=2000.0,
     )
-    await adapter.close_position("0:0", percent=100.0)
+    await adapter.close_position("lighter:0", percent=100.0)
     call = signer.calls[-1]
     # Market: base ×10_000 (1.0 ETH → 10_000), not ×1e6 (1e6) nor limit-only
     assert call["base_amount"] == 10_000, "close must use market base_amount ×10_000"

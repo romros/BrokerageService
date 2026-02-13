@@ -2,12 +2,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (tzdata per TZ=America/New_York)
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     curl \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
+
+ENV TZ=America/New_York
 
 # Copy requirements
 COPY requirements.txt .

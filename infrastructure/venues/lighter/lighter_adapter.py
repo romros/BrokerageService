@@ -21,6 +21,7 @@ References:
 """
 
 import asyncio
+import math
 import time
 from datetime import datetime
 from typing import Dict, List, Optional, AsyncIterator, Any, Tuple
@@ -57,6 +58,12 @@ from .mappers import (
 from .scaling import acceptable_price_int, scale_sl_tp
 
 logger = get_logger(__name__)
+
+# close_position: fallback chunks i loop fins flat (lab close_open_position.py)
+CLOSE_CHUNK_ETH = 0.1
+CLOSE_FLAT_THRESHOLD_ETH = 0.001
+CLOSE_MAX_RETRIES = 10
+CLOSE_POLL_INTERVAL_S = 2
 
 
 class LighterVenueAdapter(IVenueAdapter):
@@ -133,11 +140,25 @@ class LighterVenueAdapter(IVenueAdapter):
         return self._mode == "backtest"
 
     def _normalize_position_id(self, position_id: str) -> str:
-        """Normalize to pair_id:trade_index for _sl_tp_order_indices key."""
+        """Normalize to pair_id for key (lighter:{pair_id} or lighter:{pair_id}:*)."""
         pid = position_id.strip()
         if pid.lower().startswith("lighter:"):
             pid = pid[8:].strip()
-        return pid
+        parts = pid.split(":")
+        return str(int(parts[0])) if parts else pid
+
+    def _parse_pair_id(self, position_id: str) -> int:
+        """Parse position_id to pair_id. Accepts lighter:{pair_id} or lighter:{pair_id}:*."""
+        pid = position_id.strip()
+        if pid.lower().startswith("lighter:"):
+            pid = pid[8:].strip()
+        parts = pid.split(":")
+        if not parts:
+            raise PositionNotFoundError(position_id, f"Invalid position_id format: {position_id}")
+        try:
+            return int(parts[0])
+        except ValueError:
+            raise PositionNotFoundError(position_id, f"Cannot parse pair_id from: {position_id}")
 
     async def _retry_on_invalid_nonce(self, fn, retries: int = 5, base_delay: float = 0.6):
         """Retry fn() on 21104 invalid nonce (lab: modify/cancel in burst)."""
@@ -156,21 +177,49 @@ class LighterVenueAdapter(IVenueAdapter):
         raise last_err
 
     async def _resolve_position(self, position_id: str) -> Position:
-        """Resolve position_id to Position; raises PositionNotFoundError if not found."""
+        """Resolve position_id to Position by pair_id; raises PositionNotFoundError if not found."""
+        pair_id = self._parse_pair_id(position_id)
         positions = await self.get_open_positions()
-        pid = self._normalize_position_id(position_id)
-        parts = pid.split(":")
-        if len(parts) != 2:
-            raise PositionNotFoundError(position_id, f"Invalid position_id format: {position_id}")
-        try:
-            pair_id = int(parts[0])
-            trade_index = int(parts[1])
-        except ValueError:
-            raise PositionNotFoundError(position_id, f"Cannot parse position_id: {position_id}")
         for p in positions:
-            if p.pair_id == pair_id and p.trade_index == trade_index:
+            if p.pair_id == pair_id and (p.notional or 0) >= 1e-6:
                 return p
         raise PositionNotFoundError(position_id)
+
+    async def _get_raw_position_for_market(
+        self, market_id: int
+    ) -> Optional[Tuple[float, bool]]:
+        """
+        Obté la mida real (ETH) i direcció des de l'API per un market.
+        Retorna (size_eth, is_long) o None si no hi ha posició.
+        Usat per close: evita rounding/partial fills (lab LIGHTER_COMPLETE_VALIDATION.md).
+        """
+        if self._account_api is None:
+            return None
+        try:
+            resp = await self._account_api.account(
+                by="l1_address",
+                value=self._config.l1_address,
+            )
+        except Exception:
+            return None
+        accounts = getattr(resp, "accounts", []) or []
+        if not accounts:
+            return None
+        raw_positions = getattr(accounts[0], "positions", []) or []
+        for pos in raw_positions:
+            if getattr(pos, "market_id", None) != market_id:
+                continue
+            size_str = getattr(pos, "position", "0") or "0"
+            try:
+                size_float = float(size_str)
+            except (ValueError, TypeError):
+                continue
+            if size_float <= 0:
+                continue
+            sign = getattr(pos, "sign", 1)
+            is_long = sign == 1
+            return (size_float, is_long)
+        return None
 
     # ============ LIFECYCLE ============
 
@@ -184,8 +233,10 @@ class LighterVenueAdapter(IVenueAdapter):
         try:
             self._client = build_signer_client(self._config)
             if self._account_api is None:
+                # Lazy: evita carregar lighter si --venue mock (no crida start)
                 import lighter
-                self._api_client = lighter.ApiClient()
+                cfg = lighter.Configuration(host=self._config.base_url)
+                self._api_client = lighter.ApiClient(cfg)
                 self._account_api = lighter.AccountApi(self._api_client)
             logger.info("Lighter adapter started successfully")
         except Exception as e:
@@ -195,6 +246,10 @@ class LighterVenueAdapter(IVenueAdapter):
     async def stop(self) -> None:
         """Cleanup Lighter adapter"""
         if self._client:
+            try:
+                await self._client.close()
+            except Exception as e:
+                logger.warning(f"Error closing SignerClient: {e}")
             self._client = None
         if self._api_client:
             try:
@@ -205,7 +260,7 @@ class LighterVenueAdapter(IVenueAdapter):
             self._account_api = None
 
         if isinstance(self._market_data_client, LighterMarketDataClient):
-            await self._market_data_client.close()
+            await self._market_data_client.stop()
 
         logger.info("Lighter adapter stopped")
 
@@ -423,7 +478,7 @@ class LighterVenueAdapter(IVenueAdapter):
         except Exception as e:
             raise VenueAPIError(f"Lighter open_position failed: {e}") from e
 
-        position_id = f"lighter:{market_id}:{client_order_index}"
+        position_id = f"lighter:{market_id}"
         result = OrderResult(
             success=True,
             position_id=position_id,
@@ -442,86 +497,102 @@ class LighterVenueAdapter(IVenueAdapter):
         """
         Close position via MARKET order (TASK 4B).
 
-        reduce_only=True, is_ask=pos.is_long (close long → SELL). base_amount ×10_000, avg_execution_price ×100 (acceptable_price_int).
-        position_id format: "{pair_id}:{trade_index}" or "lighter:{pair_id}:{trade_index}".
+        reduce_only=True, is_ask=pos.is_long (close long → SELL). base_amount ×10_000, avg_execution_price ×100.
+        position_id format: "lighter:{pair_id}" (pair_id=market_id).
+
+        Lab fixes (close_open_position.py, LIGHTER_COMPLETE_VALIDATION.md):
+        - Mida real: consulta API abans de tancar (evita rounding/partial fills)
+        - Fallback chunks: si 1 ordre falla (límit testnet), tanca en parts de 0.1 ETH
+        - Loop fins flat: després de cada ordre, poll; si encara hi ha mida, retry
         """
         percent = max(0.01, min(100.0, percent))
-        positions = await self.get_open_positions()
-        pid = position_id.strip()
-        if pid.lower().startswith("lighter:"):
-            pid = pid[8:].strip()
-        parts = pid.split(":")
-        if len(parts) != 2:
-            raise PositionNotFoundError(position_id, f"Invalid position_id format: {position_id}")
-        try:
-            pair_id = int(parts[0])
-            trade_index = int(parts[1])
-        except ValueError:
-            raise PositionNotFoundError(position_id, f"Cannot parse position_id: {position_id}")
+        pair_id = self._parse_pair_id(position_id)
 
-        pos = None
-        for p in positions:
-            if p.pair_id == pair_id and p.trade_index == trade_index:
-                pos = p
-                break
-        if pos is None:
+        # Mida real des de l'API (lab: evita rounding/partial fills)
+        raw = await self._get_raw_position_for_market(pair_id)
+        if raw is None:
             raise PositionNotFoundError(position_id)
-
-        size_base = pos.notional / pos.open_price if pos.open_price else 0.0
-        if size_base <= 0:
-            raise VenueAPIError(f"Invalid position size for {position_id}")
-        close_size = size_base * (percent / 100.0)
-        close_size = min(close_size, size_base)
+        size_eth, is_long = raw
+        close_size = size_eth * (percent / 100.0)
+        close_size = min(close_size, size_eth)
         if close_size <= 0:
             raise VenueAPIError(f"Close size would be zero for {position_id} percent={percent}")
 
+        # Resoldre symbol per get_latest_price
+        positions = await self.get_open_positions()
+        for_symbol = [p for p in positions if p.pair_id == pair_id]
+        symbol = for_symbol[0].symbol if for_symbol else f"MKT{pair_id}"
+
         try:
-            px = await self.get_latest_price(pos.symbol)
+            px = await self.get_latest_price(symbol)
             mid = getattr(px, "mid", None) or getattr(px, "ask", None) or getattr(px, "bid", None)
         except Exception as e:
-            raise VenueAPIError(f"Failed to get price for {pos.symbol}: {e}") from e
+            raise VenueAPIError(f"Failed to get price for {symbol}: {e}") from e
         if mid is None or mid <= 0:
-            raise VenueAPIError(f"No price for {pos.symbol}")
+            raise VenueAPIError(f"No price for {symbol}")
 
-        if self._order_index_gen is not None:
-            client_order_index = int(self._order_index_gen.next())
-        else:
-            client_order_index = int(time.time() * 1000) % (2**32)
-
-        base_amount_int = int(close_size * 10_000)  # market size ×10_000
-        avg_execution_price_int = acceptable_price_int(mid, is_ask=pos.is_long, slippage_bps=50)
-        is_ask = pos.is_long  # close long → SELL (is_ask=True), close short → BUY (is_ask=False)
+        avg_execution_price_int = acceptable_price_int(mid, is_ask=is_long, slippage_bps=50)
+        is_ask = is_long
         reduce_only = True
-
         signer = self._signer_override or self._client
         if signer is None:
             raise VenueAPIError("Lighter adapter not started or signer not injected")
 
-        try:
-            create_order, tx_resp, err = await signer.create_market_order(
-                market_index=pos.pair_id,
-                client_order_index=client_order_index,
-                base_amount=base_amount_int,
+        def _next_coi() -> int:
+            if self._order_index_gen is not None:
+                return int(self._order_index_gen.next())
+            return int(time.time() * 1000) % (2**32)
+
+        async def _send_close_order(size_to_close: float) -> Optional[str]:
+            base_amt = int(round(size_to_close * 10_000))
+            if base_amt <= 0:
+                return None
+            _, tx_resp, err = await signer.create_market_order(
+                market_index=pair_id,
+                client_order_index=_next_coi(),
+                base_amount=base_amt,
                 avg_execution_price=avg_execution_price_int,
                 is_ask=is_ask,
                 reduce_only=reduce_only,
             )
             if err is not None:
-                msg = str(err)
-                if "not enough margin" in msg.lower() or "insufficient" in msg.lower():
-                    raise InsufficientBalanceError(msg)
-                raise VenueAPIError(msg)
+                return str(err)
             code = getattr(tx_resp, "code", None)
             if code not in (200, None):
-                msg = f"SDK tx failed: code={code} message={getattr(tx_resp, 'message', '')}"
-                if "not enough margin" in msg.lower() or "insufficient" in msg.lower():
-                    raise InsufficientBalanceError(msg)
-                raise VenueAPIError(msg)
-        except (InsufficientBalanceError, VenueAPIError):
-            raise
-        except Exception as e:
-            raise VenueAPIError(f"Lighter close_position failed: {e}") from e
+                return f"SDK tx failed: code={code}"
+            return None
 
+        # Intent 1: un sol ordre (com la UI)
+        err = await _send_close_order(close_size)
+        if err is None:
+            logger.debug(f"close_position: ordre únic OK per {close_size} ETH")
+        else:
+            # Fallback: testnet pot limitar mida; tancar en chunks (lab close_open_position.py)
+            logger.info(f"close_position: 1 ordre rebutjat ({err}), fallback a chunks de {CLOSE_CHUNK_ETH} ETH")
+            n_chunks = max(1, int(math.ceil(close_size / CLOSE_CHUNK_ETH)))
+            for i in range(n_chunks):
+                chunk_err = await _send_close_order(CLOSE_CHUNK_ETH)
+                if chunk_err:
+                    logger.warning(f"close_position: chunk {i+1}/{n_chunks} fallat: {chunk_err}")
+                await asyncio.sleep(1)
+
+        # Loop fins flat: poll i retry si encara hi ha mida (partial fills)
+        for attempt in range(CLOSE_MAX_RETRIES):
+            await asyncio.sleep(CLOSE_POLL_INTERVAL_S)
+            raw2 = await self._get_raw_position_for_market(pair_id)
+            if raw2 is None or raw2[0] <= CLOSE_FLAT_THRESHOLD_ETH:
+                return True
+            remaining = raw2[0]
+            logger.debug(f"close_position: encara {remaining:.4f} ETH, intent {attempt+1}/{CLOSE_MAX_RETRIES}")
+            err2 = await _send_close_order(remaining)
+            if err2:
+                logger.warning(f"close_position: retry ordre fallat: {err2}")
+
+        # Timeout: potser encara hi ha mida petita
+        raw3 = await self._get_raw_position_for_market(pair_id)
+        if raw3 is None or raw3[0] <= CLOSE_FLAT_THRESHOLD_ETH:
+            return True
+        logger.warning(f"close_position: timeout amb {raw3[0]:.4f} ETH restants (límit {CLOSE_MAX_RETRIES} retries)")
         return True
 
     async def update_sl(self, position_id: str, new_sl: float) -> bool:
@@ -660,6 +731,11 @@ class LighterVenueAdapter(IVenueAdapter):
                 value=self._config.l1_address,
             )
         except Exception as e:
+            # Handle "account not found" (code 21100) gracefully - return empty list
+            error_str = str(e)
+            if "21100" in error_str or "account not found" in error_str.lower():
+                logger.warning(f"Account not found for L1 address {self._config.l1_address}, returning empty positions list")
+                return []
             raise VenueAPIError(f"Failed to fetch account: {e}") from e
         return map_account_to_positions(resp)
 

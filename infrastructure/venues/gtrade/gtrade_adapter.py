@@ -142,6 +142,7 @@ class GTradeVenueAdapter(IVenueAdapter):
 
         # Derive wallet account from private key (if available)
         if self._config.has_wallet:
+            # Lazy: eth_account només si has_wallet (evita carregar si read-only)
             from eth_account import Account
             self._account = Account.from_key(self._config.wallet_private_key)
             self._wallet_address = self._account.address
@@ -469,6 +470,7 @@ class GTradeVenueAdapter(IVenueAdapter):
             NoTradableSymbolError: If all symbols (primary + fallbacks) fail
             ValueError: If wallet not configured or live trading disabled
         """
+        # Lazy: os només es necessita dins aquest mètode (evita pol·luir namespace)
         import os
 
         # Check if live trading enabled
@@ -544,6 +546,7 @@ class GTradeVenueAdapter(IVenueAdapter):
 
         FASE 6B.1.B.2 - ABI encoding (placeholder signatures)
         """
+        # Lazy: os només es necessita dins aquest mètode (evita pol·luir namespace)
         import os
 
         # Check if live trading enabled

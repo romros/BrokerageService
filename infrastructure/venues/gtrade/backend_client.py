@@ -11,13 +11,14 @@ References:
 - https://docs.gains.trade/developer/integrators/backend
 """
 
-
 from dataclasses import dataclass
 from typing import Optional
 
 import httpx
 
 from foundation.logging import get_logger
+
+from .config import DEFAULT_GTRADE_BACKEND_URL
 
 
 logger = get_logger(__name__)
@@ -29,10 +30,10 @@ class GTradeBackendClient:
     gTrade backend REST client (read-only)
 
     Attributes:
-        base_url: Backend API base URL (default: https://backend-arbitrum.gains.trade)
+        base_url: Backend API base URL (default from config)
         timeout_seconds: Request timeout (default: 5.0s)
     """
-    base_url: str = "https://backend-arbitrum.gains.trade"
+    base_url: str = DEFAULT_GTRADE_BACKEND_URL
     timeout_seconds: float = 5.0
 
     async def get_open_trades(self, address: str) -> dict:

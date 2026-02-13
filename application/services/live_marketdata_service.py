@@ -221,6 +221,7 @@ class LiveMarketDataService(IService):
 
         # Broadcast ticker message
         try:
+            # Lazy: evita circular ws.models ↔ live_marketdata_service
             from infrastructure.ws.models import create_ticker_message
 
             timestamp_dt = datetime.fromtimestamp(timestamp_ms / 1000.0, tz=self.tz)
@@ -274,6 +275,7 @@ class LiveMarketDataService(IService):
             return  # No WebSocket hub configured
 
         try:
+            # Lazy: evita circular ws.models ↔ live_marketdata_service
             from infrastructure.ws.models import create_candle_message
 
             # Convert candle to dict

@@ -70,6 +70,7 @@ class LighterMarketDataClient:
         """Lazy load SDK (avoids import if not using Lighter)"""
         if self._api_client is None:
             try:
+                # Lazy: evita carregar lighter SDK si no s'usa market data
                 import lighter
             except ImportError as e:
                 raise ImportError(
@@ -78,6 +79,25 @@ class LighterMarketDataClient:
 
             self._api_client = lighter.ApiClient()
             self._orders_api = lighter.OrderApi(self._api_client)
+
+    async def stop(self):
+        """Stop market data client and close resources (e.g., aiohttp session)"""
+        if self._api_client is not None:
+            try:
+                # Close ApiClient's underlying aiohttp session if it has one
+                if hasattr(self._api_client, 'close'):
+                    await self._api_client.close()
+                elif hasattr(self._api_client, 'rest_client') and hasattr(self._api_client.rest_client, 'pool_manager'):
+                    # Attempt to close session if available
+                    pool_manager = self._api_client.rest_client.pool_manager
+                    if hasattr(pool_manager, 'close'):
+                        await pool_manager.close()
+                logger.debug("LighterMarketDataClient stopped")
+            except Exception as e:
+                logger.warning(f"Error stopping LighterMarketDataClient: {e}")
+            finally:
+                self._api_client = None
+                self._orders_api = None
 
     async def _ensure_market_cache_loaded(self):
         """
@@ -107,7 +127,7 @@ class LighterMarketDataClient:
                 symbol = getattr(order_book, 'symbol', None)
 
                 if market_id is not None and symbol:
-                    # Normalize symbol (uppercase, base only)
+                    # Lazy: evita circular mappers ↔ market_data_client
                     from .mappers import normalize_symbol
                     symbol_normalized = normalize_symbol(symbol)
                     cache[symbol_normalized] = market_id
@@ -196,6 +216,7 @@ class LighterMarketDataClient:
         if self._symbol_to_market_id is None:
             return None
 
+        # Lazy: evita circular mappers ↔ market_data_client
         from .mappers import normalize_symbol
         symbol_normalized = normalize_symbol(symbol)
 

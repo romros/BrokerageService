@@ -149,8 +149,8 @@ def test_root():
 
 def test_health():
     """Test health endpoint"""
-    print("\nTesting GET /api/v1/health...")
-    response = requests.get("http://localhost:8001/api/v1/health")
+    print("\nTesting GET /api/v1/broker/health...")
+    response = requests.get("http://localhost:8001/api/v1/broker/health")
     assert response.status_code == 200, f"Expected 200, got {response.status_code}"
     data = response.json()
     assert data["status"] == "ok", f"Expected status=ok, got {data['status']}"
@@ -161,8 +161,8 @@ def test_health():
 
 def test_mode():
     """Test mode endpoint"""
-    print("\nTesting GET /api/v1/mode...")
-    response = requests.get("http://localhost:8001/api/v1/mode")
+    print("\nTesting GET /api/v1/broker/mode...")
+    response = requests.get("http://localhost:8001/api/v1/broker/mode")
     assert response.status_code == 200, f"Expected 200, got {response.status_code}"
     data = response.json()
     assert data["mode"] == "backtest"
@@ -174,9 +174,9 @@ def test_mode():
 
 def test_ohlcv_basic():
     """Test OHLCV endpoint - basic request"""
-    print("\nTesting GET /api/v1/ohlcv/XAUUSD (basic)...")
+    print("\nTesting GET /api/v1/broker/ohlcv/XAUUSD (basic)...")
 
-    response = requests.get("http://localhost:8001/api/v1/ohlcv/XAUUSD?limit=10")
+    response = requests.get("http://localhost:8001/api/v1/broker/ohlcv/XAUUSD?limit=10")
     assert response.status_code == 200, f"Expected 200, got {response.status_code}"
 
     data = response.json()
@@ -200,7 +200,7 @@ def test_ohlcv_basic():
 
 def test_ohlcv_range():
     """Test OHLCV endpoint - time range request"""
-    print("\nTesting GET /api/v1/ohlcv/EURUSD (range)...")
+    print("\nTesting GET /api/v1/broker/ohlcv/EURUSD (range)...")
 
     tz = ZoneInfo("America/New_York")
     base_time = datetime(2026, 2, 8, 10, 0, 0, tzinfo=tz)
@@ -208,7 +208,7 @@ def test_ohlcv_range():
     end = int((base_time + timedelta(minutes=20)).timestamp())
 
     response = requests.get(
-        f"http://localhost:8001/api/v1/ohlcv/EURUSD?since={start}&to={end}"
+        f"http://localhost:8001/api/v1/broker/ohlcv/EURUSD?since={start}&to={end}"
     )
     assert response.status_code == 200, f"Expected 200, got {response.status_code}"
 
@@ -222,12 +222,13 @@ def test_ohlcv_range():
 
 def test_ohlcv_invalid_timeframe():
     """Test OHLCV endpoint - invalid timeframe"""
-    print("\nTesting GET /api/v1/ohlcv/XAUUSD (invalid tf)...")
+    print("\nTesting GET /api/v1/broker/ohlcv/XAUUSD (invalid tf)...")
 
-    response = requests.get("http://localhost:8001/api/v1/ohlcv/XAUUSD?tf=5m")
-    assert response.status_code == 400, f"Expected 400, got {response.status_code}"
+    response = requests.get("http://localhost:8001/api/v1/broker/ohlcv/XAUUSD?tf=5m")
+    assert response.status_code == 422, f"Expected 422, got {response.status_code}"
 
     data = response.json()
+    assert data.get("code") == "TIMEFRAME_NOT_SUPPORTED"
     assert "detail" in data
     assert "1m" in data["detail"].lower(), "Error should mention supported timeframe"
 
@@ -236,9 +237,9 @@ def test_ohlcv_invalid_timeframe():
 
 def test_ohlcv_unknown_symbol():
     """Test OHLCV endpoint - unknown symbol (returns empty)"""
-    print("\nTesting GET /api/v1/ohlcv/UNKNOWN...")
+    print("\nTesting GET /api/v1/broker/ohlcv/UNKNOWN...")
 
-    response = requests.get("http://localhost:8001/api/v1/ohlcv/UNKNOWN?limit=10")
+    response = requests.get("http://localhost:8001/api/v1/broker/ohlcv/UNKNOWN?limit=10")
     assert response.status_code == 200, f"Expected 200, got {response.status_code}"
 
     data = response.json()

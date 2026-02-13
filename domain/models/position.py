@@ -9,6 +9,7 @@ from typing import Optional, TYPE_CHECKING
 
 
 if TYPE_CHECKING:
+    # TYPE_CHECKING: evita circular position ↔ position_ref (només per type hints)
     from .position_ref import PositionRef
 
 
@@ -47,6 +48,7 @@ class Position:
         if not self.wallet_address:
             return None
 
+        # Lazy: evita circular position ↔ position_ref (runtime)
         from .position_ref import PositionRef
         return PositionRef(
             wallet_address=self.wallet_address,

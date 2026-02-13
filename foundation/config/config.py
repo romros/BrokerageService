@@ -36,23 +36,7 @@ class BrokerageConfig(BaseModel):
     api_port: int = Field(default=8080, description="API port")
     ws_port: int = Field(default=8081, description="WebSocket port")
 
-    # ============ OSTIUM (Live/Paper) ============
-    ostium_network: str = Field(
-        default="testnet",
-        description="Ostium network: mainnet or testnet"
-    )
-    ostium_private_key: Optional[str] = Field(
-        default=None,
-        description="Private key for blockchain transactions"
-    )
-    ostium_rpc_url: Optional[str] = Field(
-        default=None,
-        description="RPC URL for Arbitrum network"
-    )
-    price_poll_interval: int = Field(
-        default=30,
-        description="Seconds between price polls (live/paper)"
-    )
+    # Core: VENUE (lighter o buit). Config per venue viu a infrastructure/venues/{venue}/.
 
     # ============ BACKTEST ============
     backtest_speed: int = Field(
@@ -97,10 +81,6 @@ class BrokerageConfig(BaseModel):
 
         Environment variables:
         - MODE: live | paper | backtest
-        - OSTIUM_NETWORK: mainnet | testnet
-        - OSTIUM_PRIVATE_KEY: Private key
-        - OSTIUM_RPC_URL: RPC URL
-        - PRICE_POLL_INTERVAL: Seconds
         - BACKTEST_SPEED: Multiplier
         - BACKTEST_DATA_PATH: Path
         - BACKTEST_START_DATE: ISO format
@@ -115,10 +95,6 @@ class BrokerageConfig(BaseModel):
             "api_host": os.getenv("API_HOST", "0.0.0.0"),
             "api_port": int(os.getenv("API_PORT", "8080")),
             "ws_port": int(os.getenv("WS_PORT", "8081")),
-            "ostium_network": os.getenv("OSTIUM_NETWORK", "testnet"),
-            "ostium_private_key": os.getenv("OSTIUM_PRIVATE_KEY"),
-            "ostium_rpc_url": os.getenv("OSTIUM_RPC_URL"),
-            "price_poll_interval": int(os.getenv("PRICE_POLL_INTERVAL", "30")),
             "backtest_speed": int(os.getenv("BACKTEST_SPEED", "1000")),
             "backtest_data_path": os.getenv("BACKTEST_DATA_PATH", "data/candles"),
             "backtest_initial_balance": float(
@@ -154,17 +130,7 @@ class BrokerageConfig(BaseModel):
         Raises:
             ValueError: If required fields are missing
         """
-        if self.mode == BrokerageMode.LIVE:
-            if not self.ostium_private_key:
-                raise ValueError("OSTIUM_PRIVATE_KEY required for live mode")
-            if not self.ostium_rpc_url:
-                raise ValueError("OSTIUM_RPC_URL required for live mode")
-
-        elif self.mode == BrokerageMode.PAPER:
-            if not self.ostium_rpc_url:
-                raise ValueError("OSTIUM_RPC_URL required for paper mode")
-
-        elif self.mode == BrokerageMode.BACKTEST:
+        if self.mode == BrokerageMode.BACKTEST:
             if not self.backtest_start_date:
                 raise ValueError("BACKTEST_START_DATE required for backtest mode")
             if not self.backtest_end_date:

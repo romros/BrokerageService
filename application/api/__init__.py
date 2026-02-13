@@ -1,12 +1,9 @@
 """
 API layer - FastAPI REST + WebSocket endpoints
 
-Endpoints:
-- Core: /health, /mode, /capabilities
-- Instruments: /pairs
-- Market data: /ticker/{symbol}, /ohlcv/{symbol}
-- Trading: /positions (CRUD + SL/TP updates)
-- Account: /balance, /trade-history
-- Backtest: /backtest/* (controls)
+Broker API (prefix /api/v1/broker):
+- Core: /broker/health, /broker/mode
+- Market data: /broker/venues, /broker/pairs, /broker/price/latest, /broker/candles, /broker/ohlcv/{symbol}
+- Trading: /broker/balance, /broker/positions, /broker/orders/open, /broker/orders/close (JSON body)
 - WebSocket: /ws (multi-channel)
 """

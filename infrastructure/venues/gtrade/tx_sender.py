@@ -211,7 +211,7 @@ class TxSender:
         """
         signed = self.account.sign_transaction(tx)
         logger.debug(f"Signed tx: {signed.hash.hex()}")
-        return signed.rawTransaction
+        return signed.raw_transaction
 
     async def send_raw_tx(self, raw_tx: bytes) -> str:
         """
