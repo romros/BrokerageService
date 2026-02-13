@@ -1,261 +1,180 @@
-# BrokerageService - gTrade Independent Brokerage
+# BrokerageService — Lighter + gTrade
 
-**Versió:** 0.5.0 (Fases 1+2+3+4+4.5+5 completades ✅)
-**Venue principal:** gTrade (Arbitrum)
+**Venue principal:** **Lighter** (paper-ready + live-hardening complet)  
+**Altres venues:** gTrade (paper-ready; live-hardening pendent)  
 **Dissenyat per:** Freqtrade adapter consumption
 
+**Docs:** [AGENTS_ARQUITECTURA.md](AGENTS_ARQUITECTURA.md) · [ESTAT.md](ESTAT.md) · [docs/SAFETY_RUNBOOK.md](docs/SAFETY_RUNBOOK.md)
+
 ---
 
-## 🎯 Overview
+## Overview
 
-Servei de brokerage independent amb **3 modes d'operació**:
+Servei de brokerage independent amb **3 modes**:
 
-- **LIVE** - Trading real amb gTrade (blockchain, Arbitrum)
-- **PAPER** - Dades live reals però execució simulada (sense risc)
-- **BACKTEST** - Simulació amb dades històriques a velocitat accelerada
+- **LIVE** — Trading real (Lighter o gTrade)
+- **PAPER** — Market data real + execució simulada (sense risc)
+- **BACKTEST** — Simulació amb dades històriques (pipeline pendent)
 
-**Scope inicial:**
-- Assets: `XAUUSD`, `EURUSD`
+**Scope:**
 - Timeframe: **1m only**
-- Timezone canònica: **America/New_York**
-- Storage: CSV amb layout canònic + "NO GAPS" invariant
+- TZ canònica: **America/New_York**
+- API: REST `/api/v1/broker/*` + WebSocket
+- PAPER Freqtrade: market data mainnet + execució paper (`MARKET_DATA_ENV=mainnet`, `ENABLE_LIVE_TRADING=0`)
 
 ---
 
-## 📊 Estat Actual (2026-02-08)
+## Estat actual (2026-02-13)
 
-✅ **FASE 1** - Storage CSV + Gap Invariant + OHLCV Read
-✅ **FASE 2** - Live Ingestion → CandleBuilder → Store
-✅ **FASE 3** - Backfill Scheduler + Patch Policy
-✅ **FASE 4** - Paper Trading + Positions API + Idempotència
-✅ **FASE 4.5** - CostModel amb fees oficials gTrade
-✅ **FASE 5** - WebSocket Hub + Real-time Broadcasting
-
-**Tests:** 11/11 passing ✅
-
-**Propera fase recomanada:** 🔜 **FASE 6** - gTrade Live Adapter
+- ✅ **Lighter M1+M2+M3** DONE: marketdata, SL/TP, balance, reconcile, guards, smoke, e2e
+- ✅ **44 tests** passa; smoke 3× + e2e 3× + **soak 10 min** OK
+- ✅ **Broker API canònica** POST body únic per ordres
+- ✅ **Freqtrade P0** PAPER mainnet-data
+- 🟡 **gTrade**: paper OK; mainnet hardening pendent
+- ⛔ **Backtest**: pendent
 
 ---
 
-## 📁 Arquitectura
+## API (prefix `/api/v1/broker`)
 
-```
-BrokerageService/
-├── foundation/          # ✅ Logger singleton, lifecycle, config
-├── domain/
-│   ├── models/          # ✅ Candle, Position, Order, Balance, etc.
-│   └── interfaces/      # ✅ IVenueAdapter, ICandleStore, IExecutionEngine, etc.
-├── infrastructure/
-│   ├── storage/         # ✅ CSVCandleStore, GapValidator, IdempotencyStore
-│   ├── builders/        # ✅ CandleBuilder (tick → 1m candle)
-│   ├── execution/       # ✅ PaperExecutionEngine (amb WS events)
-│   ├── data/            # ✅ MockBackfillProvider
-│   ├── ws/              # ✅ WebSocketHub, WSMessage, broadcast system
-│   └── venues/gtrade/   # ⏸️ Pendent (Fase 6)
-├── application/
-│   ├── services/        # ✅ BackfillService
-│   └── api/             # ✅ REST endpoints (ohlcv + trading)
-└── testing/             # ✅ 11/11 tests passing
-    ├── unit/            # 6 tests (store, validator, builder, provider, idempotency, cost_model)
-    ├── integration/     # 3 tests (live_to_store, backfill_patch, paper_positions)
-    └── api/             # 2 tests (rest_smoke, ws_smoke)
-```
+| Mètode | Path | Descripció |
+|--------|------|------------|
+| GET | `/health` | Health check |
+| GET | `/mode` | Mode (inclou `market_data_env`) |
+| GET | `/venues` | Venues disponibles |
+| GET | `/pairs` | Pairs (requereix `venue`) |
+| GET | `/price/latest` | Preu actual |
+| GET | `/candles`, `/ohlcv/{symbol}` | Candles OHLCV 1m |
+| GET | `/balance`, `/positions` | Balance i posicions |
+| POST | `/orders/open` | Obrir posició (JSON body) |
+| POST | `/orders/close` | Tancar posició (JSON body) |
 
-**Docs:**
-- [AGENTS_ARQUITECTURA.md](AGENTS_ARQUITECTURA.md) - Pla complet amb roadmap per fases
-- [ESTAT.md](ESTAT.md) - Estat detallat del projecte + què falta
-
----
-
-## 🚀 API Endpoints
-
-### Core
-- `GET /health` - Health check
-- `GET /mode` - Mode info (live/paper/backtest)
-
-### Market Data
-- `GET /ohlcv/{symbol}?tf=1m&since=...&to=...&limit=...` - OHLCV amb gap validation
-  - Returns candles amb `is_complete` flag
-  - TZ canònica: America/New_York
-
-### Trading (Paper mode)
-- `POST /positions` - Open position (idempotent via `client_order_id`)
-- `GET /positions` - List open positions amb unrealized PnL
-- `DELETE /positions/{position_id}` - Close position (idempotent)
-- `PATCH /positions/{position_id}/sl` - Update stop loss
-- `PATCH /positions/{position_id}/tp` - Update take profit
-- `GET /balance` - Account balance + margin usage
-
-### WebSocket (Real-time streaming)
-- `WS /ws` - Real-time streaming with subscribe/unsubscribe
-  - Channels: `ticker:SYMBOL`, `candle:SYMBOL:1m`, `positions`, `balance`, `execution`
-  - Protocol: subscribe, unsubscribe, resume (with seq/resync)
-  - All broadcast messages include sequence numbers
-  - Automatic position/balance events on paper trades
-
----
-
-## 💰 Fee Model (Paper Trading)
-
-**Actual (Fase 4.5) - gTrade Official Fees:**
-
-| Asset  | Spread | Open Fee | Close Fee | Total Cost |
-|--------|--------|----------|-----------|------------|
-| EURUSD | 0.01%  | 0.012%   | 0.012%    | ~0.034%    |
-| XAUUSD | 0.01%  | 0.05%    | 0.05%     | ~0.11%     |
-
-**Fee breakdown API response:**
+**Exemple POST /orders/open:**
 ```json
 {
-  "fees_breakdown": {
-    "spread_cost": 1.00,
-    "open_fee": 5.00,
-    "price_impact_cost": 0.0,
-    "total_entry_cost": 6.00
-  }
+  "venue": "lighter",
+  "symbol": "ETH",
+  "side": "long",
+  "collateral": 100,
+  "leverage": 20,
+  "sl_price": null,
+  "tp_price": null
 }
 ```
 
-**PnL tracking:**
-- `pnl_gross`: Price movement only (before fees)
-- `pnl_net`: Realized PnL (after all fees)
+---
 
-Fees calculats sobre `position_size = collateral × leverage`
+## Quick Start
 
-**Borrowing fees & Dynamic Spread:** Placeholder (0.0) - implementació a Fase 6 amb real OI data
+```bash
+# Tests
+./test.sh testing/run_all.py
 
-**Fonts:**
-- https://docs.gains.trade/developer/integrators/guides/calculating-borrowing-fees
-- https://docs.gains.trade/developer/integrators/price-feed
+# Iniciar servei (Docker)
+docker compose up -d brokerage
+
+# Health
+curl http://localhost:8000/api/v1/broker/health
+
+# Mode (inclou market_data_env)
+curl http://localhost:8000/api/v1/broker/mode
+
+# Candles
+curl "http://localhost:8000/api/v1/broker/ohlcv/XAUUSD?limit=10"
+```
 
 ---
 
-## 🛠️ Usage
-
-### Quick Start
+## Configuració (.env)
 
 ```bash
-# Run tests
-./test.sh testing/run_all.py
+MODE=paper
+VENUE=lighter                    # lighter | gtrade
 
-# Start service (paper mode, backtest data)
-docker-compose up -d
-
-# Health check
-curl http://localhost:8000/api/v1/health
-
-# Get OHLCV
-curl "http://localhost:8000/api/v1/ohlcv/XAUUSD?limit=10"
-
-# Open position (paper)
-curl -X POST http://localhost:8000/api/v1/positions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "client_order_id": "test_001",
-    "symbol": "XAUUSD",
-    "side": "buy",
-    "collateral": 1000,
-    "leverage": 10,
-    "sl_price": 2650,
-    "tp_price": 2750
-  }'
-```
-
-### Configuration (.env)
-
-```bash
-# Mode
-MODE=paper                        # live | paper | backtest
-VENUE=gtrade
-SYMBOLS=XAUUSD,EURUSD
+# PAPER mainnet-data (Freqtrade)
+MARKET_DATA_ENV=mainnet          # mainnet | testnet
+ENABLE_LIVE_TRADING=0            # kill switch (paper sempre 0)
 
 # Storage
 CANONICAL_TZ=America/New_York
-DATAFILES_ROOT=./datafiles
-
-# Backfill
-BACKFILL_INTERVAL_SECONDS=600     # 10 minutes
-CORRECTIVE_WINDOW_MINUTES=5
-
-# Paper trading
-PAPER_INITIAL_BALANCE=10000       # USDC
-PAPER_SLIPPAGE_BPS=5              # 5 basis points
-PAPER_FEE_BPS=6                   # 0.06%
-
-# Live mode (Fase 6 - future)
-# ARBITRUM_RPC_URL=https://arb1.arbitrum.io/rpc
-# GTRADE_PRIVATE_KEY=...
+DATAFILES_ROOT=/datafiles
+SYMBOLS=XAUUSD,EURUSD
 ```
 
 ---
 
-## 🧪 Testing
-
-**Philosophy:** Simple Python scripts (NO pytest)
+## Comandes operatives
 
 ```bash
-# Run all tests
-./test.sh testing/run_all.py
+# Smoke (mock 5s)
+docker compose run --rm brokerage python3 -m application.smoke --venue mock --mode PAPER --seconds 5
 
-# Run specific test
-./test.sh testing/unit/test_idempotency.py
-./test.sh testing/integration/test_paper_positions_flow.py
+# Smoke 3× (lighter, 120s)
+docker compose run --rm brokerage python3 -m application.smoke --venue lighter --mode PAPER --seconds 120 --repeat 3 --pause-s 5
+
+# Soak 10 min
+./scripts/soak_smoke.sh
+# o 15 min: ./scripts/soak_smoke.sh 900
+
+# E2E trade (paper testnet)
+docker compose run --rm brokerage python3 -m application.e2e_trade \
+  --venue lighter --mode PAPER --symbol ETH --collateral 100 --leverage 20 \
+  --settle-timeout-s 120 --poll-s 2
 ```
 
-**Test suites:**
-- Unit: 6 tests (store, validator, builder, provider, idempotency, cost_model)
-- Integration: 3 tests (live_to_store, backfill_patch, paper_positions)
-- API: 2 tests (rest_smoke, ws_smoke)
+---
 
-**Total: 11/11 passing ✅**
+## Arquitectura
+
+```
+BrokerageService/
+├── application/         # FastAPI, broker_routes, smoke, e2e
+├── domain/              # models, interfaces (IVenueAdapter, ICandleStore)
+├── infrastructure/
+│   ├── storage/         # CSVCandleStore, GapValidator
+│   ├── venues/
+│   │   ├── lighter/     # LighterVenueAdapter, market data, price feed
+│   │   └── gtrade/      # gTrade adapter (paper-ready)
+│   ├── execution/       # PaperExecutionEngine
+│   └── ws/              # WebSocketHub
+├── foundation/          # logging, lifecycle
+├── scripts/             # soak_smoke.sh, etc.
+└── testing/             # unit, integration, api
+```
 
 ---
 
-## 📈 Roadmap
+## Testing
 
-### ✅ Completat
-- Fase 1: Storage + Gap validation
-- Fase 2: CandleBuilder + Live ingestion
-- Fase 3: Backfill scheduler
-- Fase 4: Paper trading + Idempotency
-- Fase 4.5: CostModel oficial gTrade
-- Fase 5: WebSocket Hub + Real-time broadcasting
+```bash
+./test.sh testing/run_all.py
+```
 
-### 🔜 Pròximes Fases
-
-**Fase 6** - gTrade Live Adapter
-- WS price feed integration (`wss://backend-arbitrum.gains.trade`)
-- Smart contract execution (Arbitrum)
-- Borrowing fees amb real OI data
-- SDK integration (`@gainsnetwork/sdk`)
-- Esforç: Alt (4-5h)
+- **Unit:** 44 tests (store, lighter, gtrade, broker_api, mode_market_data_env, etc.)
+- **Integration:** Lighter adapter, flows, backfill
+- **API:** REST smoke, WS smoke
 
 ---
 
-## 📚 Documentation
+## Documentació
 
-- [AGENTS_ARQUITECTURA.md](AGENTS_ARQUITECTURA.md) - Complete architecture plan
-- [ESTAT.md](ESTAT.md) - Current project state + pending tasks
-- [testing/README.md](testing/README.md) - Testing documentation
-
-**External:**
-- [gTrade Developer Docs](https://docs.gains.trade/developer/integrators/backend)
-- [gTrade Price Feed](https://docs.gains.trade/developer/integrators/price-feed)
-- [Calculating Borrowing Fees](https://docs.gains.trade/developer/integrators/guides/calculating-borrowing-fees)
+- [AGENTS_ARQUITECTURA.md](AGENTS_ARQUITECTURA.md) — Referència d’arquitectura, contracte API, invariants
+- [ESTAT.md](ESTAT.md) — Estat del projecte, evidència, backlog
+- [docs/SAFETY_RUNBOOK.md](docs/SAFETY_RUNBOOK.md) — Runbook operatiu, soak, E2E
+- [testing/README.md](testing/README.md) — Testing
 
 ---
 
-## 🤝 Contributing
+## Contribuir
 
-Per afegir noves features:
-1. Llegir [AGENTS_ARQUITECTURA.md](AGENTS_ARQUITECTURA.md) per entendre el pla
-2. Implementar feature seguint principis SOLID + DI minimalista
-3. Afegir tests (unit + integration si aplica)
-4. Actualitzar [ESTAT.md](ESTAT.md) amb canvis
-5. Executar `./test.sh testing/run_all.py` per validar
+1. Llegir [AGENTS_ARQUITECTURA.md](AGENTS_ARQUITECTURA.md)
+2. Implementar seguint principis SOLID + DI minimalista
+3. Afegir tests
+4. Actualitzar [ESTAT.md](ESTAT.md)
+5. Executar `./test.sh testing/run_all.py`
 
 ---
 
-## 📄 License
+## Llicència
 
 MIT
