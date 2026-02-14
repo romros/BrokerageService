@@ -64,6 +64,11 @@
 | **WS Soak 15 min MAINNET EURUSD** (Lighter real) | ✅ candles=15 status=OK missing_minutes=0 | `datafiles/ws_soak/20260214_071609_ws_soak_15m_mainnet.log` |
 | **P1.1 SL/TP idempotència** | ✅ test_sltp_idempotency, test_lighter_adapter_sltp (8 tests) | reducció risc duplicació SL/TP en retries/restarts |
 | **P1.2 maker-first close** | ✅ test_close_maker_first (4 unit), test_close_position_maker_fallback_positions_after_zero (integration) | millor control de sortida i menys risc de slippage en closes |
+| **PAPER DONE handshake** | ✅ freqtrade_runner.py, test_freqtrade_runner_short (skip si no .env) | Freqtrade-first: candles + price + open/close via HTTP, positions_after=0 |
+| **GET /positions + PnL** | ✅ mark_price, unrealized_pnl a PositionItem | Veure com va la posició des de l'API sense calcular manualment |
+| **freqtrade_runner position_pnl** | ✅ --position-poll-s 30 (per defecte) | Cada 30s consulta GET /positions i loga mark_price, unrealized_pnl |
+| **freqtrade_runner closed_pnl** | ✅ després del close | GET /trades → close trade → calcula realized_pnl ($ i %) per comparar amb web; fix Lighter market_id→symbol |
+| **Evidència testnet PAPER** | ✅ múltiples runs 15 min | freqtrade_runner ETH 15m: open→position_pnl cada 30s→close→positions_after=0. Trade History web: PnL verificat ($3.80, -$3.26, $2.29) coincideix amb càlcul (open_price, close_price, size). Logs: `datafiles/freqtrade_runs/20260214_*_ETH_15m.log` |
 
 **2026-02-13**
 
@@ -87,6 +92,12 @@
 # P1.2 maker-first close (unit + integration)
 ./test.sh testing/unit/test_close_maker_first.py
 ./test.sh testing/integration/test_lighter_adapter_close.py
+
+# PAPER DONE handshake (requereix broker + pipeline; test skip si no Lighter .env)
+./test.sh testing/integration/test_freqtrade_runner_short.py
+# Broker ha d'estar en marxa amb VENUE=lighter (adapter per open/close)
+VENUE=lighter docker compose up -d brokerage
+docker compose run --rm brokerage python3 -m application.tools.freqtrade_runner --venue lighter --mode PAPER --symbol ETH --minutes 15
 
 # Smoke (Docker)
 docker compose run --rm brokerage python3 -m application.smoke --venue mock --mode PAPER --seconds 5
@@ -138,6 +149,7 @@ docker compose run --rm brokerage python3 -m application.tools.ws_soak \
 * ~~Coding standards~~ ✅ constants canòniques (foundation/config, error_codes), zero hardcode a broker_routes (AGENTS §2.4)
 * ~~idempotència SL/TP (si cal)~~ ✅ P1.1 DONE — idempotency key, persistència order indices, cancel no-op, logs sltp_*
 * ~~maker-first close (opcional)~~ ✅ P1.2 DONE — limit reduce-only + timeout + fallback market; logs close_path/close_final; millor control de sortida i menys risc de slippage
+* ~~PAPER DONE handshake~~ ✅ freqtrade_runner.py (client HTTP pur) + test_freqtrade_runner_short; AGENTS §2.6
 
 ### P2
 

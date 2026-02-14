@@ -117,6 +117,7 @@ def main():
         testing_dir / "integration" / "test_lighter_adapter_open.py",
         testing_dir / "integration" / "test_lighter_adapter_close.py",
         testing_dir / "integration" / "test_lighter_adapter_sltp.py",  # M2 SL/TP + Balance
+        testing_dir / "integration" / "test_freqtrade_runner_short.py",  # PAPER DONE handshake
 
         # API smoke tests
         testing_dir / "api" / "test_rest_smoke.py",

@@ -30,6 +30,8 @@ services:
       # API
       - HOST=0.0.0.0
       - PORT=8000
+      # Broker URL per tools (freqtrade_runner, ws_soak): des de dins Docker = brokerage:8000
+      - BROKER_URL=${BROKER_URL:-http://brokerage:8000}
 
       # Logging
       - LOG_LEVEL=${LOG_LEVEL:-INFO}

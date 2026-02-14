@@ -141,6 +141,8 @@ class PositionItem(BaseModel):
     notional: float
     open_price: float
     entry_time: str
+    mark_price: Optional[float] = None  # Preu actual (per PnL)
+    unrealized_pnl: Optional[float] = None  # PnL no realitzat en USD
 
 
 class PositionsResponse(BaseModel):
@@ -319,11 +321,20 @@ async def get_balance(venue: str = Query(...)):
 
 @router.get("/positions", response_model=PositionsResponse)
 async def get_positions(venue: str = Query(...)):
-    """Posicions obertes."""
+    """Posicions obertes amb mark_price i unrealized_pnl."""
     adapter = _get_adapter_or_http_error(venue)
     try:
         positions = await adapter.get_open_positions()
-        return _map_positions_response(venue, positions)
+        # Obtenir mark price per cada símbol únic (best-effort)
+        mark_prices: dict[str, float] = {}
+        for p in positions:
+            if p.symbol not in mark_prices:
+                try:
+                    px = await adapter.get_latest_price(p.symbol)
+                    mark_prices[p.symbol] = px.mid
+                except Exception as e:
+                    logger.warning("get_positions: no mark price for %s: %s", p.symbol, e)
+        return _map_positions_response(venue, positions, mark_prices)
     except Exception as e:
         logger.error("get_positions %s: %s", venue, e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -480,18 +491,30 @@ def _map_balance_response(bal: Any) -> BalanceResponse:
     )
 
 
-def _map_positions_response(venue: str, positions: list) -> PositionsResponse:
-    """Mapa llista Position domain a PositionsResponse."""
-    items = [
-        PositionItem(
-            position_id=f"{venue}:{p.pair_id}",
-            symbol=p.symbol,
-            side="LONG" if p.is_long else "SHORT",
-            size=(p.notional or 0) / (p.open_price or 1),
-            notional=p.notional or 0,
-            open_price=p.open_price,
-            entry_time=p.open_time.isoformat() if p.open_time else "",
+def _map_positions_response(venue: str, positions: list, mark_prices: Optional[dict[str, float]] = None) -> PositionsResponse:
+    """Mapa llista Position domain a PositionsResponse amb mark_price i unrealized_pnl."""
+    mark_prices = mark_prices or {}
+    items = []
+    for p in positions:
+        size = (p.notional or 0) / (p.open_price or 1)
+        mark_price = mark_prices.get(p.symbol)
+        unrealized_pnl: Optional[float] = None
+        if mark_price is not None and p.open_price:
+            if p.is_long:
+                unrealized_pnl = (mark_price - p.open_price) * size
+            else:
+                unrealized_pnl = (p.open_price - mark_price) * size
+        items.append(
+            PositionItem(
+                position_id=f"{venue}:{p.pair_id}",
+                symbol=p.symbol,
+                side="LONG" if p.is_long else "SHORT",
+                size=size,
+                notional=p.notional or 0,
+                open_price=p.open_price,
+                entry_time=p.open_time.isoformat() if p.open_time else "",
+                mark_price=mark_price,
+                unrealized_pnl=unrealized_pnl,
+            )
         )
-        for p in positions
-    ]
     return PositionsResponse(positions=items)

@@ -357,6 +357,17 @@ class LighterVenueAdapter(IVenueAdapter):
             )
         return market_id
 
+    def _market_id_to_symbol(self, market_id: int) -> Optional[str]:
+        """Reverse lookup: market_id → symbol (normalitzat)."""
+        for sym, mid in self._config.markets.items():
+            if mid == market_id:
+                return normalize_symbol(sym)
+        if isinstance(self._market_data_client, LighterMarketDataClient) and self._market_data_client._symbol_to_market_id:
+            for sym, mid in self._market_data_client._symbol_to_market_id.items():
+                if mid == market_id:
+                    return normalize_symbol(sym)
+        return None
+
     async def get_latest_price(self, symbol: str) -> PriceData:
         """
         Get current price for symbol
@@ -968,13 +979,20 @@ class LighterVenueAdapter(IVenueAdapter):
             return []
         raw_trades = getattr(resp, "trades", None) or []
         fills: List[TradeFill] = []
+        market_id_for_symbol: Optional[int] = None
+        if symbol:
+            try:
+                market_id_for_symbol = await self._resolve_market_id(symbol)
+            except Exception:
+                pass
         for t in raw_trades:
             try:
-                fill = self._map_trade_to_fill(t)
+                fill = self._map_trade_to_fill(t, market_id_for_symbol)
                 if fill is None:
                     continue
-                if symbol and normalize_symbol(fill.symbol) != normalize_symbol(symbol):
-                    continue
+                if symbol:
+                    if normalize_symbol(fill.symbol) != normalize_symbol(symbol) and fill.symbol != str(market_id_for_symbol or ""):
+                        continue
                 if since and fill.timestamp and fill.timestamp < since:
                     continue
                 if to and fill.timestamp and fill.timestamp >= to:
@@ -984,12 +1002,15 @@ class LighterVenueAdapter(IVenueAdapter):
                 logger.debug("get_trade_history: skip trade %s: %s", t, ex)
         return fills[:limit]
 
-    def _map_trade_to_fill(self, t: Any) -> Optional[TradeFill]:
+    def _map_trade_to_fill(self, t: Any, market_id_for_symbol: Optional[int] = None) -> Optional[TradeFill]:
         """Map Lighter trade object to TradeFill. Returns None if unmappable."""
         trade_id = str(getattr(t, "trade_id", None) or getattr(t, "id", None) or getattr(t, "order_index", "") or "")
         sym = str(getattr(t, "symbol", None) or getattr(t, "market_id", "") or "")
         if not sym and hasattr(t, "market_id"):
             sym = str(t.market_id)
+        # Resoldre market_id a symbol quan el filtre ho demana (Lighter retorna market_id, no symbol)
+        if sym.isdigit() and market_id_for_symbol is not None and int(sym) == market_id_for_symbol:
+            sym = self._market_id_to_symbol(market_id_for_symbol) or sym
         price = float(getattr(t, "price", 0) or getattr(t, "avg_execution_price", 0) or 0)
         size_str = str(getattr(t, "base_amount", 0) or getattr(t, "size", 0) or getattr(t, "remaining_base_amount", 0) or "0")
         try:

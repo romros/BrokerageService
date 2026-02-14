@@ -67,7 +67,7 @@ docker compose run --rm brokerage python3 -m application.e2e_trade \
 ```
 `force_close_remaining` ja implementat: si timeout, tanca posicions restants i retry.
 
-**Validar:** Output `positions_after=0`; o consultar `GET /api/v1/broker/positions?venue=lighter`.
+**Validar:** Output `positions_after=0`; o consultar `GET /api/v1/broker/positions?venue=lighter`. Per verificar PnL vs web: comparar `closed_pnl` del log amb Trade History (testnet.app.lighter.xyz).
 
 ### "Account not found"
 
@@ -120,6 +120,11 @@ docker compose run --rm brokerage python3 -m application.tools.ws_preflight \
 
 # Manual amb log-path explícit:
 docker compose run --rm brokerage python3 -m application.smoke --venue lighter --mode PAPER --seconds 600 --log-path /datafiles/smoke_runs/soak_$(date +%Y%m%d_%H%M%S).log
+
+# Freqtrade runner 15 min (PAPER testnet, position_pnl cada 30s, closed_pnl al final)
+VENUE=lighter docker compose up -d brokerage
+docker compose run --rm brokerage python3 -m application.tools.freqtrade_runner --venue lighter --mode PAPER --symbol ETH --minutes 15
+# Log: datafiles/freqtrade_runs/<ts>_ETH_15m.log. Verificar PnL vs Trade History web.
 
 # E2E 1 run
 docker compose run --rm brokerage python3 -m application.e2e_trade \
