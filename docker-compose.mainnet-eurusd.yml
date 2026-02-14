@@ -1,0 +1,10 @@
+# Override per WS soak MAINNET amb EURUSD/XAU (Lighter té forex i metalls)
+# Ús: docker compose -f docker-compose.yml -f docker-compose.mainnet.yml -f docker-compose.mainnet-eurusd.yml up -d
+#     ./scripts/soak_ws_mainnet.sh 60
+# Autodetect preferirà EURUSD o XAU si estan als pairs (ordre: ETH, BTC, EURUSD, XAU)
+
+services:
+  brokerage:
+    environment:
+      - SYMBOLS=ETH,BTC,EURUSD,XAU
+      - LIGHTER_SYMBOLS=ETH,BTC,EURUSD,XAU

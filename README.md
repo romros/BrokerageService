@@ -1,7 +1,6 @@
-# BrokerageService — Lighter + gTrade
+# BrokerageService — Lighter (principal)
 
-**Venue principal:** **Lighter** (paper-ready + live-hardening complet)  
-**Altres venues:** gTrade (paper-ready; live-hardening pendent)  
+**Venue principal:** **Lighter** — MVP 100% per Lighter. Altres DEX (p.ex. gTrade) s’incorporaran en el futur.  
 **Dissenyat per:** Freqtrade adapter consumption
 
 **Docs:** [AGENTS_ARQUITECTURA.md](AGENTS_ARQUITECTURA.md) · [docs/ESTAT.md](docs/ESTAT.md) · [docs/SAFETY_RUNBOOK.md](docs/SAFETY_RUNBOOK.md)
@@ -10,9 +9,11 @@
 
 ## Overview
 
-Servei de brokerage independent amb **3 modes**:
+Servei de brokerage independent. **MVP 100% Lighter**; altres venues (gTrade, etc.) es podran afegir més endavant.
 
-- **LIVE** — Trading real (Lighter o gTrade)
+**3 modes**:
+
+- **LIVE** — Trading real (Lighter principal; gTrade futur)
 - **PAPER** — Market data real + execució simulada (sense risc)
 - **BACKTEST** — Simulació amb dades històriques (pipeline pendent)
 
@@ -30,7 +31,7 @@ Servei de brokerage independent amb **3 modes**:
 - ✅ **44 tests** passa; smoke 3× + e2e 3× + **soak 10 min** OK
 - ✅ **Broker API canònica** POST body únic per ordres
 - ✅ **Freqtrade P0** PAPER mainnet-data
-- 🟡 **gTrade**: paper OK; mainnet hardening pendent
+- 🟡 **gTrade**: existent (paper OK); no prioritzat per MVP; s’incorporarà en el futur
 - ⛔ **Backtest**: pendent
 
 ---
@@ -133,8 +134,8 @@ BrokerageService/
 ├── infrastructure/
 │   ├── storage/         # CSVCandleStore, GapValidator
 │   ├── venues/
-│   │   ├── lighter/     # LighterVenueAdapter, market data, price feed
-│   │   └── gtrade/      # gTrade adapter (paper-ready)
+│   │   ├── lighter/     # Principal: LighterVenueAdapter, market data, price feed
+│   │   └── gtrade/      # Futur: gTrade adapter (paper-ready, no prioritzat MVP)
 │   ├── execution/       # PaperExecutionEngine
 │   └── ws/              # WebSocketHub
 ├── foundation/          # logging, lifecycle

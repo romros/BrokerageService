@@ -100,6 +100,13 @@ DEFAULT_TICKER_BROADCAST_MS = 200  # Ticker throttle interval (ms)
 USE_FAKE_PRICE_FEED_ENV = "USE_FAKE_PRICE_FEED"
 DEFAULT_FAKE_TICK_INTERVAL_MS = 500  # Fast ticks for integration tests
 
+# WS Soak (P2.2 mainnet)
+WS_SOAK_SYMBOLS_ENV = "WS_SOAK_SYMBOLS"
+WS_SOAK_SECONDS_ENV = "WS_SOAK_SECONDS"
+DEFAULT_WS_SOAK_SECONDS = 900  # 15 min
+PREFERRED_SOAK_SYMBOLS = ("ETH", "BTC", "EURUSD", "XAU")  # Lighter (crypto + forex/metals)
+PREFERRED_SOAK_SYMBOLS_GTRADE = ("EURUSD", "XAUUSD")  # gTrade forex/metals
+
 # ============================================
 # BUSINESS LOGIC THRESHOLDS
 # ============================================

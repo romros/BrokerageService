@@ -11,11 +11,11 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all scripts
-COPY *.py ./
+# Copy scripts
+COPY scripts/ ./scripts/
 
 # Make scripts executable
-RUN chmod +x *.py
+RUN chmod +x scripts/*.py
 
 # Keep container alive for testing
 CMD ["tail", "-f", "/dev/null"]

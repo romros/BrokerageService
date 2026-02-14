@@ -60,6 +60,7 @@ def main():
     tests = [
         # Unit tests - Core
         testing_dir / "unit" / "test_candle_store.py",
+        testing_dir / "unit" / "test_candle_semantics.py",  # AGENTS §5.1 interval [ts, ts+60)
         testing_dir / "unit" / "test_gap_validator.py",
         testing_dir / "unit" / "test_candle_builder.py",
         testing_dir / "unit" / "test_backfill_provider.py",

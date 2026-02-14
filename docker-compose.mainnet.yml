@@ -1,0 +1,14 @@
+# Override per WS soak MAINNET (real feed, sense fake)
+# Requereix: .env amb LIGHTER_L1_ADDRESS, LIGHTER_L1_PRIVATE_KEY, LIGHTER_API_PRIVATE_KEY
+# Us: docker compose -f docker-compose.yml -f docker-compose.mainnet.yml up -d
+#     ./scripts/soak_ws_mainnet.sh 900
+
+services:
+  brokerage:
+    environment:
+      - VENUE=lighter
+      - MODE=paper
+      - MARKET_DATA_ENV=mainnet
+      - USE_FAKE_PRICE_FEED=0
+      - SYMBOLS=ETH,BTC
+      - LIGHTER_SYMBOLS=ETH,BTC

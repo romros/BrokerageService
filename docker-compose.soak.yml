@@ -1,0 +1,11 @@
+# Override per WS soak: pipeline candles actiu (fake feed, sense xarxa)
+# Ús: docker compose -f docker-compose.yml -f docker-compose.soak.yml up -d
+#     ./scripts/soak_ws.sh 900
+
+services:
+  brokerage:
+    environment:
+      - VENUE=lighter
+      - MODE=paper
+      - USE_FAKE_PRICE_FEED=1
+      - SYMBOLS=ETH,BTC

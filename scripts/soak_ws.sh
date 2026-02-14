@@ -5,10 +5,11 @@
 # Ús:
 #   ./scripts/soak_ws.sh           # 15 min (900s)
 #   ./scripts/soak_ws.sh 900       # 15 min
-#   ./scripts/soak_ws.sh 120       # 2 min (test curt)
+#   ./scripts/soak_ws.sh 60        # 1 min (test curt)
 #
-# Requereix: broker corrent (docker compose up) amb VENUE=lighter MODE=paper
-# Opcional: USE_FAKE_PRICE_FEED=1 per soak sense xarxa.
+# Broker amb pipeline candles (ETH,BTC):
+#   docker compose -f docker-compose.yml -f docker-compose.soak.yml up -d
+#   ./scripts/soak_ws.sh 900
 #
 # Recorda: docker compose build brokerage si has canviat codi.
 
@@ -19,6 +20,7 @@ PROJECT_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 
 DURATION_S=${1:-900}   # default 15 min (900s)
 MINUTES=$((DURATION_S / 60))
+if [ "$MINUTES" -lt 1 ]; then MINUTES=1; fi
 TS=$(date +%Y%m%d_%H%M%S)
 LOG_PATH="/datafiles/ws_soak/${TS}_ws_soak_${MINUTES}m.log"
 LOG_HOST="${PROJECT_ROOT}/datafiles/ws_soak/${TS}_ws_soak_${MINUTES}m.log"
@@ -27,14 +29,14 @@ echo "WS Soak: ${DURATION_S}s (~${MINUTES} min)"
 echo "Log (host): ${LOG_HOST}"
 echo ""
 echo "--- Instruccions ---"
-echo "  Broker ha d'estar en marxa: docker compose up (o docker compose run brokerage ...)"
-echo "  WS URL: ws://localhost:8000/api/v1/ws (o ws://brokerage:8000 des de dins xarxa)"
+echo "  Broker amb pipeline candles (ETH):"
+echo "    docker compose -f docker-compose.yml -f docker-compose.soak.yml up -d"
+echo "  Test ràpid (60s): ./scripts/soak_ws_quick.sh"
 echo "  OK si: WS_SOAK_RESULT status=OK, candles>=1, reconnects<=allow, max_gap_s<=120"
 echo "  Seguir log: tail -f ${LOG_HOST}"
 echo ""
 
-mkdir -p "${PROJECT_ROOT}/datafiles/ws_soak"
-
+# El directori ws_soak es crea dins el container (ws_soak.py) — evita Permission denied al host
 # Des de dins Docker (docker compose run): connectar al broker = brokerage:8000
 # Des de host (python directe): localhost:8000
 WS_URL="${WS_SOAK_URL:-ws://brokerage:8000/api/v1/ws}"

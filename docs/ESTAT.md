@@ -1,8 +1,8 @@
 # ESTAT DEL PROJECTE — BrokerageService
 
-**Data:** 2026-02-13  
+**Data:** 2026-02-14  
 **Repo/Path:** `/mnt/volume-SQ/dev/BrokerageService`  
-**Venues:** **Lighter (principal)** · gTrade (existent)  
+**Venues:** **Lighter (principal — MVP 100%)** · gTrade (futur)  
 **TZ canònica (config):** `CANONICAL_TZ=America/New_York`  
 **TZ container (runtime/logs):** `TZ=America/New_York`  
 **Doc referència:** [AGENTS_ARQUITECTURA.md](../AGENTS_ARQUITECTURA.md)  
@@ -20,16 +20,16 @@
 - ✅ **49 tests** passa (unit + integration mock + API smoke localhost); inclou `test_ws_preflight_contract` (P2.0), `test_ws_preflight_integration_real` (P2.0.1), `test_ws_soak_short` (P2.1)
 - ✅ **Broker API canònic** `/api/v1/broker/*` (POST body únic per ordres) — AGENTS §3
 - ✅ **Freqtrade P0** PAPER mainnet-data: `MARKET_DATA_ENV`, `ENABLE_LIVE_TRADING`, wiring Lighter/gTrade, `GET /mode` → `market_data_env`
-- 🟡 **gTrade**: paper OK; mainnet hardening pendent
+- 🟡 **gTrade**: existent (paper OK); no prioritzat MVP; futur
 - ⛔ **Backtest**: pendent
 
-**DONE (sanity):** `run_all` OK + smoke 3× OK + e2e 3× OK (paper testnet) + **soak 10 min** OK
+**DONE (sanity):** `run_all` OK + smoke 3× OK + e2e 3× OK (paper testnet) + **soak 10 min** OK + **WS soak 15 min** OK + **WS soak 15 min MAINNET EURUSD** OK (via Lighter feed real)
 
 ---
 
 ## PROGRÉS (vs objectiu final d'arquitectura)
 
-> Objectiu final (AGENTS_ARQUITECTURA): servei amb **3 modes (LIVE/PAPER/BACKTEST)**, **API canònica**, pipeline de dades 1m, venues (Lighter principal + gTrade), qualitat (tests + evidència real), i hardening operatiu.
+> Objectiu final (AGENTS_ARQUITECTURA): servei amb **3 modes (LIVE/PAPER/BACKTEST)**, **API canònica**, pipeline de dades 1m. **MVP 100% Lighter**; altres DEX (gTrade, etc.) s’incorporaran en el futur.
 
 ### Global
 - **Core (PAPER + API + qualitat): 85%**
@@ -47,7 +47,7 @@
 | gTrade (PAPER) | infra/harness paper estable | ✅ | 80% |
 | gTrade (LIVE) | mainnet hardening (fees/reconcile/monitoring) | 🟡 | 30% |
 | Backtest mode | lectura dataset + exec engine + controls | ⛔ | 0–10% |
-| Operativa / Runbook | safety runbook, soak 10 min, tuning | ✅ | 40% |
+| Operativa / Runbook | safety runbook, soak 10 min, WS soak 15 min, tuning | ✅ | 50% |
 
 > Nota: els % són "de producte" (completitud + evidència), no només "codi escrit".
 
@@ -55,14 +55,21 @@
 
 ## Evidència recent
 
-**2026-02-13**
+**2026-02-14**
 
 | Run | Resultat | Log |
 |-----|----------|-----|
 | `testing/run_all.py` | ✅ 49 passed | — |
+| **WS Soak 15 min** (fake feed) | ✅ candles=15 status=OK | `datafiles/ws_soak/20260214_011714_ws_soak_15m.log` |
+| **WS Soak 15 min MAINNET EURUSD** (Lighter real) | ✅ candles=15 status=OK missing_minutes=0 | `datafiles/ws_soak/20260214_071609_ws_soak_15m_mainnet.log` |
+
+**2026-02-13**
+
+| Run | Resultat | Log |
+|-----|----------|-----|
 | Smoke 3× (lighter, 120s) | ✅ ok=3 failed=0 | `datafiles/smoke_runs/2026-02-13_154710_lighter_3x.log` |
 | E2E trade 3× (ETH, 100 USDC, 20x) | ✅ positions_after=0 | `datafiles/e2e_runs/2026-02-13_*_lighter_ETH.log` |
-| **Soak 10 min** (lighter, PAPER) | ✅ status=OK failed=0 | `datafiles/smoke_runs/soak_20260213_212644.log` |
+| Soak 10 min (lighter, PAPER) | ✅ status=OK failed=0 | `datafiles/smoke_runs/soak_20260213_212644.log` |
 
 ---
 
@@ -89,10 +96,22 @@ docker compose run --rm brokerage python3 -m application.e2e_trade \
 # o 15 min: ./scripts/soak_smoke.sh 900
 
 # WS Soak (P2.1): 15 min, valida pipeline candles via WS
-# Requereix: broker corrent (docker compose up)
+# Broker amb pipeline: docker compose -f docker-compose.yml -f docker-compose.soak.yml up -d
 ./scripts/soak_ws.sh        # 15 min
 ./scripts/soak_ws.sh 900    # 15 min
-./scripts/soak_ws.sh 120    # 2 min (test curt)
+./scripts/soak_ws_quick.sh  # test ràpid 60s
+
+# WS Soak MAINNET (P2.2): 15 min, Lighter real feed
+# Requereix: .env amb credencials Lighter
+./scripts/soak_ws_mainnet.sh        # 15 min
+./scripts/soak_ws_mainnet.sh 900    # 15 min
+
+# WS Soak: OHLCV visible al log (O, H, L, C, V per candle)
+# Per EURUSD/XAU (Lighter): docker-compose.mainnet-eurusd.yml + --topic candle:EURUSD:1m
+docker compose run --rm brokerage python3 -m application.tools.ws_soak \
+  --minutes 1 --autodetect-symbols --venue lighter   # Lighter (ETH/BTC)
+docker compose run --rm brokerage python3 -m application.tools.ws_soak \
+  --minutes 1 --topic candle:EURUSD:1m              # EURUSD (si broker té pipeline gTrade)
 ```
 
 ---
@@ -120,7 +139,8 @@ docker compose run --rm brokerage python3 -m application.e2e_trade \
 * ~~Soak 10 min~~ ✅ soak_20260213_212644.log (10 ticks, status=OK)
 * ~~P2.0 WS Soak Preflight~~ ✅ pipeline al lifespan (VENUE=lighter, MODE in paper/live), ws_preflight.py, test_ws_preflight_contract
 * ~~P2.0.1 Fake price feed + WS preflight integració~~ ✅ USE_FAKE_PRICE_FEED=1, test_ws_preflight_integration_real (broker real, fake feed, sense xarxa)
-* ~~Soak WS 15 min / telemetria (P2.1)~~ ✅ ws_soak.py, scripts/soak_ws.sh, test_ws_soak_short, WS_SOAK_RESULT/SUMMARY
+* ~~Soak WS 15 min / telemetria (P2.1)~~ ✅ ws_soak.py, scripts/soak_ws.sh, docker-compose.soak.yml, evidència 20260214_011714 (15 candles, status=OK)
+* ~~P2.2 WS soak 15 min mainnet (real feed)~~ ✅ scripts/soak_ws_mainnet.sh, autodetect, EURUSD/XAU (docker-compose.mainnet-eurusd.yml), evidència 20260214_071609
 * Normalització addresses checksum
 
 ---

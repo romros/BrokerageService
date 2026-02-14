@@ -1,9 +1,8 @@
 # AGENTS_ARQUITECTURA.md — BrokerageService (Reference)
 
-**Data:** 2026-02-13  
+**Data:** 2026-02-14  
 **Repo/Path:** `/mnt/volume-SQ/dev/BrokerageService`  
-**Venue principal:** **Lighter** (paper-ready + live-hardening complet)  
-**Altres venues:** gTrade (paper-ready; live-hardening pendent)  
+**Venue principal:** **Lighter** — MVP 100% per Lighter. Altres DEX (p.ex. gTrade) s’incorporaran en el futur.  
 **Modes:** LIVE / PAPER / BACKTEST  
 **Timeframe:** 1m only  
 **TZ canònica (config):** `CANONICAL_TZ=America/New_York` (NY close style)  
@@ -15,11 +14,12 @@
 
 ## 0) TL;DR
 
+- **MVP 100% Lighter:** tot el desenvolupament prioritari és per Lighter; altres DEX (gTrade, etc.) s’incorporaran en el futur
 - ✅ **API Broker canònica** a `broker_routes.py` (prefix `/api/v1/broker`)
 - ✅ **Candles**: candle_store (sense venue), 1m only, OHLCV unificat
 - ✅ **Lighter**: open/close + SL/TP + balance + reconcile + guards + restart-safety + smoke + e2e → **DONE**
 - ✅ **Quality gates**: run_all passa; evidència 3× smoke real + 3× e2e real (paper testnet)
-- 🟡 **gTrade**: paper OK; mainnet hardening pendent
+- 🟡 **gTrade**: existent (paper OK); no prioritzat per MVP; futur
 - ⛔ **Backtest**: pendent
 
 ---
@@ -29,7 +29,7 @@
 1. **Timeframe únic:** `1m`
 2. **Candles sense venue:** `GET /candles` i `GET /ohlcv/{symbol}` venen del `candle_store`
 3. **TZ canònica:** `America/New_York` (rang/particionat, NY close style)
-4. **`ts` canònic:** epoch UTC (start-of-minute); convenció Dukascopy-style — veure §5
+4. **`ts` canònic:** epoch UTC (start-of-minute); interval `[ts, ts+60)`; convenció Dukascopy-like — veure §5.1
 5. **API Broker:** prefix `/api/v1/broker`; decorators sense duplicar `/broker`
 6. **Ordres:** només POST body (`/orders/open`, `/orders/close`); sense query legacy
 7. **Errors:** `{"detail": "...", "code": "..."}` amb 503/422/404
@@ -39,13 +39,25 @@
 
 ## 2) Estat implementat
 
-### Lighter (principal)
-✅ paper-ready · ✅ live-hardening complet · ⛔ backtest pendent  
-Market data, open/close, SL/TP, balance, reconcile, guards, bootstrap, smoke, e2e.
+### 2.0 Symbol universe (venue/env)
 
-### gTrade (existent)
+| Venue / Env | Symbols (market data) | Notes |
+|-------------|------------------------|-------|
+| **Lighter testnet** | ETH, BTC | Limitats |
+| **Lighter mainnet** | ETH, BTC, EURUSD, XAU | Confirmat via soak 15 min + `GET /pairs` (evidència 2026-02-14) |
+| **gTrade** | XAUUSD, EURUSD, etc. | No prioritzat ara |
+
+**Regles:**
+- `GET /pairs?venue=lighter` és la font de veritat del què és suportat.
+- `ws_soak --autodetect-symbols --venue lighter` ha d’usar aquesta font.
+
+### Lighter (principal — MVP 100%)
+✅ paper-ready · ✅ live-hardening complet · ⛔ backtest pendent  
+Market data, open/close, SL/TP, balance, reconcile, guards, bootstrap, smoke, e2e. **Tot el MVP es fa per Lighter.**
+
+### gTrade (existent — futur)
 ✅ paper-ready · 🟡 live-hardening pendent · ⛔ backtest pendent  
-Nota: `openPrice`/oracle zona sensible (veure §10 AGENTS si cal).
+S’incorporarà en el futur; no prioritzat per MVP. Nota: `openPrice`/oracle zona sensible (veure §10 AGENTS si cal).
 
 ### BACKTEST
 Contracte previst, però pipeline no implementada encara.
@@ -82,6 +94,8 @@ Freqtrade es provarà primer en **PAPER**, però amb **market data real de MAINN
 
 ### 2.4 Coding standards (invariants)
 
+Imports sempre a capçalera; zero hardcode (constants a `foundation/config` o locals de mòdul). Excepcions documentades.
+
 #### A) Imports a la capçalera (regla general)
 - Tots els imports han d'anar a la capçalera del fitxer.
 - Prohibit fer imports dins de funcions per estil.
@@ -99,10 +113,10 @@ Freqtrade es provarà primer en **PAPER**, però amb **market data real de MAINN
   3) Config (`foundation/config/...` o `application/config/...`) si pot ser compartit o sobreescrit per env.
 
 **Exemples de què és hardcode no permès:**
-- "America/New_York" repetit a mà en 5 fitxers
-- "1m" i rangs de limit repetits
-- codis d'error repetits
-- llistes de venues ("lighter","gtrade") repetides
+- TZ ("America/New_York") repetit a mà
+- Timeframe ("1m") i rangs de limit repetits
+- Codis d'error repetits
+- Llistes de venues ("lighter","gtrade") repetides
 
 **Exemples permesos:**
 - literals en tests (fixtures)
@@ -234,27 +248,24 @@ Response 200: `{"success": true}`
 - **Format:** `ts,open,high,low,close,volume`; `volume=0` si no existeix
 - **Invariant NO GAPS:** seqüència validada; single-writer + escriptura atòmica
 
-### 5.1 Convenció canònica de candles (Dukascopy-style)
+### 5.1 Candle semantics (1m) — canònic
 
-**Timestamp de candle (`ts`) = start-of-minute (inici del període), en epoch UTC.**
+- **Timeframe:** només 1m
+- **`ts`** és epoch UTC i representa el **start-of-minute** de la candle
+- La candle representa l’interval **`[ts, ts+60s)`**
+- **Close time** = `ts+60` (no inclòs)
+- Una candle és **"tancada/complete"** quan el sistema ja ha passat el boundary `ts+60` i s’ha consolidat l’OHLCV
+- Això és la convenció que fa que l’algorisme sàpiga si està operant sobre l’última candle parcial o sobre l’última candle tancada
 
-Una candle 1m etiquetada amb `ts` representa l'interval:
-
-```
-[ts, ts + 60s)
-```
-
-El "close" és el darrer preu/tick dins l'interval; la candle queda "tancada" quan comença el minut següent.
-
-**Regla d'or per l'algorisme/backtest:** la candle `ts=10:05:00` és "el minut 10:05", no "el minut que acaba a 10:05".
-
-**Exemple (obligatori):**
-- `ts = 2026-02-13 10:05:00Z` → interval `[10:05:00Z, 10:06:00Z)`
+**Exemple clar:**
+- Si `ts=12:34:00`, la candle és de 12:34:00 fins 12:34:59.xxx, i el close és el darrer tick abans de 12:35:00
 - `ts = 1739460300` (epoch) → interval `[1739460300, 1739460360)`
 
 **Implicacions:**
-- No usar timestamps de "close time" (evita off-by-one minute).
-- `since`/`to` en queries han d'interpretar-se respecte el bar start (rang sobre starts).
+- No usar timestamps de "close time" (evita off-by-one minute)
+- `since`/`to` en queries han d’interpretar-se respecte el bar start (rang sobre starts)
+
+**Nota "Dukascopy-like":** aquí vol dir start-of-minute timestamp + interval `[ts, ts+60)` i candle tancada a boundary, no necessàriament el mateix calendari/feeds exactes.
 
 ---
 
@@ -355,15 +366,17 @@ Hora NY i `('EST','EDT')` quan toca → OK.
 
 ## 8) Roadmap curt (no canònic)
 
+- **MVP 100% Lighter:** tot el desenvolupament actual és per Lighter
 - ~~Trade history (IVenueAdapter)~~ ✅ P1 DONE
 - Maker-first close (opcional)
 - Backtest pipeline complet
-- gTrade mainnet hardening
+- **Futur:** gTrade i altres DEX (s’incorporaran després del MVP Lighter)
 
 ---
 
 ## 9) Changelog curt
 
+* 2026-02-14 — MVP 100% Lighter (documentat); Lighter mainnet FX: Symbol universe (§2.0), Candle semantics 1m canònic (§5.1), Dukascopy-like, evidència WS soak EURUSD
 * 2026-02-13 — Unificació API `/api/v1/broker/*`, POST body only, errors consistents, legacy eliminat
 * 2026-02-13 — Lighter M1+M2+M3 complet (smoke + e2e evidència a docs/ESTAT.md)
 * 2026-02-13 — Docker TZ=America/New_York + tzdata + CANONICAL_TZ

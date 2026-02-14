@@ -105,10 +105,18 @@ docker compose run --rm brokerage python3 -m application.tools.ws_preflight \
   --ws-url ws://brokerage:8000/api/v1/ws --symbol ETH --minutes 3
 
 # WS Soak (P2.1): 15 min, valida estabilitat pipeline candles via WS
-# Requereix: broker corrent (docker compose up)
+# Broker amb pipeline (fake feed): docker compose -f docker-compose.yml -f docker-compose.soak.yml up -d
+# Recorda: docker compose build brokerage si has canviat codi
 ./scripts/soak_ws.sh        # 15 min (default)
 ./scripts/soak_ws.sh 900    # 15 min
+./scripts/soak_ws_quick.sh  # test ràpid 60s
 # OK si: WS_SOAK_RESULT status=OK, candles>=1, reconnects<=3, max_gap_s<=120
+
+# WS Soak MAINNET (P2.2): Lighter real feed, 15 min
+# Requereix: .env amb LIGHTER_L1_ADDRESS, LIGHTER_L1_PRIVATE_KEY, LIGHTER_API_PRIVATE_KEY
+./scripts/soak_ws_mainnet.sh        # 15 min
+./scripts/soak_ws_mainnet.sh 900    # 15 min
+# Log: datafiles/ws_soak/<ts>_ws_soak_15m_mainnet.log
 
 # Manual amb log-path explícit:
 docker compose run --rm brokerage python3 -m application.smoke --venue lighter --mode PAPER --seconds 600 --log-path /datafiles/smoke_runs/soak_$(date +%Y%m%d_%H%M%S).log
@@ -132,6 +140,6 @@ docker compose run --rm brokerage python3 -m application.e2e_trade \
 - Smoke 3× (lighter, 120s) → ok=3 failed=0
 - E2E 3× → positions_after=0
 - Soak 10 min → log guardat, sense errors crítics ✅ (evidència: soak_20260213_212644.log)
-- WS Soak 15 min → `./scripts/soak_ws.sh 900` → WS_SOAK_RESULT status=OK
+- WS Soak 15 min → `./scripts/soak_ws.sh 900` → WS_SOAK_RESULT status=OK ✅ (evidència: 20260214_011714_ws_soak_15m.log, 15 candles)
 
 **Referència:** [docs/ESTAT.md](ESTAT.md)
