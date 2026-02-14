@@ -127,6 +127,166 @@ Imports sempre a capçalera; zero hardcode (constants a `foundation/config` o lo
 - `foundation/config/constants.py` — CANONICAL_TIMEZONE_NAME, SUPPORTED_TIMEFRAME, DEFAULT_*_LIMIT, MAX_*_LIMIT, KNOWN_VENUES
 - `application/api/error_codes.py` — codis d'error Broker API
 
+### 2.5 Objectiu final i ordre de lliurament (Roadmap canònic)
+
+> Aquesta secció defineix l'objectiu real del projecte i l'ordre de treball.
+> **No canvia** el contracte actual ni el que ja està implementat; només fixa el "camí".
+
+#### Objectiu final del projecte
+
+Construir un servei únic ("BrokerageService") que permeti:
+
+1. **PAPER (Freqtrade-first)**: paper trading sobre **market data MAINNET** (realista), amb execució paper i contracte d'API estable.
+2. **DATA LAYER**: convertir el servei en una **font fiable de dades 1m** (candles + WS), amb persistència, backfill i garanties d'integritat.
+3. **BACKTEST MODE**: simular el servei "com si fos real" (clock intern), servint candles i executant paper sobre el dataset guardat, a velocitat accelerada.
+
+> Filosofia: primer tanquem "consumer real" (Freqtrade) → després fem "fonament" (data layer) → després fem "simulació" (backtest).
+
+---
+
+### 2.6 Definició "PAPER DONE" (Freqtrade-first)
+
+PAPER no vol dir "testnet". PAPER vol dir **mainnet-data + paper execution**, amb zero tx reals.
+
+**PAPER DONE** quan es compleix:
+
+* **Market data MAINNET**:
+  * WS i/o polling/candles proveeixen **1m closed candles** sense gaps durant una execució prolongada.
+  * `missing_minutes=0` en soak.
+* **Paper execution coherent amb l'API**:
+  * `/orders/open` i `/orders/close` creen/tanquen posicions en paper amb `position_id` estable.
+  * `positions_after=0` després de tancar (invariant de cleanup).
+* **Freqtrade handshake**:
+  * Un "freqtrade-like runner" (o Freqtrade real) pot:
+    * llegir `/ohlcv/{symbol}` i `/price/latest`
+    * obrir/tancar posicions paper via API
+    * sobreviure 15–30 min sense errors
+* **Evidència**:
+  * logs guardats (soak + runner) i punts de verificació clars al `docs/ESTAT.md`.
+
+> Nota: el que ja hi ha (smoke/e2e/soak) és "core sanity". PAPER DONE és "freqtrade-first product sanity".
+
+---
+
+### 2.7 DATA LAYER (planificació, sense implementar encara)
+
+Objectiu: que el servei pugui funcionar com a **"capa de dades 1m"** robusta i repetible.
+
+#### 2.7.1 Requisits canònics del Data Layer
+
+* **Continuïtat**: cada minut, o hi ha candle tancada, o es marca explícitament com a gap (i s'intenta reparar).
+* **Backfill controlat**:
+  * En startup: detectar "últim ts escrit" per símbol i recuperar el que falta fins "ara".
+  * Durant execució: si WS cau, recuperar el forat amb fetch històric.
+* **Integritat**:
+  * `ts` start-of-minute (UTC) invariant.
+  * cap duplicat, cap regressió temporal, escrit atòmic, single-writer.
+* **Observabilitat mínima**:
+  * counters: candles_written, gaps_detected, gaps_repaired, ws_reconnects.
+  * logs de "gap window" i "repair result".
+* **Criteri de "data-ready"**:
+  * Soak 24h (o N hores) amb `missing_minutes` ≈ 0 i repairs controlats.
+  * CSV consistent i endpoints responen amb latència acceptable.
+
+#### 2.7.2 Arquitectura proposada del Data Layer (mòduls)
+
+Sense canviar l'API actual, s'afegeixen serveis interns:
+
+* **MarketDataRecorderService**
+  * start/stop al lifespan
+  * per símbol: subscripció WS (si existeix) → agregació 1m → persistència
+* **HistoricalBackfillService**
+  * `backfill(symbol, from_ts, to_ts)` amb rate limits
+  * usat en startup i en gap repair
+* **GapDetector** + **GapRepairCoordinator**
+  * detecta minuts perduts (seqüència)
+  * decideix si: backfill, o marcar com "unrepaired gap" (si no hi ha font)
+* **CandleStore**
+  * ja existeix com a font d'endpoints; el Data Layer el converteix en "durable".
+
+#### 2.7.3 Política de gravació (startup backfill + runtime gap repair)
+
+* **Sempre gravar mentre el servei està en marxa** (writer únic).
+* En startup:
+  1. carregar `last_ts` per símbol
+  2. fer backfill fins `now_floor_minute - safety_lag`
+  3. començar WS i gravació incremental
+* Durant runtime:
+  * si detecta gap: backfill immediat del forat (amb límit), i log.
+
+> Important: els endpoints de candles ja existeixen; Data Layer és fer-los "fiables" i "continuats".
+
+#### 2.7.4 Fonts de dades (primary vs fallback) + transparència al client
+
+* **Fonts**
+  * **primary**: dades gravades pel servei (authoritative a partir de `cutover_ts`).
+  * **fallback**: vendor extern (p.ex. Dukascopy), només per prehistòria o gaps no reparables.
+
+* **Stitch policy (mixed range)**
+  * Definir `cutover_ts` per símbol: primer `ts` existent al primary.
+  * Si una query demana `[since,to]` que travessa `cutover_ts`, la resposta pot ser "mixed", però:
+    * **no duplicar minuts**
+    * **prioritat sempre al primary** quan hi ha solapament
+    * "join" net a la frontera (off-by-one controlat)
+
+* **Com ho sap el client (pro però àgil)**
+  1. **Headers (sempre disponibles, zero breaking change)**
+     * `X-Data-Source: primary|fallback|mixed`
+     * `X-Data-Cutover-Ts: <epoch_utc>` (obligatori si `X-Data-Source=mixed`; opcional en primary/fallback)
+     * `X-Data-Gaps: <int>` = minuts absents al rang retornat (post-repair)
+     * `X-Data-Repair: none|partial|full` (opcional)
+  2. **Endpoint opcional de coverage (per clients avançats)**
+     * Proposar: `GET /coverage?symbol=...&tf=1m` (sota `/api/v1/broker`)
+     * Retorna: rang primary disponible (`primary_from_ts`, `primary_to_ts`), rang fallback disponible (`fallback_from_ts`), `cutover_ts`, notes.
+     * **No és necessari per l'MVP**, però es documenta com a futur.
+  3. **Meta "on-demand" (opt-in)**
+     * Si el client passa `meta=1` a `/candles` o `/ohlcv/{symbol}`, el server pot afegir un bloc `meta` al JSON (sense afectar la resposta normal).
+     * Ex: `{"candles":[...], "meta":{"source":"mixed","cutover_ts":...}}`
+     * Per defecte `meta=0` → resposta com ara.
+
+* **Invariant important**
+  * El dataset canònic (primary) **no depèn** del fallback.
+  * El fallback no s'escriu dins els CSV primary; s'emmagatzema separadament o s'usa "read-through" (decidir-ho més tard).
+
+* **Quality gate abans d'habilitar fallback**
+  * Afegir "compat check" en lab: comparativa primary vs fallback en un període de solapament (p50/p95/max del diff de close, gaps, timezone semantics).
+  * Si falla el compat check → fallback deshabilitat per aquell símbol.
+
+---
+
+### 2.8 BACKTEST MODE (planificació, MVP)
+
+El backtest té dues capes diferents (i no s'han de confondre):
+
+1. **Data query backtest (simple)**: demanar candles d'un rang històric (`since/to`) i que el client simuli.
+2. **Service simulation backtest (canònic)**: el servei simula temps intern i es comporta com "real":
+   * serveix candles del dataset com si arribessin en streaming
+   * accepta ordres i les executa en paper sobre el mateix dataset
+   * velocitat accelerada (p.ex. x100)
+
+#### 2.8.1 MVP recomanat
+
+* Primer, només **Service simulation backtest** (perquè és el que més s'assembla al real i valida millor).
+* Requisits MVP:
+  * `MODE=BACKTEST`
+  * `BACKTEST_FROM`, `BACKTEST_TO`, `BACKTEST_SPEED`
+  * clock intern que "avança minuts"
+  * `/ohlcv` i `/candles` responen del dataset local
+  * `/orders/open|close` paper sobre preus del minut (mid o OHLC policy)
+
+---
+
+### 2.9 Lab-first (abans de cada fase gran)
+
+Regla de treball:
+
+* Abans d'implementar una fase (PAPER DONE → DATA LAYER → BACKTEST), fem **LAB exploration** per Lighter:
+  * què pots obtenir per WS / històric
+  * latències i limitacions (symbols, feeds, precisió)
+  * quina estratègia de backfill és viable
+
+Això evita construir una arquitectura que després no encaixa amb el venue real.
+
 ---
 
 ## 3) Broker API — Contracte v0 (canònic)
@@ -168,6 +328,8 @@ Imports sempre a capçalera; zero hardcode (constants a `foundation/config` o lo
 | `GET /price/latest` | `venue`, `symbol` | bid, ask, mid, timestamp |
 | `GET /candles` | `symbol`, `timeframe=1m`, `limit`, `since?`, `to?` | Sense venue. Només 1m |
 | `GET /ohlcv/{symbol}` | `tf=1m`, `since?`, `to?`, `limit` | Sense venue. Només 1m |
+
+**Nota:** els endpoints `/candles` i `/ohlcv/{symbol}` poden indicar la font via headers (`X-Data-Source`) i opcionalment `meta=1`.
 
 **Account / Trading**
 
