@@ -92,6 +92,7 @@ def main():
         testing_dir / "unit" / "test_broker_api.py",  # Broker API
         testing_dir / "unit" / "test_broker_api_trades.py",  # P1 GET /trades
         testing_dir / "unit" / "test_trade_history_models.py",  # P1 TradeFill mapping
+        testing_dir / "unit" / "test_ws_preflight_contract.py",  # P2.0 WS candle contract
         testing_dir / "unit" / "test_mode_market_data_env.py",  # PAPER mainnet-data (Freqtrade)
 
         # Integration tests
@@ -100,6 +101,8 @@ def main():
         testing_dir / "integration" / "test_paper_positions_flow.py",
         testing_dir / "integration" / "test_gtrade_ticks_to_candles_flow.py",
         testing_dir / "integration" / "test_lighter_ticks_to_candles_flow.py",  # M1 Lighter market data
+        testing_dir / "integration" / "test_ws_preflight_integration_real.py",  # P2.0.1 WS preflight (fake feed)
+        testing_dir / "integration" / "test_ws_soak_short.py",  # P2.1 WS soak short (2 min)
         testing_dir / "integration" / "test_gtrade_adapter_readonly.py",
         testing_dir / "integration" / "test_gtrade_backend_positions.py",
         testing_dir / "integration" / "test_gtrade_adapter_write_mocked.py",

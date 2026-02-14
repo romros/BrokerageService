@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 
 from application.api.broker_routes import router as broker_router, set_broker_deps
 from application.api.ws_routes import router as ws_router
+from foundation.config.constants import USE_FAKE_PRICE_FEED_ENV
 from foundation.logging import get_logger
 from infrastructure.storage.csv_store import CSVCandleStore
 
@@ -89,18 +90,59 @@ async def lifespan(app: FastAPI):
 
     # Set broker API dependencies. Només VENUE=lighter té adapter.
     adapter = None
+    market_data_service = None
+    use_fake_feed = os.getenv(USE_FAKE_PRICE_FEED_ENV, "").strip() == "1"
+
     if venue == "lighter":
         # Lazy: evita carregar lighter si --venue gtrade
-        from infrastructure.builders.lighter_di import build_lighter_paper_adapter
-        adapter = build_lighter_paper_adapter()
-        await adapter.start()
-        set_broker_deps(
-            candle_store=candle_store,
-            adapter_factory=lambda v: adapter if v == "lighter" else None,
-            mode=config["mode"],
-            venue=venue,
-            market_data_env=config["market_data_env"],
+        from infrastructure.builders.lighter_di import (
+            build_lighter_paper_adapter,
+            build_lighter_paper_market_data,
         )
+        from infrastructure.venues.lighter.config import (
+            get_lighter_symbols_from_env,
+            get_lighter_tick_interval_ms,
+        )
+
+        if use_fake_feed:
+            # P2.0.1: Sense adapter quan fake — broker arrenca sense xarxa
+            adapter = None
+            set_broker_deps(
+                candle_store=candle_store,
+                adapter_factory=lambda v: None,
+                mode=config["mode"],
+                venue=venue,
+                market_data_env=config["market_data_env"],
+            )
+        else:
+            adapter = build_lighter_paper_adapter()
+            await adapter.start()
+            set_broker_deps(
+                candle_store=candle_store,
+                adapter_factory=lambda v: adapter if v == "lighter" else None,
+                mode=config["mode"],
+                venue=venue,
+                market_data_env=config["market_data_env"],
+            )
+
+        # P2.0: Arrencar pipeline ticks→candles→store→WS quan MODE in (paper, live)
+        mode_lower = (config["mode"] or "").lower()
+        if mode_lower in ("paper", "live"):
+            symbols = get_lighter_symbols_from_env()
+            tick_interval_ms = get_lighter_tick_interval_ms()
+            _, market_data_service = build_lighter_paper_market_data(
+                candle_store=candle_store,
+                canonical_tz=config["canonical_tz"],
+            )
+            await market_data_service.start()
+            source = "fake" if use_fake_feed else "real"
+            logger.info(
+                "MARKETDATA_START venue=%s source=%s symbols=%s interval_ms=%s",
+                venue,
+                source,
+                symbols,
+                tick_interval_ms,
+            )
     else:
         set_broker_deps(
             candle_store=candle_store,
@@ -115,6 +157,12 @@ async def lifespan(app: FastAPI):
     yield  # App is running
 
     logger.info("🛑 Shutting down BrokerageService...")
+    if market_data_service:
+        try:
+            await market_data_service.stop()
+            logger.info("MARKETDATA_STOP venue=%s", venue)
+        except Exception as e:
+            logger.error("MARKETDATA_STOP error: %s", e)
     if adapter:
         await adapter.stop()
 

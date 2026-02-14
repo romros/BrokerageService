@@ -8,6 +8,8 @@ Handles WebSocket connections for real-time streaming:
 - balance - Balance changes
 - execution - Trade confirmations
 
+Symbols: from LIGHTER_SYMBOLS or SYMBOLS env (Lighter: ETH,BTC; gTrade: XAUUSD,EURUSD).
+
 Protocol:
     Client → Server:
         {"type": "subscribe", "channel": "ticker:XAUUSD"}
@@ -22,17 +24,27 @@ Protocol:
 """
 
 
+import os
+
+
 from typing import Optional
 import json
 import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from foundation.config.constants import SUPPORTED_TIMEFRAME
 from foundation.logging import get_logger
 from infrastructure.ws import get_hub, WSMessageType, create_error_message
 
 
 logger = get_logger(__name__)
+
+
+def _get_valid_ws_symbols() -> set[str]:
+    """Symbols que el pipeline pot generar (LIGHTER_SYMBOLS, SYMBOLS o default)."""
+    raw = os.getenv("LIGHTER_SYMBOLS") or os.getenv("SYMBOLS") or "ETH,BTC,XAUUSD,EURUSD"
+    return {s.strip().upper() for s in raw.split(",") if s.strip()}
 
 router = APIRouter()
 
@@ -172,15 +184,15 @@ def _is_valid_channel(channel: str) -> bool:
         # Two-part channels: ticker:SYMBOL
         channel_type, symbol = parts
         if channel_type == "ticker":
-            return symbol in ["XAUUSD", "EURUSD"]  # TODO: make configurable
+            return symbol.upper() in _get_valid_ws_symbols()
 
     if len(parts) == 3:
         # Three-part channels: candle:SYMBOL:TF
         channel_type, symbol, timeframe = parts
         if channel_type == "candle":
             return (
-                symbol in ["XAUUSD", "EURUSD"]  # TODO: make configurable
-                and timeframe == "1m"  # Only 1m supported in MVP
+                symbol.upper() in _get_valid_ws_symbols()
+                and timeframe == SUPPORTED_TIMEFRAME
             )
 
     return False

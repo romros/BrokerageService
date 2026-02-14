@@ -96,6 +96,10 @@ DEFAULT_WS_BUFFER_SIZE = 1000  # Replay buffer size
 TICK_QUEUE_MAXSIZE = 1000      # Tick queue capacity
 DEFAULT_TICKER_BROADCAST_MS = 200  # Ticker throttle interval (ms)
 
+# Fake price feed (testing without network)
+USE_FAKE_PRICE_FEED_ENV = "USE_FAKE_PRICE_FEED"
+DEFAULT_FAKE_TICK_INTERVAL_MS = 500  # Fast ticks for integration tests
+
 # ============================================
 # BUSINESS LOGIC THRESHOLDS
 # ============================================

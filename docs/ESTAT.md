@@ -17,7 +17,7 @@
 
 - ✅ **Lighter M1+M2+M3** DONE: marketdata, SL/TP, balance, reconcile, guards, bootstrap, smoke runner, e2e trade
 - ✅ **3× smoke real** + **3× e2e trade real** (paper testnet) — `positions_after=0`
-- ✅ **44 tests** passa (unit + integration mock + API smoke localhost); `test_broker_api` + `test_mode_market_data_env` a `run_all`
+- ✅ **49 tests** passa (unit + integration mock + API smoke localhost); inclou `test_ws_preflight_contract` (P2.0), `test_ws_preflight_integration_real` (P2.0.1), `test_ws_soak_short` (P2.1)
 - ✅ **Broker API canònic** `/api/v1/broker/*` (POST body únic per ordres) — AGENTS §3
 - ✅ **Freqtrade P0** PAPER mainnet-data: `MARKET_DATA_ENV`, `ENABLE_LIVE_TRADING`, wiring Lighter/gTrade, `GET /mode` → `market_data_env`
 - 🟡 **gTrade**: paper OK; mainnet hardening pendent
@@ -59,7 +59,7 @@
 
 | Run | Resultat | Log |
 |-----|----------|-----|
-| `testing/run_all.py` | ✅ 44 passed | — |
+| `testing/run_all.py` | ✅ 49 passed | — |
 | Smoke 3× (lighter, 120s) | ✅ ok=3 failed=0 | `datafiles/smoke_runs/2026-02-13_154710_lighter_3x.log` |
 | E2E trade 3× (ETH, 100 USDC, 20x) | ✅ positions_after=0 | `datafiles/e2e_runs/2026-02-13_*_lighter_ETH.log` |
 | **Soak 10 min** (lighter, PAPER) | ✅ status=OK failed=0 | `datafiles/smoke_runs/soak_20260213_212644.log` |
@@ -87,6 +87,12 @@ docker compose run --rm brokerage python3 -m application.e2e_trade \
 # Soak smoke (10 min; veure SAFETY_RUNBOOK.md)
 ./scripts/soak_smoke.sh
 # o 15 min: ./scripts/soak_smoke.sh 900
+
+# WS Soak (P2.1): 15 min, valida pipeline candles via WS
+# Requereix: broker corrent (docker compose up)
+./scripts/soak_ws.sh        # 15 min
+./scripts/soak_ws.sh 900    # 15 min
+./scripts/soak_ws.sh 120    # 2 min (test curt)
 ```
 
 ---
@@ -104,6 +110,7 @@ docker compose run --rm brokerage python3 -m application.e2e_trade \
 ### P1
 
 * ~~trade history (IVenueAdapter)~~ ✅ P1 DONE — GET /trades, TradeFill, Lighter account_trades, gTrade stub
+* ~~Coding standards~~ ✅ constants canòniques (foundation/config, error_codes), zero hardcode a broker_routes (AGENTS §2.4)
 * idempotència SL/TP (si cal)
 * maker-first close (opcional)
 
@@ -111,7 +118,9 @@ docker compose run --rm brokerage python3 -m application.e2e_trade \
 
 * ~~Safety runbook~~ ✅ docs/SAFETY_RUNBOOK.md + scripts/soak_smoke.sh
 * ~~Soak 10 min~~ ✅ soak_20260213_212644.log (10 ticks, status=OK)
-* Soak WS / tuning polling
+* ~~P2.0 WS Soak Preflight~~ ✅ pipeline al lifespan (VENUE=lighter, MODE in paper/live), ws_preflight.py, test_ws_preflight_contract
+* ~~P2.0.1 Fake price feed + WS preflight integració~~ ✅ USE_FAKE_PRICE_FEED=1, test_ws_preflight_integration_real (broker real, fake feed, sense xarxa)
+* ~~Soak WS 15 min / telemetria (P2.1)~~ ✅ ws_soak.py, scripts/soak_ws.sh, test_ws_soak_short, WS_SOAK_RESULT/SUMMARY
 * Normalització addresses checksum
 
 ---

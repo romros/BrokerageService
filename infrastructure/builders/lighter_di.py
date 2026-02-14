@@ -3,7 +3,7 @@ Lighter DI Builder (PAPER mode)
 
 Builds Lighter venue components for market data pipeline:
 - LighterVenueAdapter
-- LighterPriceFeedClient (polling)
+- LighterPriceFeedClient (polling) or FakeLighterPriceFeedClient (USE_FAKE_PRICE_FEED=1)
 - LiveMarketDataService (ticks → CandleBuilder → CSVCandleStore → WS)
 
 Use when VENUE=lighter and MODE=paper (or live). Caller starts/stops services.
@@ -11,13 +11,18 @@ Use when VENUE=lighter and MODE=paper (or live). Caller starts/stops services.
 References:
 - AGENTS_ARQUITECTURA.md - DI minimalista
 - docs/ESTAT.md - Milestone M1 Lighter MarketData Pipeline
+- P2.0.1 - Fake price feed injectable for integration tests
 """
+
+import os
 
 from zoneinfo import ZoneInfo
 
 from application.services.live_marketdata_service import LiveMarketDataService
 from domain.interfaces import ICandleStore
+from foundation.config.constants import USE_FAKE_PRICE_FEED_ENV
 from infrastructure.venues.lighter import load_lighter_config_from_env
+from infrastructure.venues.lighter.fake_price_feed_client import FakeLighterPriceFeedClient
 from infrastructure.venues.lighter.lighter_adapter import LighterVenueAdapter
 from infrastructure.venues.lighter.market_data_client import LighterMarketDataClient
 from infrastructure.venues.lighter.price_feed_client import LighterPriceFeedClient
@@ -25,6 +30,30 @@ from infrastructure.venues.lighter.config import (
     get_lighter_symbols_from_env,
     get_lighter_tick_interval_ms,
 )
+
+
+def build_lighter_price_feed_client(symbols: list[str], tick_interval_ms: int):
+    """
+    Build price feed client (real or fake).
+
+    If USE_FAKE_PRICE_FEED=1 → FakeLighterPriceFeedClient (no network).
+    Else → LighterPriceFeedClient (polls Lighter API).
+
+    Returns:
+        IPriceFeedClient implementation
+    """
+    if os.getenv(USE_FAKE_PRICE_FEED_ENV, "").strip() == "1":
+        return FakeLighterPriceFeedClient(
+            symbols=symbols,
+            tick_interval_ms=tick_interval_ms,
+        )
+    config = load_lighter_config_from_env()
+    market_data_client = LighterMarketDataClient(config.base_url)
+    return LighterPriceFeedClient(
+        market_data_client=market_data_client,
+        symbols=symbols,
+        tick_interval_ms=tick_interval_ms,
+    )
 
 
 def build_lighter_paper_market_data(
@@ -48,14 +77,11 @@ def build_lighter_paper_market_data(
         from infrastructure.ws import get_hub
         hub = get_hub()
 
-    config = load_lighter_config_from_env()
-    market_data_client = LighterMarketDataClient(config.base_url)
     symbols = get_lighter_symbols_from_env()
-
-    price_feed_client = LighterPriceFeedClient(
-        market_data_client=market_data_client,
+    tick_interval_ms = get_lighter_tick_interval_ms()
+    price_feed_client = build_lighter_price_feed_client(
         symbols=symbols,
-        tick_interval_ms=get_lighter_tick_interval_ms(),
+        tick_interval_ms=tick_interval_ms,
     )
 
     tz = ZoneInfo(canonical_tz) if isinstance(canonical_tz, str) else canonical_tz

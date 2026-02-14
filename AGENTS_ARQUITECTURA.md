@@ -29,7 +29,7 @@
 1. **Timeframe únic:** `1m`
 2. **Candles sense venue:** `GET /candles` i `GET /ohlcv/{symbol}` venen del `candle_store`
 3. **TZ canònica:** `America/New_York` (rang/particionat, NY close style)
-4. **`ts` canònic:** epoch UTC (start-of-minute); partició en fitxer en NY
+4. **`ts` canònic:** epoch UTC (start-of-minute); convenció Dukascopy-style — veure §5
 5. **API Broker:** prefix `/api/v1/broker`; decorators sense duplicar `/broker`
 6. **Ordres:** només POST body (`/orders/open`, `/orders/close`); sense query legacy
 7. **Errors:** `{"detail": "...", "code": "..."}` amb 503/422/404
@@ -222,6 +222,7 @@ Response 200: `{"success": true}`
 - `set_broker_deps(candle_store, adapter_factory, mode, venue)` s’executa al startup (lifespan)
 - `GET /venues` reflecteix wiring: `[]` si no hi ha adapter_factory, `["lighter"]` si wired
 - **VENUE=lighter:** crea `LighterVenueAdapter`, `adapter.start()`, injecta `adapter_factory`, `adapter.stop()` al shutdown
+- **VENUE=lighter + USE_FAKE_PRICE_FEED=1:** sense adapter (broker arrenca sense xarxa); market data usa fake
 - **VENUE≠lighter** (o buit): `adapter_factory=None` → endpoints adapter retornen 503; venue incorrecte en query → 422
 
 ---
@@ -229,10 +230,31 @@ Response 200: `{"success": true}`
 ## 5) Data / Storage (TZ NY + ts epoch UTC + 1m only)
 
 - **TZ canònica:** `America/New_York` (partició, queries, NY close style)
-- **`ts`:** epoch UTC (segons), start-of-minute; candle = `[ts, ts+60s)` tancada
 - **Layout CSV:** `datafiles/{broker}/{asset}/{timezone}/{YYYY}/{MM}.csv`
 - **Format:** `ts,open,high,low,close,volume`; `volume=0` si no existeix
 - **Invariant NO GAPS:** seqüència validada; single-writer + escriptura atòmica
+
+### 5.1 Convenció canònica de candles (Dukascopy-style)
+
+**Timestamp de candle (`ts`) = start-of-minute (inici del període), en epoch UTC.**
+
+Una candle 1m etiquetada amb `ts` representa l'interval:
+
+```
+[ts, ts + 60s)
+```
+
+El "close" és el darrer preu/tick dins l'interval; la candle queda "tancada" quan comença el minut següent.
+
+**Regla d'or per l'algorisme/backtest:** la candle `ts=10:05:00` és "el minut 10:05", no "el minut que acaba a 10:05".
+
+**Exemple (obligatori):**
+- `ts = 2026-02-13 10:05:00Z` → interval `[10:05:00Z, 10:06:00Z)`
+- `ts = 1739460300` (epoch) → interval `[1739460300, 1739460360)`
+
+**Implicacions:**
+- No usar timestamps de "close time" (evita off-by-one minute).
+- `since`/`to` en queries han d'interpretar-se respecte el bar start (rang sobre starts).
 
 ---
 
@@ -241,8 +263,15 @@ Response 200: `{"success": true}`
 - **Gate A (bloquejador):** `./test.sh testing/run_all.py` passa
 - **Gate B (bloquejador):** Integration mock SL/TP + Balance passa
 - **Gate C (post-milestone):** 3× smoke real OK; 3× e2e trade real OK (`positions_after=0`)
+- **WS preflight integration (real broker):** `test_ws_preflight_integration_real.py` — fake feed, no network
 
 Evidència concreta (logs, timestamps) → [docs/ESTAT.md](docs/ESTAT.md)
+
+### 6.0 Env vars (market data)
+
+| Var | Descripció |
+|-----|------------|
+| `USE_FAKE_PRICE_FEED=1` | Usa FakeLighterPriceFeedClient (sense xarxa). Per tests d'integració. |
 
 ### 6.1 Testing (TDD scripts, sense pytest)
 
