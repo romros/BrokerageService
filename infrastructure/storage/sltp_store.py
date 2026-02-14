@@ -65,6 +65,27 @@ class JsonSltpStore(ISltpStore):
             return None
         return (sl, tp)
 
+    def get_sltp_indices(
+        self, position_id: str
+    ) -> Tuple[Optional[float], Optional[float], Optional[int], Optional[int]]:
+        raw = self._read_raw()
+        entry = raw.get(position_id)
+        if not isinstance(entry, dict):
+            return (None, None, None, None)
+        sl = entry.get("sl")
+        tp = entry.get("tp")
+        sl_ix = entry.get("sl_order_index")
+        tp_ix = entry.get("tp_order_index")
+        if sl is not None and not isinstance(sl, (int, float)):
+            sl = None
+        if tp is not None and not isinstance(tp, (int, float)):
+            tp = None
+        if sl_ix is not None and not isinstance(sl_ix, int):
+            sl_ix = None
+        if tp_ix is not None and not isinstance(tp_ix, int):
+            tp_ix = None
+        return (sl, tp, sl_ix, tp_ix)
+
     def get_all(self) -> Dict[str, Tuple[Optional[float], Optional[float]]]:
         raw = self._read_raw()
         out = {}
@@ -85,12 +106,38 @@ class JsonSltpStore(ISltpStore):
         position_id: str,
         sl: Optional[float] = None,
         tp: Optional[float] = None,
+        sl_order_index: Optional[int] = None,
+        tp_order_index: Optional[int] = None,
     ) -> None:
-        """Set SL/TP; call with both values (use get_sltp to get the other when updating one)."""
+        """Set SL/TP; merge with existing. None leaves unchanged. Order indices for restart recovery."""
         raw = self._read_raw()
         entry = dict(raw.get(position_id) or {})
-        entry["sl"] = sl
-        entry["tp"] = tp
+        if sl is not None:
+            entry["sl"] = sl
+        if tp is not None:
+            entry["tp"] = tp
+        if sl_order_index is not None:
+            entry["sl_order_index"] = sl_order_index
+        if tp_order_index is not None:
+            entry["tp_order_index"] = tp_order_index
+        entry["updated_at"] = datetime.now(timezone.utc).isoformat()
+        raw[position_id] = entry
+        self._write_raw(raw)
+
+    def clear_sl(self, position_id: str) -> None:
+        raw = self._read_raw()
+        entry = dict(raw.get(position_id) or {})
+        entry.pop("sl", None)
+        entry.pop("sl_order_index", None)
+        entry["updated_at"] = datetime.now(timezone.utc).isoformat()
+        raw[position_id] = entry
+        self._write_raw(raw)
+
+    def clear_tp(self, position_id: str) -> None:
+        raw = self._read_raw()
+        entry = dict(raw.get(position_id) or {})
+        entry.pop("tp", None)
+        entry.pop("tp_order_index", None)
         entry["updated_at"] = datetime.now(timezone.utc).isoformat()
         raw[position_id] = entry
         self._write_raw(raw)

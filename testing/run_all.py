@@ -85,7 +85,8 @@ def main():
         testing_dir / "unit" / "test_reconcile_autorepair.py",  # M3.1 auto-repair v1 (stale + resync)
         testing_dir / "unit" / "test_live_guards.py",  # M3.2 kill switch + risk limits
         testing_dir / "unit" / "test_bootstrap_service.py",  # M3.3a bootstrap tracker
-        testing_dir / "unit" / "test_sltp_persistence.py",  # M3.3b SL/TP persistence
+        testing_dir / "unit" / "test_sltp_persistence.py",
+        testing_dir / "unit" / "test_sltp_idempotency.py",  # P1.1 SL/TP idempotency  # M3.3b SL/TP persistence
         testing_dir / "unit" / "test_smoke_runner.py",  # M3.4 smoke runner + interval
         testing_dir / "unit" / "test_smoke_repeat.py",  # M3.5 smoke --repeat N + log path + SMOKE_RESULT/SUMMARY
         testing_dir / "unit" / "test_smoke_runner_lifecycle.py",  # M3.5.1 lifecycle hardening (start/stop per run)

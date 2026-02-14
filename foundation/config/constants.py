@@ -85,6 +85,9 @@ MONTHS_TO_CHECK_BACKWARD = 12  # How many months to scan for files
 MAX_RANGE_SIZE_MINUTES = 1000  # Max size for chunking ranges
 LOG_MAX_GAPS_TO_SHOW = 5       # Max gaps to display in logs
 
+# SL/TP idempotency (P1.1)
+SLTP_IDEMPOTENCY_PRECISION = 6  # Decimal places for idempotency key (round price)
+
 # ============================================
 # WEBSOCKET & MESSAGING
 # ============================================

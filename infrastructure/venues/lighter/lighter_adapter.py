@@ -21,11 +21,13 @@ References:
 """
 
 import asyncio
+import hashlib
 import math
 import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, AsyncIterator, Any, Tuple
 
+from foundation.config.constants import SLTP_IDEMPOTENCY_PRECISION
 from domain.errors import (
     MarketNotFoundError,
     NoLiquidityError,
@@ -86,6 +88,7 @@ class LighterVenueAdapter(IVenueAdapter):
         order_index_generator: Optional[Any] = None,
         signer: Optional[Any] = None,
         account_api: Optional[Any] = None,
+        sltp_store: Optional[Any] = None,
     ):
         """
         Initialize Lighter adapter
@@ -98,6 +101,7 @@ class LighterVenueAdapter(IVenueAdapter):
             order_index_generator: Optional ClientOrderIndexGenerator for uint32 client_order_index.
             signer: Optional signer (for testing). If None, build_signer_client(config) in start().
             account_api: Optional AccountApi (for testing). If None, created in start().
+            sltp_store: Optional ISltpStore for SL/TP persistence and idempotency (P1.1).
         """
         self._config = config
         self._mode = mode
@@ -108,6 +112,7 @@ class LighterVenueAdapter(IVenueAdapter):
         self._idempotency_store = idempotency_store
         self._order_index_gen = order_index_generator
         self._signer_override = signer
+        self._sltp_store = sltp_store
         # M2: track SL/TP client_order_index per position_id for modify_order/cancel
         self._sl_tp_order_indices: Dict[str, Tuple[Optional[int], Optional[int]]] = {}
 
@@ -238,10 +243,36 @@ class LighterVenueAdapter(IVenueAdapter):
                 cfg = lighter.Configuration(host=self._config.base_url)
                 self._api_client = lighter.ApiClient(cfg)
                 self._account_api = lighter.AccountApi(self._api_client)
+            if self._sltp_store is not None:
+                self._load_sltp_indices_from_store()
             logger.info("Lighter adapter started successfully")
         except Exception as e:
             logger.error(f"Failed to start Lighter adapter: {e}")
             raise
+
+    def _load_sltp_indices_from_store(self) -> None:
+        """Rehydrate _sl_tp_order_indices from store (restart recovery, P1.1)."""
+        if self._sltp_store is None:
+            return
+        for pid in self._sltp_store.get_all().keys():
+            _, _, sl_ix, tp_ix = self._sltp_store.get_sltp_indices(pid)
+            if sl_ix is not None or tp_ix is not None:
+                key = self._normalize_position_id(pid)
+                existing = self._sl_tp_order_indices.get(key, (None, None))
+                self._sl_tp_order_indices[key] = (
+                    sl_ix if sl_ix is not None else existing[0],
+                    tp_ix if tp_ix is not None else existing[1],
+                )
+
+    def _sltp_idempotent_key(self, position_id: str, kind: str, value: float) -> str:
+        """Stable key for idempotency: position_id + kind + rounded value."""
+        rounded = round(value, SLTP_IDEMPOTENCY_PRECISION)
+        return f"{self._normalize_position_id(position_id)}:{kind}:{rounded}"
+
+    def _deterministic_order_index(self, key: str) -> int:
+        """Deterministic client_order_index from key (retry-safe create)."""
+        h = hashlib.sha256(key.encode()).hexdigest()[:8]
+        return int(h, 16) % (2**32)
 
     async def stop(self) -> None:
         """Cleanup Lighter adapter"""
@@ -597,24 +628,33 @@ class LighterVenueAdapter(IVenueAdapter):
 
     async def update_sl(self, position_id: str, new_sl: float) -> bool:
         """
-        Update stop loss (M2).
-
-        If we have a stored SL order_index for this position → modify_order.
-        Else → create_sl_limit_order and store client_order_index.
-        Scaling: ×1e4 size, ×1e2 trigger/price; reduce_only=True; is_ask=is_long (close long → sell).
+        Update stop loss (M2). P1.1: idempotent (retry/restart safe).
         """
         pos = await self._resolve_position(position_id)
         size_base = pos.notional / pos.open_price if pos.open_price else 0.0
         if size_base <= 0:
             raise VenueAPIError(f"Invalid position size for {position_id}")
+        key = self._normalize_position_id(position_id)
+        mem_sl_ix, mem_tp_ix = self._sl_tp_order_indices.get(key, (None, None))
+        stored_sl, stored_tp, store_sl_ix, store_tp_ix = (
+            self._sltp_store.get_sltp_indices(position_id) if self._sltp_store else (None, None, None, None)
+        )
+        sl_index = mem_sl_ix or store_sl_ix
+        tp_index = mem_tp_ix or store_tp_ix
+        idem_key = self._sltp_idempotent_key(position_id, "sl", new_sl)
+        if sl_index is not None and stored_sl is not None:
+            if round(stored_sl, SLTP_IDEMPOTENCY_PRECISION) == round(new_sl, SLTP_IDEMPOTENCY_PRECISION):
+                logger.info(
+                    "sltp_idempotent_hit venue=lighter position_id=%s action=update_sl key=%s",
+                    position_id, idem_key,
+                )
+                return True
         exec_price = new_sl * 0.999
         scaled_size, scaled_trigger, scaled_exec = scale_sl_tp(size_base, new_sl, exec_price)
         is_ask = pos.is_long
         signer = self._signer_override or self._client
         if signer is None:
             raise VenueAPIError("Lighter adapter not started or signer not injected")
-        key = self._normalize_position_id(position_id)
-        sl_index, tp_index = self._sl_tp_order_indices.get(key, (None, None))
 
         if sl_index is not None:
             async def _modify():
@@ -632,47 +672,62 @@ class LighterVenueAdapter(IVenueAdapter):
                     raise VenueAPIError(f"modify_order failed: code={code}")
                 return True
             await self._retry_on_invalid_nonce(_modify)
-            return True
-        if self._order_index_gen is not None:
-            client_order_index = int(self._order_index_gen.next())
+            logger.info("sltp_updated venue=lighter position_id=%s action=update_sl key=%s", position_id, idem_key)
         else:
-            client_order_index = int(time.time() * 1000) % (2**32)
-        _, tx_resp, err = await signer.create_sl_limit_order(
-            market_index=pos.pair_id,
-            client_order_index=client_order_index,
-            base_amount=scaled_size,
-            trigger_price=scaled_trigger,
-            price=scaled_exec,
-            is_ask=is_ask,
-            reduce_only=True,
-        )
-        if err is not None:
-            raise VenueAPIError(str(err))
-        code = getattr(tx_resp, "code", None)
-        if code not in (200, None):
-            raise VenueAPIError(f"create_sl_limit_order failed: code={code}")
-        self._sl_tp_order_indices[key] = (client_order_index, tp_index)
+            client_order_index = (
+                int(self._order_index_gen.next()) if self._order_index_gen
+                else self._deterministic_order_index(idem_key)
+            )
+            _, tx_resp, err = await signer.create_sl_limit_order(
+                market_index=pos.pair_id,
+                client_order_index=client_order_index,
+                base_amount=scaled_size,
+                trigger_price=scaled_trigger,
+                price=scaled_exec,
+                is_ask=is_ask,
+                reduce_only=True,
+            )
+            if err is not None:
+                raise VenueAPIError(str(err))
+            code = getattr(tx_resp, "code", None)
+            if code not in (200, None):
+                raise VenueAPIError(f"create_sl_limit_order failed: code={code}")
+            sl_index = client_order_index
+            logger.info("sltp_created venue=lighter position_id=%s action=update_sl key=%s", position_id, idem_key)
+        self._sl_tp_order_indices[key] = (sl_index, tp_index)
+        if self._sltp_store is not None:
+            self._sltp_store.set_sltp(position_id, sl=new_sl, sl_order_index=sl_index)
         return True
 
     async def update_tp(self, position_id: str, new_tp: float) -> bool:
         """
-        Update take profit (M2).
-
-        If we have a stored TP order_index → modify_order; else create_tp_limit_order and store.
-        Scaling and direction same as update_sl; exec_price = new_tp * 1.001.
+        Update take profit (M2). P1.1: idempotent (retry/restart safe).
         """
         pos = await self._resolve_position(position_id)
         size_base = pos.notional / pos.open_price if pos.open_price else 0.0
         if size_base <= 0:
             raise VenueAPIError(f"Invalid position size for {position_id}")
+        key = self._normalize_position_id(position_id)
+        mem_sl_ix, mem_tp_ix = self._sl_tp_order_indices.get(key, (None, None))
+        stored_sl, stored_tp, store_sl_ix, store_tp_ix = (
+            self._sltp_store.get_sltp_indices(position_id) if self._sltp_store else (None, None, None, None)
+        )
+        sl_index = mem_sl_ix or store_sl_ix
+        tp_index = mem_tp_ix or store_tp_ix
+        idem_key = self._sltp_idempotent_key(position_id, "tp", new_tp)
+        if tp_index is not None and stored_tp is not None:
+            if round(stored_tp, SLTP_IDEMPOTENCY_PRECISION) == round(new_tp, SLTP_IDEMPOTENCY_PRECISION):
+                logger.info(
+                    "sltp_idempotent_hit venue=lighter position_id=%s action=update_tp key=%s",
+                    position_id, idem_key,
+                )
+                return True
         exec_price = new_tp * 1.001
         scaled_size, scaled_trigger, scaled_exec = scale_sl_tp(size_base, new_tp, exec_price)
         is_ask = pos.is_long
         signer = self._signer_override or self._client
         if signer is None:
             raise VenueAPIError("Lighter adapter not started or signer not injected")
-        key = self._normalize_position_id(position_id)
-        sl_index, tp_index = self._sl_tp_order_indices.get(key, (None, None))
 
         if tp_index is not None:
             async def _modify():
@@ -690,26 +745,85 @@ class LighterVenueAdapter(IVenueAdapter):
                     raise VenueAPIError(f"modify_order failed: code={code}")
                 return True
             await self._retry_on_invalid_nonce(_modify)
-            return True
-        if self._order_index_gen is not None:
-            client_order_index = int(self._order_index_gen.next())
+            logger.info("sltp_updated venue=lighter position_id=%s action=update_tp key=%s", position_id, idem_key)
         else:
-            client_order_index = int(time.time() * 1000) % (2**32)
-        _, tx_resp, err = await signer.create_tp_limit_order(
-            market_index=pos.pair_id,
-            client_order_index=client_order_index,
-            base_amount=scaled_size,
-            trigger_price=scaled_trigger,
-            price=scaled_exec,
-            is_ask=is_ask,
-            reduce_only=True,
-        )
+            client_order_index = (
+                int(self._order_index_gen.next()) if self._order_index_gen
+                else self._deterministic_order_index(idem_key)
+            )
+            _, tx_resp, err = await signer.create_tp_limit_order(
+                market_index=pos.pair_id,
+                client_order_index=client_order_index,
+                base_amount=scaled_size,
+                trigger_price=scaled_trigger,
+                price=scaled_exec,
+                is_ask=is_ask,
+                reduce_only=True,
+            )
+            if err is not None:
+                raise VenueAPIError(str(err))
+            code = getattr(tx_resp, "code", None)
+            if code not in (200, None):
+                raise VenueAPIError(f"create_tp_limit_order failed: code={code}")
+            tp_index = client_order_index
+            logger.info("sltp_created venue=lighter position_id=%s action=update_tp key=%s", position_id, idem_key)
+        self._sl_tp_order_indices[key] = (sl_index, tp_index)
+        if self._sltp_store is not None:
+            self._sltp_store.set_sltp(position_id, tp=new_tp, tp_order_index=tp_index)
+        return True
+
+    async def cancel_sl(self, position_id: str) -> bool:
+        """Cancel SL order (P1.1). Double cancel = no-op (sltp_cancel_noop)."""
+        key = self._normalize_position_id(position_id)
+        sl_index, tp_index = self._sl_tp_order_indices.get(key, (None, None))
+        if sl_index is None:
+            stored_sl, _, sl_ix, _ = (
+                self._sltp_store.get_sltp_indices(position_id) if self._sltp_store else (None, None, None, None)
+            )
+            if sl_ix is None and stored_sl is None:
+                logger.info("sltp_cancel_noop venue=lighter position_id=%s action=cancel_sl", position_id)
+                return True
+            sl_index = sl_ix
+        if sl_index is None:
+            logger.info("sltp_cancel_noop venue=lighter position_id=%s action=cancel_sl", position_id)
+            return True
+        pos = await self._resolve_position(position_id)
+        signer = self._signer_override or self._client
+        if signer is None:
+            raise VenueAPIError("Lighter adapter not started or signer not injected")
+        _, _, err = await signer.cancel_order(market_index=pos.pair_id, order_index=sl_index)
         if err is not None:
             raise VenueAPIError(str(err))
-        code = getattr(tx_resp, "code", None)
-        if code not in (200, None):
-            raise VenueAPIError(f"create_tp_limit_order failed: code={code}")
-        self._sl_tp_order_indices[key] = (sl_index, client_order_index)
+        self._sl_tp_order_indices[key] = (None, tp_index)
+        if self._sltp_store is not None:
+            self._sltp_store.clear_sl(position_id)
+        return True
+
+    async def cancel_tp(self, position_id: str) -> bool:
+        """Cancel TP order (P1.1). Double cancel = no-op (sltp_cancel_noop)."""
+        key = self._normalize_position_id(position_id)
+        sl_index, tp_index = self._sl_tp_order_indices.get(key, (None, None))
+        if tp_index is None:
+            _, stored_tp, _, tp_ix = (
+                self._sltp_store.get_sltp_indices(position_id) if self._sltp_store else (None, None, None, None)
+            )
+            if tp_ix is None and stored_tp is None:
+                logger.info("sltp_cancel_noop venue=lighter position_id=%s action=cancel_tp", position_id)
+                return True
+            tp_index = tp_ix
+        if tp_index is None:
+            logger.info("sltp_cancel_noop venue=lighter position_id=%s action=cancel_tp", position_id)
+            return True
+        pos = await self._resolve_position(position_id)
+        signer = self._signer_override or self._client
+        if signer is None:
+            raise VenueAPIError("Lighter adapter not started or signer not injected")
+        _, _, err = await signer.cancel_order(market_index=pos.pair_id, order_index=tp_index)
+        if err is not None:
+            raise VenueAPIError(str(err))
+        self._sl_tp_order_indices[key] = (sl_index, None)
+        if self._sltp_store is not None:
+            self._sltp_store.clear_tp(position_id)
         return True
 
     # ============ POSITION MANAGEMENT ============

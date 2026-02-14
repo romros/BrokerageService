@@ -1,6 +1,6 @@
 # ESTAT DEL PROJECTE — BrokerageService
 
-**Data:** 2026-02-14  
+**Data:** 2026-02-15  
 **Repo/Path:** `/mnt/volume-SQ/dev/BrokerageService`  
 **Venues:** **Lighter (principal — MVP 100%)** · gTrade (futur)  
 **TZ canònica (config):** `CANONICAL_TZ=America/New_York`  
@@ -42,7 +42,7 @@
 | Broker API | `/api/v1/broker/*`, POST body, errors consistents | ✅ | 100% |
 | Market data | pairs + latest price (adapter) + candles/ohlcv (candle_store) | ✅ | 100% |
 | Candles pipeline | 1m only, ts epoch UTC, TZ NY, store sense venue | ✅ | 95% |
-| Lighter (PAPER) | open/close + SL/TP + balance + idempotència close | ✅ | 100% |
+| Lighter (PAPER) | open/close + SL/TP + balance + idempotència close + idempotència SL/TP (P1.1) | ✅ | 100% |
 | Lighter (LIVE-hardening) | guards + reconcile + restart safety + smoke runner + evidència real | ✅ | 90% |
 | gTrade (PAPER) | infra/harness paper estable | ✅ | 80% |
 | gTrade (LIVE) | mainnet hardening (fees/reconcile/monitoring) | 🟡 | 30% |
@@ -55,13 +55,14 @@
 
 ## Evidència recent
 
-**2026-02-14**
+**2026-02-15**
 
 | Run | Resultat | Log |
 |-----|----------|-----|
 | `testing/run_all.py` | ✅ 49 passed | — |
 | **WS Soak 15 min** (fake feed) | ✅ candles=15 status=OK | `datafiles/ws_soak/20260214_011714_ws_soak_15m.log` |
 | **WS Soak 15 min MAINNET EURUSD** (Lighter real) | ✅ candles=15 status=OK missing_minutes=0 | `datafiles/ws_soak/20260214_071609_ws_soak_15m_mainnet.log` |
+| **P1.1 SL/TP idempotència** | ✅ test_sltp_idempotency, test_lighter_adapter_sltp (8 tests) | reducció risc duplicació SL/TP en retries/restarts |
 
 **2026-02-13**
 
@@ -130,7 +131,7 @@ docker compose run --rm brokerage python3 -m application.tools.ws_soak \
 
 * ~~trade history (IVenueAdapter)~~ ✅ P1 DONE — GET /trades, TradeFill, Lighter account_trades, gTrade stub
 * ~~Coding standards~~ ✅ constants canòniques (foundation/config, error_codes), zero hardcode a broker_routes (AGENTS §2.4)
-* idempotència SL/TP (si cal)
+* ~~idempotència SL/TP (si cal)~~ ✅ P1.1 DONE — idempotency key, persistència order indices, cancel no-op, logs sltp_*
 * maker-first close (opcional)
 
 ### P2

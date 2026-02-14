@@ -96,12 +96,26 @@ def build_lighter_paper_market_data(
     return price_feed_client, live_service
 
 
-def build_lighter_paper_adapter() -> LighterVenueAdapter:
+def build_lighter_paper_adapter(sltp_store=None) -> LighterVenueAdapter:
     """
     Build Lighter venue adapter for PAPER (trading + market data client).
 
     Uses same LighterMarketDataClient as price feed when both are used.
+    P1.1: sltp_store for SL/TP idempotency and restart recovery.
     """
     config = load_lighter_config_from_env()
     market_data_client = LighterMarketDataClient(config.base_url)
-    return LighterVenueAdapter(config=config, mode="paper", market_data_client=market_data_client)
+    if sltp_store is None:
+        from foundation.config.constants import DEFAULT_DATAFILES_ROOT
+        from infrastructure.storage.sltp_store import JsonSltpStore, sltp_store_path
+        path = sltp_store_path(
+            os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT),
+            "lighter",
+        )
+        sltp_store = JsonSltpStore(path)
+    return LighterVenueAdapter(
+        config=config,
+        mode="paper",
+        market_data_client=market_data_client,
+        sltp_store=sltp_store,
+    )

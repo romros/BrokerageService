@@ -108,6 +108,7 @@ def make_adapter(
     account_response: Any,
     mid: float = 2000.0,
     order_index_gen: Optional[ClientOrderIndexGenerator] = None,
+    sltp_store: Optional[Any] = None,
 ) -> LighterVenueAdapter:
     config = make_config()
     mock_account_api = AsyncMock()
@@ -119,6 +120,7 @@ def make_adapter(
         signer=signer,
         account_api=mock_account_api,
         order_index_generator=order_index_gen or ClientOrderIndexGenerator(seed=9000),
+        sltp_store=sltp_store,
     )
     adapter.get_latest_price = AsyncMock(
         return_value=PriceData(
@@ -269,6 +271,46 @@ async def test_update_sl_position_not_found():
     print("✓ test_update_sl_position_not_found")
 
 
+async def test_update_sl_same_request_twice_idempotent():
+    """P1.1: Same update_sl twice => 1 create (idempotent)."""
+    from pathlib import Path
+    import tempfile
+    from infrastructure.storage.sltp_store import JsonSltpStore
+
+    signer = DummySignerSLTP()
+    resp = make_fake_account_response([
+        make_fake_position(position="1.0", sign=1, avg_entry_price="2000.0", position_value="2000.0"),
+    ])
+    with tempfile.TemporaryDirectory() as d:
+        store = JsonSltpStore(Path(d) / "sltp.json")
+        adapter = make_adapter(signer=signer, account_response=resp, mid=2000.0, sltp_store=store)
+        await adapter.update_sl("0:0", new_sl=1900.0)
+        await adapter.update_sl("0:0", new_sl=1900.0)
+        creates = [c for c in signer.calls if c.get("method") == "create_sl_limit_order"]
+        assert len(creates) == 1, f"Expected 1 create, got {len(creates)}"
+    print("✓ test_update_sl_same_request_twice_idempotent")
+
+
+async def test_cancel_sl_double_noop():
+    """P1.1: Double cancel_sl => no-op (sltp_cancel_noop)."""
+    import tempfile
+    from pathlib import Path
+    from infrastructure.storage.sltp_store import JsonSltpStore
+
+    signer = DummySignerSLTP()
+    resp = make_fake_account_response([
+        make_fake_position(position="1.0", sign=1, avg_entry_price="2000.0", position_value="2000.0"),
+    ])
+    with tempfile.TemporaryDirectory() as d:
+        store = JsonSltpStore(Path(d) / "sltp.json")
+        adapter = make_adapter(signer=signer, account_response=resp, mid=2000.0, sltp_store=store)
+        await adapter.cancel_sl("0:0")
+        await adapter.cancel_sl("0:0")
+        cancels = [c for c in signer.calls if c.get("method") == "cancel_order"]
+        assert len(cancels) == 0
+    print("✓ test_cancel_sl_double_noop")
+
+
 def main():
     import asyncio
     print("\n" + "=" * 60)
@@ -280,6 +322,8 @@ def main():
     asyncio.run(test_update_tp_reduce_only_and_scaling())
     asyncio.run(test_get_balance_ok())
     asyncio.run(test_update_sl_position_not_found())
+    asyncio.run(test_update_sl_same_request_twice_idempotent())
+    asyncio.run(test_cancel_sl_double_noop())
     print("\n" + "=" * 60)
     print("✓ All M2 SL/TP + Balance tests passed")
     print("=" * 60 + "\n")
