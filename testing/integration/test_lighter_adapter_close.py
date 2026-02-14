@@ -5,6 +5,7 @@ Tests close_position() market reduce-only with mocked account API and signer (ze
 - close full/partial OK, reduce_only=True, is_ask inverted, base_amount ×10_000, avg_execution_price ×100 (acceptable_price_int)
 - PositionNotFoundError when position_id not found
 - percent clamped (0 < percent <= 100)
+- P1.2: maker-first close amb fallback → positions_after=0
 """
 
 from datetime import datetime, timezone
@@ -17,6 +18,24 @@ from infrastructure.venues.lighter.idempotency import ClientOrderIndexGenerator
 from infrastructure.venues.lighter.scaling import acceptable_price_int
 from domain.errors import PositionNotFoundError
 from domain.models import PriceData
+
+
+# P1.2: Signer amb create_order/cancel_order per maker-first
+class MakerAwareSigner:
+    def __init__(self):
+        self.calls: List[Dict[str, Any]] = []
+
+    async def create_market_order(self, **kwargs):
+        self.calls.append({"method": "create_market_order", **kwargs})
+        return (object(), type("Tx", (), {"code": 200, "tx_hash": "0xMKT", "message": ""})(), None)
+
+    async def create_order(self, **kwargs):
+        self.calls.append({"method": "create_order", **kwargs})
+        return (object(), type("Tx", (), {"code": 200, "tx_hash": "0xLIMIT", "message": ""})(), None)
+
+    async def cancel_order(self, **kwargs):
+        self.calls.append({"method": "cancel_order", **kwargs})
+        return (object(), type("Tx", (), {"code": 200})(), None)
 
 
 # -----------------------------------------------------------------------------
@@ -77,12 +96,12 @@ def make_adapter(
 ) -> LighterVenueAdapter:
     config = make_config()
     mock_account_api = AsyncMock()
-    # close_position per crida: 1) _get_raw 2) get_open_positions 3) loop poll → flat
-    # test_close_position_percent_clamped fa 2 crides → necessitem 2 cicles
+    # close_position per crida: 1) _get_raw 2) get_open_positions 3) raw_rem (fallback) 4) loop poll → flat
+    # P1.2: una crida extra (raw_rem) abans del loop; necessitem empty a la 4a per sortir
     resp_empty = make_fake_account_response([])
     mock_account_api.account = AsyncMock(
         side_effect=(
-            [account_response, account_response, resp_empty] * 2  # 2 crides close
+            [account_response, account_response, resp_empty, resp_empty] * 2  # 2 crides close
             + [resp_empty] * 10
         )
     )
@@ -307,6 +326,51 @@ async def test_close_position_regression_uses_market_scaling_not_limit():
     print("✓ test_close_position_regression_uses_market_scaling_not_limit")
 
 
+async def test_close_position_maker_fallback_positions_after_zero():
+    """P1.2: flux realista maker parcial → fallback market → positions_after=0."""
+    signer = MakerAwareSigner()
+    resp_full = make_fake_account_response([
+        make_fake_position(position="1.0", sign=1, avg_entry_price="2000.0", position_value="2000.0"),
+    ])
+    resp_partial = make_fake_account_response([
+        make_fake_position(position="0.5", sign=1, avg_entry_price="2000.0", position_value="1000.0"),
+    ])
+    resp_empty = make_fake_account_response([])
+    # 1=raw, 2=positions, 3-10=maker loop (8 polls 0.5 => timeout), 11=raw_rem, 12=loop flat, 13=get_open_positions
+    seq = [resp_full, resp_full] + [resp_partial] * 8 + [resp_partial, resp_empty] + [resp_empty] * 5
+    mock_account_api = AsyncMock()
+    mock_account_api.account = AsyncMock(side_effect=seq)
+    config = make_config()
+    adapter = LighterVenueAdapter(
+        config=config,
+        mode="live",
+        market_data_client=None,
+        signer=signer,
+        account_api=mock_account_api,
+        order_index_generator=ClientOrderIndexGenerator(seed=9000),
+    )
+    adapter.get_latest_price = AsyncMock(
+        return_value=PriceData(
+            symbol="ETH",
+            bid=1999.0,
+            ask=2001.0,
+            mid=2000.0,
+            timestamp=datetime.now(timezone.utc),
+            is_market_open=True,
+        )
+    )
+
+    result = await adapter.close_position("lighter:0", percent=100.0)
+
+    assert result is True
+    positions = await adapter.get_open_positions()
+    positions_eth = [p for p in positions if p.pair_id == 0]
+    assert len(positions_eth) == 0, "positions_after=0 (flat)"
+    market_orders = [c for c in signer.calls if c.get("method") == "create_market_order"]
+    assert len(market_orders) >= 1, "hauria de fer fallback market"
+    print("✓ test_close_position_maker_fallback_positions_after_zero")
+
+
 async def main():
     print("=" * 80)
     print("LIGHTER ADAPTER CLOSE_POSITION + GET_OPEN_POSITIONS TESTS (TASK 4B)")
@@ -324,6 +388,7 @@ async def main():
         test_get_open_positions_regression_source_of_truth_l1_address,
         test_close_position_regression_reduce_only_and_inverted_direction,
         test_close_position_regression_uses_market_scaling_not_limit,
+        test_close_position_maker_fallback_positions_after_zero,  # P1.2
     ]
 
     passed = 0

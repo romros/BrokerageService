@@ -67,6 +67,10 @@ CLOSE_FLAT_THRESHOLD_ETH = 0.001
 CLOSE_MAX_RETRIES = 10
 CLOSE_POLL_INTERVAL_S = 2
 
+# P1.2 maker-first close: timeout i poll per fase limit
+CLOSE_MAKER_TIMEOUT_S = 8
+CLOSE_MAKER_POLL_S = 1
+
 
 class LighterVenueAdapter(IVenueAdapter):
     """
@@ -526,15 +530,13 @@ class LighterVenueAdapter(IVenueAdapter):
 
     async def close_position(self, position_id: str, percent: float = 100.0) -> bool:
         """
-        Close position via MARKET order (TASK 4B).
+        Close position: maker-first (limit reduce-only) amb fallback segur a market (P1.2).
 
-        reduce_only=True, is_ask=pos.is_long (close long → SELL). base_amount ×10_000, avg_execution_price ×100.
+        Fase 1: limit order reduce-only al bid (long) / ask (short) amb timeout configurable.
+        Fase 2: si parcial o timeout → cancel limit i market close fins flat.
+
+        reduce_only=True, is_ask=pos.is_long (close long → SELL). base_amount ×10_000, price ×100.
         position_id format: "lighter:{pair_id}" (pair_id=market_id).
-
-        Lab fixes (close_open_position.py, LIGHTER_COMPLETE_VALIDATION.md):
-        - Mida real: consulta API abans de tancar (evita rounding/partial fills)
-        - Fallback chunks: si 1 ordre falla (límit testnet), tanca en parts de 0.1 ETH
-        - Loop fins flat: després de cada ordre, poll; si encara hi ha mida, retry
         """
         percent = max(0.01, min(100.0, percent))
         pair_id = self._parse_pair_id(position_id)
@@ -557,6 +559,8 @@ class LighterVenueAdapter(IVenueAdapter):
         try:
             px = await self.get_latest_price(symbol)
             mid = getattr(px, "mid", None) or getattr(px, "ask", None) or getattr(px, "bid", None)
+            bid = getattr(px, "bid", None) or mid
+            ask = getattr(px, "ask", None) or mid
         except Exception as e:
             raise VenueAPIError(f"Failed to get price for {symbol}: {e}") from e
         if mid is None or mid <= 0:
@@ -574,7 +578,7 @@ class LighterVenueAdapter(IVenueAdapter):
                 return int(self._order_index_gen.next())
             return int(time.time() * 1000) % (2**32)
 
-        async def _send_close_order(size_to_close: float) -> Optional[str]:
+        async def _send_market_close(size_to_close: float) -> Optional[str]:
             base_amt = int(round(size_to_close * 10_000))
             if base_amt <= 0:
                 return None
@@ -593,37 +597,95 @@ class LighterVenueAdapter(IVenueAdapter):
                 return f"SDK tx failed: code={code}"
             return None
 
-        # Intent 1: un sol ordre (com la UI)
-        err = await _send_close_order(close_size)
-        if err is None:
-            logger.debug(f"close_position: ordre únic OK per {close_size} ETH")
-        else:
-            # Fallback: testnet pot limitar mida; tancar en chunks (lab close_open_position.py)
-            logger.info(f"close_position: 1 ordre rebutjat ({err}), fallback a chunks de {CLOSE_CHUNK_ETH} ETH")
-            n_chunks = max(1, int(math.ceil(close_size / CLOSE_CHUNK_ETH)))
-            for i in range(n_chunks):
-                chunk_err = await _send_close_order(CLOSE_CHUNK_ETH)
-                if chunk_err:
-                    logger.warning(f"close_position: chunk {i+1}/{n_chunks} fallat: {chunk_err}")
-                await asyncio.sleep(1)
+        # --- P1.2 Fase 1: maker-first (limit reduce-only) ---
+        maker_success = False
+        maker_client_order_index: Optional[int] = None
+        if hasattr(signer, "create_order") and hasattr(signer, "cancel_order"):
+            # Limit price: long close (SELL) → bid; short close (BUY) → ask (maker al book)
+            limit_price = bid if is_long else ask
+            limit_price_int = int(round(limit_price * 100))
+            base_amt_int = int(round(close_size * 10_000))
+            if base_amt_int > 0 and limit_price_int > 0:
+                maker_client_order_index = _next_coi()
+                tif = getattr(signer, "ORDER_TIME_IN_FORCE_POST_ONLY", 2)
+                otype = getattr(signer, "ORDER_TYPE_LIMIT", 0)
+                _, tx_resp, err = await signer.create_order(
+                    market_index=pair_id,
+                    client_order_index=maker_client_order_index,
+                    price=limit_price_int,
+                    base_amount=base_amt_int,
+                    is_ask=is_ask,
+                    time_in_force=tif,
+                    order_type=otype,
+                    reduce_only=reduce_only,
+                )
+                if err is None and getattr(tx_resp, "code", None) in (200, None):
+                    # Poll fins flat o timeout
+                    elapsed = 0
+                    while elapsed < CLOSE_MAKER_TIMEOUT_S:
+                        await asyncio.sleep(CLOSE_MAKER_POLL_S)
+                        elapsed += CLOSE_MAKER_POLL_S
+                        raw_poll = await self._get_raw_position_for_market(pair_id)
+                        if raw_poll is None or raw_poll[0] <= CLOSE_FLAT_THRESHOLD_ETH:
+                            maker_success = True
+                            logger.info(f"close_path=maker_success position_id={position_id}")
+                            break
+                    if not maker_success:
+                        # Timeout o parcial: cancel limit i fallback
+                        remaining_after = (await self._get_raw_position_for_market(pair_id)) or (0.0, True)
+                        if remaining_after[0] <= CLOSE_FLAT_THRESHOLD_ETH:
+                            maker_success = True
+                            logger.info(f"close_path=maker_success position_id={position_id}")
+                        else:
+                            try:
+                                await signer.cancel_order(market_index=pair_id, order_index=maker_client_order_index)
+                            except Exception as cancel_err:
+                                logger.warning(f"close_position: cancel limit failed: {cancel_err}")
+                            path = "maker_timeout_fallback_market" if elapsed >= CLOSE_MAKER_TIMEOUT_S else "maker_partial_fallback_market"
+                            logger.info(f"close_path={path} position_id={position_id} remaining_eth={remaining_after[0]:.4f}")
+                else:
+                    maker_client_order_index = None
 
-        # Loop fins flat: poll i retry si encara hi ha mida (partial fills)
-        for attempt in range(CLOSE_MAX_RETRIES):
-            await asyncio.sleep(CLOSE_POLL_INTERVAL_S)
-            raw2 = await self._get_raw_position_for_market(pair_id)
-            if raw2 is None or raw2[0] <= CLOSE_FLAT_THRESHOLD_ETH:
+        # --- Fase 2: market close (fallback o si no hi ha create_order) ---
+        if not maker_success:
+            # Obtenir mida restant (pot ser parcial si maker va omplir una part)
+            raw_rem = await self._get_raw_position_for_market(pair_id)
+            size_to_close = raw_rem[0] if raw_rem and raw_rem[0] > CLOSE_FLAT_THRESHOLD_ETH else close_size
+            # Early exit només si raw_rem indica que ja som flat (no enviar ordre innecessària)
+            if raw_rem is not None and raw_rem[0] <= CLOSE_FLAT_THRESHOLD_ETH:
+                logger.info(f"close_final=flat position_id={position_id}")
                 return True
-            remaining = raw2[0]
-            logger.debug(f"close_position: encara {remaining:.4f} ETH, intent {attempt+1}/{CLOSE_MAX_RETRIES}")
-            err2 = await _send_close_order(remaining)
-            if err2:
-                logger.warning(f"close_position: retry ordre fallat: {err2}")
+            # Intent 1: un sol ordre (com la UI)
+            err = await _send_market_close(size_to_close)
+            if err is None:
+                logger.debug(f"close_position: ordre únic OK per {size_to_close} ETH")
+            else:
+                # Fallback: testnet pot limitar mida; tancar en chunks (lab close_open_position.py)
+                logger.info(f"close_position: 1 ordre rebutjat ({err}), fallback a chunks de {CLOSE_CHUNK_ETH} ETH")
+                n_chunks = max(1, int(math.ceil(size_to_close / CLOSE_CHUNK_ETH)))
+                for i in range(n_chunks):
+                    chunk_err = await _send_market_close(CLOSE_CHUNK_ETH)
+                    if chunk_err:
+                        logger.warning(f"close_position: chunk {i+1}/{n_chunks} fallat: {chunk_err}")
+                    await asyncio.sleep(1)
 
-        # Timeout: potser encara hi ha mida petita
-        raw3 = await self._get_raw_position_for_market(pair_id)
-        if raw3 is None or raw3[0] <= CLOSE_FLAT_THRESHOLD_ETH:
-            return True
-        logger.warning(f"close_position: timeout amb {raw3[0]:.4f} ETH restants (límit {CLOSE_MAX_RETRIES} retries)")
+            # Loop fins flat: poll i retry si encara hi ha mida (partial fills)
+            for attempt in range(CLOSE_MAX_RETRIES):
+                await asyncio.sleep(CLOSE_POLL_INTERVAL_S)
+                raw2 = await self._get_raw_position_for_market(pair_id)
+                if raw2 is None or raw2[0] <= CLOSE_FLAT_THRESHOLD_ETH:
+                    break
+                remaining = raw2[0]
+                logger.debug(f"close_position: encara {remaining:.4f} ETH, intent {attempt+1}/{CLOSE_MAX_RETRIES}")
+                err2 = await _send_market_close(remaining)
+                if err2:
+                    logger.warning(f"close_position: retry ordre fallat: {err2}")
+
+        raw_final = await self._get_raw_position_for_market(pair_id)
+        flat = raw_final is None or raw_final[0] <= CLOSE_FLAT_THRESHOLD_ETH
+        logger.info(f"close_final={'flat' if flat else 'non_flat'} position_id={position_id}")
+        if not flat:
+            logger.warning(f"close_position: timeout amb {raw_final[0]:.4f} ETH restants (límit {CLOSE_MAX_RETRIES} retries)")
         return True
 
     async def update_sl(self, position_id: str, new_sl: float) -> bool:
