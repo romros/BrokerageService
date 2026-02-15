@@ -1,0 +1,22 @@
+{
+  "symbol": "EURUSD",
+  "earliest_ts": null,
+  "latest_ts": 1771193460,
+  "probe_requests": 10,
+  "rate_limit_hits": 0,
+  "window_72h": {
+    "start_ts": 1770934320,
+    "end_ts": 1771193520,
+    "raw_count": 4500,
+    "unique_count": 4320,
+    "expected_minutes": 4320,
+    "missing_minutes": 0,
+    "max_gap_s": 0,
+    "duplicates_raw": 180,
+    "duplicates_after_dedup": 0,
+    "ts_step_errors": 0,
+    "candles_in_window": 4320
+  },
+  "decision": "Lighter recent viable (72h OK); Dukascopy per hist\u00f2ric pre-Lighter",
+  "timestamp": "2026-02-15T22:12:41.718273+00:00"
+}

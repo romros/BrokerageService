@@ -1782,3 +1782,27 @@ STEP 7: CLOSE POSITION        ✅
 - El smoke runner i la suite del BrokerageService es poden executar dins Docker (vegeu **docs/ESTAT.md** — Comandes ràpides, i **AGENTS_ARQUITECTURA.md** §7). **Recorda:** si has canviat codi, reconstruir la imatge: `docker compose build brokerage`; si no, les comandes dins del contenidor continuaran amb el codi antic.
 
 ---
+
+## 🎯 TASK: LAB — Historical Candles Feasibility (Lighter) + paginator + normalització 1m
+
+**Objectiu:** Construir un petit lab/script que descarregui històric 1m de Lighter via CandlestickApi (SDK), el pagini (≤500), el normalitzi a la semàntica canònica del projecte (ts epoch UTC start-of-minute) i el guardi en CSV canònic. Això decideix si P4 (backfill+gap repair) és viable amb Lighter com a "primary històric", o si cal fallback (Dukascopy) més aviat.
+
+**Script:** `lab/lighter/scripts/fetch_historical_candles.py`  
+**Doc:** `docs/LAB_LIGHTER_HISTORICAL.md`
+
+**Deliverables:**
+- Script: paginator, normalització ts, CSV `datafiles/lab_lighter_history/{symbol}/{YYYY}/{MM}.csv`
+- Doc: symbols amb històric, earliest/latest_ts, rate limits, conclusió viable/fallback
+
+**Comanda:**
+```bash
+python3 lab/lighter/scripts/fetch_historical_candles.py --symbol EURUSD --hours 72
+```
+
+**Evidència (2026-02):** EURUSD 72h mainnet → 4320 candles, 9 requests, duplicates deduplicats, missing_minutes=0, ts_step_errors=0. **Conclusió: viable com a primary backfill** per EURUSD/XAU (mainnet).
+
+**coverage_probe:** `lab/lighter/scripts/coverage_probe.py` — QA lab que troba earliest/latest_ts i valida 72h. P0.1: Fix duplicates semantics + pagination boundary (cursor next_since=last_ts+60, dedup abans mètriques, raw_count/unique_count/duplicates_after_dedup). P0.2: earliest_ts brotli fix (fallback httpx Accept-Encoding: identity). Invariants: duplicates_after_dedup==0, candles_in_window==expected_minutes. Output: `lab/out/coverage_mainnet_<symbol>.json`. Decisió: Lighter recent viable; Dukascopy per històric pre-Lighter.
+
+**time_semantics_probe (P0.3b):** `lab/lighter/scripts/time_semantics_probe.py` — Demostra si Lighter retorna UTC start-of-minute. Evidència: `is_start_of_minute`, `step_ok`, `latest_lag_seconds`, `includes_partial`. Conclusió: t és UTC start-of-minute; retorna només tancades (latest = now_floor - 60). NO conversió TZ.
+
+---

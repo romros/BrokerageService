@@ -47,6 +47,8 @@ services:
     volumes:
       - ./datafiles:/datafiles
       - ./logs:/app/logs
+      - ./lab/lighter:/app/lab/lighter
+      - ./lab/out:/app/lab/out
     networks:
       - trading
     extra_hosts:
@@ -69,6 +71,26 @@ services:
     networks:
       - trading
     command: tail -f /dev/null  # Keep alive for testing
+
+  # Lab Lighter (mateix entorn que prod: coverage_probe, fetch_historical_candles)
+  lighter-lab:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lighter-lab
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app
+      - DATAFILES_ROOT=/datafiles
+      - LIGHTER_BASE_URL=${LIGHTER_BASE_URL:-https://mainnet.zklighter.elliot.ai}
+      - LIGHTER_MARKET_ID_MAP=${LIGHTER_MARKET_ID_MAP:-}
+    volumes:
+      - ./datafiles:/datafiles
+      - ./lab/lighter:/app/lab/lighter
+      - ./lab/out:/app/lab/out
+    networks:
+      - trading
+    command: tail -f /dev/null
 
   # Python CLI for Ostium SDK
   ostium-cli:

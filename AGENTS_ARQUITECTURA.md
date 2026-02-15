@@ -51,6 +51,12 @@
 - `GET /pairs?venue=lighter` és la font de veritat del què és suportat.
 - `ws_soak --autodetect-symbols --venue lighter` ha d’usar aquesta font.
 
+**Symbol normalization mapping (RWA / fallback):**
+- **Canonical:** XAUUSD, EURUSD (ús intern, stitching, compat_probe)
+- **Lighter:** XAU → canonical XAUUSD
+- **Dukascopy:** XAUUSD → canonical XAUUSD (directe)
+Evita comparar símbols diferents a stitching/compat_probe.
+
 ### Lighter (principal — MVP 100%)
 ✅ paper-ready · ✅ live-hardening complet · ⛔ backtest pendent  
 Market data, open/close, SL/TP, balance, reconcile, guards, bootstrap, smoke, e2e. **Tot el MVP es fa per Lighter.**
@@ -176,6 +182,8 @@ PAPER no vol dir "testnet". PAPER vol dir **mainnet-data + paper execution**, am
 
 Objectiu: que el servei pugui funcionar com a **"capa de dades 1m"** robusta i repetible.
 
+**Time semantics (validated):** Lighter Candlestick `t` = UTC start-of-minute; returns closed-only (`latest = now_floor-60`). Dataset keeps `ts` epoch UTC; `CANONICAL_TZ` only affects queries/partition/display.
+
 #### 2.7.1 Requisits canònics del Data Layer
 
 * **Continuïtat**: cada minut, o hi ha candle tancada, o es marca explícitament com a gap (i s'intenta reparar).
@@ -256,6 +264,105 @@ Sense canviar l'API actual, s'afegeixen serveis interns:
   * Afegir "compat check" en lab: comparativa primary vs fallback en un període de solapament (p50/p95/max del diff de close, gaps, timezone semantics).
   * Si falla el compat check → fallback deshabilitat per aquell símbol.
 
+#### 2.7.5 Fallback provider (Dukascopy) — scope i contracte
+
+**Objectiu:** proveir candles 1m read-only per XAUUSD i EURUSD, i en el futur més RWA.
+
+**Contracte canònic:**
+- Entrada/Sortida sempre en `ts` epoch UTC start-of-minute
+- Rangs `[since_ts, to_ts)` sobre starts
+- Retorna candles tancades (cap parcial)
+- **Symbol normalization:** canonical XAUUSD, EURUSD; Lighter XAU→XAUUSD; Dukascopy XAUUSD→XAUUSD (veure §2.0)
+
+**Regla d'or:** fallback no escriu mai al primary.
+
+#### 2.7.6 Compat check "strategy-level" (primary vs fallback) — sense estratègia concreta
+
+**Idea:** una eina (CLI `compat_probe`) compara primary vs Dukascopy en un rang on existeixen tots dos. Mètriques estratègia-agnòstiques que són proxies de si una estratègia típica (momentum, mean reversion, breakout) veurà el mateix mercat.
+
+**Finestra del probe:** 72h (capta sessions diferents, manejable). **Borderline:** FAIL (conservador i segur).
+
+**Semantics:** `ts` és start-of-minute; rangs `[since, to)` sobre starts.
+
+---
+
+**A) Gate d'integritat (hard fail)** — binari: si falla, no hi ha conversa.
+
+- `duplicate_minutes == 0`
+- `ts_step_errors == 0` (cada delta és 60s)
+- `missing_fallback_minutes / total_minutes <= 0.1%` → **≤ 4 minutes per 72h window** (4320 min × 0.001)
+
+Si falla: fallback disabled per aquell símbol (o només "fallback-only" sense mixed).
+
+---
+
+**B) Gate de "similaritat de mercat" (estratègia-agnòstic)**
+
+Features per minut (per cada font) — per cada candle:
+- `ret` = log(close/open) o (close/open - 1)
+- `range` = (high-low)/close
+- `body` = abs(close-open)/close
+- `upper_wick` = (high-max(open,close))/close
+- `lower_wick` = (min(open,close)-low)/close
+
+Mètriques de comparació (per rang T, 72h):
+
+| Mètrica | Proxy | Target |
+|---------|-------|--------|
+| `direction_mismatch_rate` | % minuts on sign(ret) difereix | EURUSD/XAUUSD ≤ 1.0% |
+| `vol_ratio` | std(ret)_fallback / std(ret)_primary | dins [0.9, 1.1] |
+| `range_ratio` | median(range)_fallback / median(range)_primary | dins [0.9, 1.1] |
+| `p95_range_diff` | EURUSD: p95(abs(range_points_diff)); XAUUSD: p95(abs(range_usd_diff)) | veure thresholds |
+| `corr(ret_primary, ret_fallback)` | Pearson (per simplicitat); Spearman opcional | ≥ 0.98 FX/metalls |
+
+**Thresholds (inicials, conservadors):**
+
+| Asset | direction_mismatch | corr(ret) | vol_ratio | range_ratio | p95_range_diff |
+|-------|-------------------|-----------|-----------|-------------|----------------|
+| **EURUSD** | ≤ 1.0% | ≥ 0.985 | [0.92, 1.08] | [0.92, 1.08] | ≤ 0.8 pip (absolut) |
+| **XAUUSD** | ≤ 1.0% | ≥ 0.98 | [0.90, 1.10] | [0.90, 1.10] | ≤ 0.10 USD (10 cèntims absolut) |
+
+Unitats: EURUSD en pips/points absoluts; XAUUSD en dòlars absoluts.
+
+> Nota: thresholds són "primer tall"; ajustar després de 1–2 probes reals.
+
+---
+
+**Política activació Mixed:**
+- **mixed** només s'activa si Gate A PASS **i** Gate B PASS
+- Si Gate A PASS però Gate B FAIL: fallback es permet només com a **fallback-only** per rangs anteriors a `cutover_ts`; no barregem (evitem backtests travessant fonts amb comportament diferent)
+
+Això protegeix que el backtest sigui indiferent a nivell d'estratègia.
+
+#### 2.7.7 Stitching policy (mixed range) — cutover_ts i "no duplicates"
+
+- **cutover_ts** per símbol = primer `ts` existent al primary.
+
+Quan un client demana `[since, to)`:
+- Si `to <= cutover_ts` → `X-Data-Source: fallback` (fallback-only ok)
+- Si `since >= cutover_ts` → `X-Data-Source: primary`
+- Si travessa → mixed només si `compat_check` PASS per aquell símbol; si no → 422 `MIXED_SOURCE_NOT_ALLOWED`
+
+**Policy when mixed disabled:**
+- Si `since < cutover_ts` i `to <= cutover_ts` → `fallback-only` ok (retornem 100% fallback)
+- Si el rang travessa `cutover_ts` i mixed OFF → 422 `MIXED_SOURCE_NOT_ALLOWED` (no retornem parcial)
+- Altra "truncate" (retornar només primary i amagar el forat) → **descartada explícitament** (evita backtests incomplets sense voler)
+
+**Regles "mixed":**
+- Prioritat a primary en solapament
+- Cap minut duplicat
+- Frontera neta: treballar sempre amb bar starts, evitar off-by-one
+
+#### 2.7.8 Roadmap per fases (P4→P8) — DONE + gates
+
+| Fase | Descripció | DONE |
+|------|------------|------|
+| **P4** | Primary durable recorder v0: startup backfill + runtime gap repair (mateixa font) | soak 2h amb `missing_minutes<=1`, duplicats=0, ts monotònic |
+| **P5** | Transparència + coverage: headers `X-Data-Source`, `X-Data-Gaps`, `X-Data-Repair`, i `/coverage` opcional | tests API validen headers + coverage coherent |
+| **P6** | Dukascopy provider + `compat_probe` v2 (strategy-level): read-only provider + CLI que calcula Gate A + Gate B | probe imprimeix mètriques i PASS/FAIL; artifact: `datafiles/compat_probe/<ts>_compat_probe_EURUSD_72h.log` |
+| **P7** | Mixed gated stitching: mixed ON només si compat_probe PASS; headers reflecteixen primary\|fallback\|mixed | tests stitching "no duplicates" + tests que mixed es denega si FAIL |
+| **P8** (futur) | Read-through gap serving (sense contaminar primary): servir gaps via fallback en lectura, no escriure al primary | evidència "gap served by fallback" + compat gate encara més estricte |
+
 ---
 
 ### 2.8 BACKTEST MODE (planificació, MVP)
@@ -290,6 +397,10 @@ Regla de treball:
   * quina estratègia de backfill és viable
 
 Això evita construir una arquitectura que després no encaixa amb el venue real.
+
+**coverage_probe (QA lab):** `lab/lighter/scripts/coverage_probe.py` — per símbol (EURUSD, XAU) troba `earliest_ts` i `latest_ts` 1m amb binary search, valida finestra 72h. Invariants: `duplicates_after_dedup==0`, `candles_in_window==expected_minutes`, `missing_minutes==0`, `ts_step_errors==0`. Paginació cursor (next_since=last_ts+60). Fallback httpx amb `Accept-Encoding: identity` si brotli. Rate limit: [Volume Quota](https://apidocs.lighter.xyz/docs/volume-quota-program) (SendTx); candlestick ~60 req/min. Output: `lab/out/coverage_mainnet_<symbol>.json`.
+
+**Decisió (evidència 2026-02):** Lighter recent viable (72h OK) per EURUSD i XAU; Dukascopy per històric pre-Lighter. Evidència: `earliest_ts`, `latest_ts`, `raw_count`, `unique_count`, `duplicates_after_dedup=0`.
 
 ---
 
@@ -433,6 +544,8 @@ Response 200: `{"success": true}`
 
 **Nota "Dukascopy-like":** aquí vol dir start-of-minute timestamp + interval `[ts, ts+60)` i candle tancada a boundary, no necessàriament el mateix calendari/feeds exactes.
 
+**Lighter (evidència P0.3b):** `lab/lighter/scripts/time_semantics_probe.py` — t és UTC start-of-minute. L'API retorna només tancades (latest = now_floor - 60). NO hi ha conversió de TZ al dataset; ts epoch UTC. TZ NY a AGENTS és per particions/display, no per re-etiquetar candles.
+
 ---
 
 ## 6) Quality Gates
@@ -530,6 +643,33 @@ docker compose run --rm brokerage python3 -c "import time, datetime; print(datet
 Hora NY i `('EST','EDT')` quan toca → OK.
 
 > El dataset canònic no depèn del TZ del container: `ts` és epoch UTC. El TZ del container és per display i logs.
+
+### 7.1 Volums Docker — accessibles des del host
+
+**Regla:** Tots els directoris i fitxers persistents dins el container han de ser accessibles des del host. No usar paths que només existeixin dins Docker.
+
+**docker-compose.yml** — volumes amb paths relatius al projecte:
+```yaml
+volumes:
+  - ./datafiles:/datafiles    # Dins container: /datafiles → host: <project>/datafiles
+  - ./logs:/app/logs           # Dins container: /app/logs → host: <project>/logs
+```
+
+| Path dins container | Path host (relatiu) | Ús |
+|---------------------|---------------------|-----|
+| `/datafiles` | `./datafiles` | Candles CSV, smoke_runs, ws_soak, freqtrade_runs, e2e_runs, lab_lighter_history |
+| `/app/logs` | `./logs` | Logs de l'aplicació |
+
+**Per què:** Evitar que scripts executats des del host (p.ex. `fetch_historical_candles.py`, `run_freqtrade_paper.sh`) no puguin llegir/escriure als mateixos fitxers que el container. Els paths `./` garanteixen que tot està dins l'arrel del projecte i accessible des de host i Docker.
+
+**Si hi ha problemes de permisos:** Els directoris creats per Docker poden quedar amb `root`. Crear-los des del host abans: `mkdir -p datafiles logs`.
+
+**Neteja de logs antics:** Els logs a `datafiles/` (smoke_runs, ws_soak, freqtrade_runs, e2e_runs) es poden acumular. Per eliminar els que ja no calen (conservant evidència ESTAT):
+```bash
+# Des del host (si tens permisos) o dins Docker:
+docker compose run --rm brokerage ./scripts/cleanup_old_logs.sh
+```
+O manualment: esborrar fitxers a `datafiles/*/` excepte els referenciats a docs/ESTAT.md.
 
 ---
 

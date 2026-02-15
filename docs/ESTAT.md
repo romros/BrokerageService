@@ -63,6 +63,7 @@
 | Run | Resultat | Log |
 |-----|----------|-----|
 | **P3.2 gTrade aïllat** | ✅ run_all default = MVP Lighter (sense gTrade); --include-gtrade opt-in | testing/run_all.py |
+| **coverage_probe** (QA lab) | ✅ EURUSD+XAU mainnet: 72h missing=0, ts_step_err=0; decisió Lighter recent vs Dukascopy llarg | lab/out/coverage_mainnet_*.json |
 | **P3.1 Broker hang diagnostics** | ✅ Logs subprocess a fitxer; dump últimes 300 línies en fallada; heartbeat TESTING=1; test_freqtrade_runner_short → paper+fake (0 network) | testing/helpers/run_broker_subprocess.py |
 | **P3.0 PAPER bracket + liquidation** | ✅ tests + integration OK | test_paper_risk_engine, test_paper_bracket_orders_integration |
 | **Freqtrade paper 15 min** (venue=paper, fake feed) | ✅ open→position_pnl→close OK positions_after=0 candles=15 | `datafiles/freqtrade_runs/20260215_001044_ETH_15m.log` |
@@ -220,6 +221,18 @@ docker compose run --rm brokerage python3 -m application.tools.ws_soak \
 * ~~P3.0 PAPER bracket + liquidation~~ ✅ test_paper_risk_engine, test_paper_bracket_orders_integration
 * ~~P3.1 Broker hang diagnostics~~ ✅ Logs subprocess a fitxer; heartbeat TESTING=1; test_freqtrade_runner_short → paper+fake (0 network)
 * ~~P3.2 gTrade aïllat~~ ✅ run_all default = MVP Lighter; --include-gtrade opt-in
+
+### Data Layer (P4→P8)
+
+* **Lab: Historical Candles Feasibility** — `fetch_historical_candles.py` (paginator, normalització 1m, CSV). Conclusió: viable com a primary backfill per EURUSD/XAU mainnet. Doc: [LAB_LIGHTER_HISTORICAL.md](LAB_LIGHTER_HISTORICAL.md)
+* **Lab: coverage_probe** — `coverage_probe.py` (earliest/latest binary search, validació 72h). Evidència: `lab/out/coverage_mainnet_EURUSD.json`, `coverage_mainnet_XAUUSD.json`. **Decisió:** Lighter recent viable (72h OK); Dukascopy per històric pre-Lighter.
+* **Lab: time_semantics_probe (P0.3b)** — `time_semantics_probe.py` (TZ + boundary). Evidència: `lab/out/time_semantics_EURUSD.json`. **Conclusió:** t és UTC start-of-minute; retorna només tancades (latest = now_floor - 60). NO conversió TZ.
+* **P4.0 — Durable Recorder v0** (Lighter primary, 2 symbols, 2h soak gate): MarketDataRecorderService (startup_backfill, append_closed_candle), GapDetector, HistoricalBackfillService (paginator ≤500, sleep 1.05s). Test: gap manual → verifica repair. DONE: soak 2h amb missing_minutes≤1, duplicates_after_dedup==0, ts_step_errors==0, monotonic_ts; log a `datafiles/soak_data_layer/`. `latest_closed_ts = now_floor_utc_ts - 60`.
+* **P4.1 — WS vs Candlestick Consistency** (després P4.0): Mini-probe 60 min; WS-built vs REST per ts; missing_ts==0, close_diff_p95 sota llindar.
+* **P5** — Headers + coverage: `X-Data-Source`, `X-Data-Gaps`, `X-Data-Repair`, `/coverage`
+* **P6** — Dukascopy provider + `compat_probe` (Gate A + Gate B, 72h, strategy-level)
+* **P7** — Mixed gated stitching (per EURUSD/XAUUSD; mixed només si PASS)
+* **P8** (futur) — Read-through gap serving sense contaminar primary
 
 ---
 

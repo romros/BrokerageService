@@ -1,0 +1,13 @@
+{
+  "symbol": "EURUSD",
+  "is_start_of_minute": true,
+  "step_ok": true,
+  "latest_ts": 1771193640,
+  "now_floor_utc_ts": 1771193700,
+  "latest_lag_seconds": 60,
+  "includes_partial": false,
+  "notes": "t \u00e9s UTC start-of-minute. Retorna nom\u00e9s tancades (latest = now_floor - 60). NO hi ha conversi\u00f3 de TZ al dataset; ts epoch UTC.",
+  "candles_count": 190,
+  "non_start_of_minute_count": 0,
+  "timestamp": "2026-02-15T22:15:04.021478+00:00"
+}
