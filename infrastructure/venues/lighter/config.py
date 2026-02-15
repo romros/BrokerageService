@@ -102,6 +102,42 @@ def get_lighter_tick_interval_ms() -> int:
         return DEFAULT_LIGHTER_TICK_INTERVAL_MS
 
 
+def get_price_cache_ttl_s() -> float:
+    """Price cache TTL (seconds). Testnet uses 5s to reduce 429s."""
+    from foundation.config.constants import (
+        PRICE_CACHE_TTL_S_ENV,
+        DEFAULT_PRICE_CACHE_TTL_S,
+        DEFAULT_PRICE_CACHE_TTL_S_TESTNET,
+    )
+    env_val = os.getenv(PRICE_CACHE_TTL_S_ENV)
+    if env_val:
+        try:
+            return float(env_val)
+        except ValueError:
+            pass
+    if os.getenv("MARKET_DATA_ENV", "mainnet").lower() == "testnet":
+        return DEFAULT_PRICE_CACHE_TTL_S_TESTNET
+    return DEFAULT_PRICE_CACHE_TTL_S
+
+
+def get_price_stale_max_s() -> float:
+    """Max staleness for cache fallback when 429 (seconds)."""
+    from foundation.config.constants import PRICE_STALE_MAX_S_ENV, DEFAULT_PRICE_STALE_MAX_S
+    try:
+        return float(os.getenv(PRICE_STALE_MAX_S_ENV, str(DEFAULT_PRICE_STALE_MAX_S)))
+    except ValueError:
+        return DEFAULT_PRICE_STALE_MAX_S
+
+
+def get_price_fetch_deadline_s() -> float:
+    """Max total wait for price fetch retries on 429 (seconds)."""
+    from foundation.config.constants import PRICE_FETCH_DEADLINE_S_ENV, DEFAULT_PRICE_FETCH_DEADLINE_S
+    try:
+        return float(os.getenv(PRICE_FETCH_DEADLINE_S_ENV, str(DEFAULT_PRICE_FETCH_DEADLINE_S)))
+    except ValueError:
+        return DEFAULT_PRICE_FETCH_DEADLINE_S
+
+
 def get_lighter_symbols_from_env() -> list[str]:
     """
     Symbols for Lighter market data (from LIGHTER_SYMBOLS or SYMBOLS).

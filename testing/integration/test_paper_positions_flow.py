@@ -53,7 +53,9 @@ def test_open_position():
         assert result.position_id is not None, "Should have position_id"
         assert result.executed_price > 2700.0, "Should have slippage (buy = higher price)"
         assert result.fee > 0, "Should have fee"
-        assert result.executed_size == 10000.0, "Notional = collateral * leverage"
+        # executed_size = base units (notional/price), not notional
+        expected_size = 10000.0 / result.executed_price
+        assert abs(result.executed_size - expected_size) < 0.01, f"executed_size={result.executed_size} ~ notional/price"
 
         # Check balance
         balance = await engine.get_balance()

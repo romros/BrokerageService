@@ -3,11 +3,10 @@ WebSocket Smoke Test
 
 Tests basic WebSocket functionality:
 1. Connection and disconnection
-2. Subscribe to channels
-3. Unsubscribe from channels
-4. Message reception with seq numbers
-5. Resume functionality (replay from last_seq)
-6. Resync_required scenario (buffer overflow)
+2. Subscribe/unsubscribe channels
+3. Message reception with seq numbers
+4. Multiple subscriptions + resume (same connection to avoid Docker WS limit)
+5. Error handling (invalid type, missing channel, invalid channel)
 
 Starts its own test server automatically.
 """
@@ -241,9 +240,9 @@ async def test_invalid_channel():
         raise
 
 
-async def test_multiple_subscriptions():
-    """Test subscribing to multiple channels (including candle)."""
-    print("Testing multiple subscriptions...")
+async def test_multiple_subscriptions_and_resume():
+    """Test multiple channels + resume (same connection to avoid Docker WS limit)."""
+    print("Testing multiple subscriptions + resume...")
 
     try:
         async with websockets.connect(WS_URL, **WS_CONNECT_KW) as ws:
@@ -265,7 +264,12 @@ async def test_multiple_subscriptions():
 
                 print(f"  ✓ Subscribed to {channel}")
 
-        print("✓ Multiple subscriptions test passed")
+            # Resume (reuse connection — evita 6a connexió que supera limit Docker)
+            resume_msg = {"type": "resume", "data": {"last_seq": 0}}
+            await ws.send(json.dumps(resume_msg))
+            print(f"  ✓ Resume request sent (seq=0, buffer empty expected)")
+
+        print("✓ Multiple subscriptions + resume test passed")
 
     except Exception as e:
         print(f"✗ Test failed: {e}")
@@ -299,33 +303,6 @@ async def test_message_with_seq():
 
     except AssertionError:
         raise
-    except Exception as e:
-        print(f"✗ Test failed: {e}")
-        raise
-
-
-async def test_resume_without_messages():
-    """Test resume functionality (without buffer)"""
-    print("Testing resume (no messages in buffer)...")
-
-    try:
-        async with websockets.connect(WS_URL, **WS_CONNECT_KW) as ws:
-            # Try to resume from seq 0
-            resume_msg = {
-                "type": "resume",
-                "data": {
-                    "last_seq": 0
-                }
-            }
-            await ws.send(json.dumps(resume_msg))
-
-            # Should not receive any messages (buffer is likely empty)
-            # This is expected behavior
-            print(f"  ✓ Resume request sent (seq=0)")
-            print(f"  ℹ No messages in buffer to replay (expected)")
-
-        print("✓ Resume test passed")
-
     except Exception as e:
         print(f"✗ Test failed: {e}")
         raise
@@ -458,13 +435,12 @@ async def test_candle_channel():
 
 
 async def run_tests():
-    """Run all WebSocket smoke tests. Error tests + candle in shared connections (Docker connect limit)."""
+    """Run all WebSocket smoke tests. Max 5 connections (Docker WS limit)."""
     await test_basic_connection()
     await test_error_responses_same_connection()
     await test_subscribe_unsubscribe()
     await test_message_with_seq()
-    await test_multiple_subscriptions()  # includes candle:XAUUSD:1m
-    await test_resume_without_messages()
+    await test_multiple_subscriptions_and_resume()  # includes candle + resume (same conn)
 
 
 def main():

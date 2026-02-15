@@ -229,7 +229,7 @@ def _main_impl(args, repeat: int, pause_s: float, log_path: Optional[str]) -> in
         try:
             success, error_count = asyncio.run(_run_once())
         except Exception as e:
-            logger.exception("Smoke run %d/%d failed with exception: %s", run_num, repeat, e)
+            logger.exception(f"Smoke run {run_num}/{repeat} failed with exception: {e}")
             success = False
             error_count = 1
         

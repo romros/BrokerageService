@@ -6,10 +6,13 @@ Executes all test scripts in order:
 2. Integration tests (backfill flow, etc.)
 3. API smoke tests (REST, WebSocket)
 
+P3.2: Default = MVP Lighter (core + Lighter). gTrade tests opt-in amb --include-gtrade.
+
 Returns exit code 0 if all pass, 1 if any fail.
 """
 
 
+import argparse
 import os
 from pathlib import Path
 import subprocess
@@ -17,12 +20,47 @@ import sys
 
 # Project root (run_all.py lives in testing/)
 ROOT = Path(__file__).resolve().parent.parent
+
+# P3.2: gTrade-only tests (path-based, excluded per defecte). MVP = Lighter.
+GTrade_TEST_PATHS = frozenset({
+    "unit/test_gtrade_price_feed_parser.py",
+    "unit/test_chain_config.py",
+    "unit/test_tx_sender.py",
+    "unit/test_position_ref.py",
+    "unit/test_abi_encoder.py",
+    "unit/test_market_status_provider.py",
+    "unit/test_price_provider.py",
+    "integration/test_gtrade_ticks_to_candles_flow.py",
+    "integration/test_gtrade_adapter_readonly.py",
+    "integration/test_gtrade_backend_positions.py",
+    "integration/test_gtrade_adapter_write_mocked.py",
+    "integration/test_gtrade_backend_verification_loop.py",
+    "integration/test_adapter_fallback_flow.py",
+})
+
+# Optional: load .env for tests that need Lighter credentials (non-blocking)
+try:
+    from dotenv import load_dotenv
+    env_file = ROOT / ".env"
+    if env_file.exists():
+        load_dotenv(env_file)
+except ImportError:
+    pass
 # Ensure child processes find infrastructure/domain/application
 if str(ROOT) not in os.environ.get("PYTHONPATH", "").split(os.pathsep):
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join([str(ROOT), env.get("PYTHONPATH", "")])
 else:
     env = os.environ.copy()
+
+
+def _is_gtrade_test(test_path: Path, testing_dir: Path) -> bool:
+    """True si el test és gTrade-only (exclòs per defecte)."""
+    try:
+        rel = test_path.resolve().relative_to(testing_dir.resolve())
+        return str(rel).replace("\\", "/") in GTrade_TEST_PATHS
+    except ValueError:
+        return False
 
 
 def run_test(script_path: Path) -> bool:
@@ -50,8 +88,23 @@ def run_test(script_path: Path) -> bool:
 
 def main():
     """Run all tests"""
+    parser = argparse.ArgumentParser(
+        description="Run BrokerageService test suite. Default: MVP Lighter (core+Lighter).",
+    )
+    parser.add_argument(
+        "--include-gtrade",
+        action="store_true",
+        help="Include gTrade tests (opt-in; may fail without Arbitrum .env)",
+    )
+    args = parser.parse_args()
+
     print("\n" + "="*60)
     print("BrokerageService - Test Suite")
+    print("="*60)
+    suite_mode = "core+Lighter+gTrade" if args.include_gtrade else "core+Lighter (MVP)"
+    print(f"Suite: {suite_mode}")
+    if not args.include_gtrade:
+        print("  (gTrade tests excluded; use --include-gtrade to add)")
     print("="*60)
 
     testing_dir = Path(__file__).parent
@@ -97,6 +150,8 @@ def main():
         testing_dir / "unit" / "test_trade_history_models.py",  # P1 TradeFill mapping
         testing_dir / "unit" / "test_ws_preflight_contract.py",  # P2.0 WS candle contract
         testing_dir / "unit" / "test_mode_market_data_env.py",  # PAPER mainnet-data (Freqtrade)
+        testing_dir / "unit" / "test_paper_venue_adapter.py",  # PaperVenueAdapter open→close→positions_after=0
+        testing_dir / "unit" / "test_paper_risk_engine.py",  # P3.0 TP/SL/liquidation triggers
 
         # Integration tests
         testing_dir / "integration" / "test_live_to_store_flow.py",
@@ -118,6 +173,8 @@ def main():
         testing_dir / "integration" / "test_lighter_adapter_close.py",
         testing_dir / "integration" / "test_lighter_adapter_sltp.py",  # M2 SL/TP + Balance
         testing_dir / "integration" / "test_freqtrade_runner_short.py",  # PAPER DONE handshake
+        testing_dir / "integration" / "test_freqtrade_runner_short_paper.py",  # venue=paper zero tx (no Lighter)
+        testing_dir / "integration" / "test_paper_bracket_orders_integration.py",  # P3.0 bracket TP/SL + close_reason
 
         # API smoke tests
         testing_dir / "api" / "test_rest_smoke.py",
@@ -132,6 +189,12 @@ def main():
     for test_path in tests:
         if not test_path.exists():
             print(f"\n⊘ Skipped: {test_path.name} (not found)")
+            skipped += 1
+            continue
+
+        # P3.2: Excloure gTrade per defecte
+        if not args.include_gtrade and _is_gtrade_test(test_path, testing_dir):
+            print(f"\n⊘ Skipped: {test_path.name} (gTrade; use --include-gtrade)")
             skipped += 1
             continue
 

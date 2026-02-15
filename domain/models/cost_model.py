@@ -143,6 +143,13 @@ class CostModel:
                 open_fee_bps=5.0,    # 0.05%
                 close_fee_bps=5.0,   # 0.05%
             )
+        elif symbol in ("ETH", "BTC", "WETH"):
+            return cls(
+                symbol=symbol,
+                spread_bps=1.0,      # 0.01%
+                open_fee_bps=5.0,    # 0.05% (crypto-like)
+                close_fee_bps=5.0,   # 0.05%
+            )
         else:
             raise ValueError(f"Unsupported symbol for gTrade cost model: {symbol}")
 

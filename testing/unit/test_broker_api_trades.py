@@ -4,12 +4,17 @@ Unit tests: Broker API GET /trades endpoint
 Tests GET /api/v1/broker/trades amb mock adapter.
 """
 
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+# Evitar paper execution (requereix Lighter) — lifespan usa else branch
+os.environ["MODE"] = "backtest"
+os.environ["VENUE"] = "gtrade"
 
 from fastapi.testclient import TestClient
 
@@ -65,7 +70,7 @@ def _make_mock_adapter_with_trades():
         ]
     )
     adapter.get_latest_price = AsyncMock(
-        return_value=PriceData(symbol="ETH", bid=3950.0, ask=3950.5, mid=3950.25, timestamp=ts, is_market_open=True)
+        return_value=PriceData(symbol="ETH", bid=3950.0, ask=3950.5, mid=3950.25, timestamp=ts)
     )
     adapter.get_balance = AsyncMock(return_value=Balance(usdc=10000.0, native_token=0.1, available_margin=8000.0, used_margin=2000.0))
     adapter.get_open_positions = AsyncMock(return_value=[])

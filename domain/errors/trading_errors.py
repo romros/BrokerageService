@@ -29,3 +29,11 @@ class PositionNotFoundError(RuntimeError):
     def __init__(self, position_id: str, message: Optional[str] = None):
         self.position_id = position_id
         super().__init__(message or f"Position not found: {position_id}")
+
+
+class RateLimitedError(RuntimeError):
+    """API rate limit (429 Too Many Requests) — caller may use cache fallback"""
+
+    def __init__(self, message: str = "Rate limited (429)", details: Optional[str] = None):
+        self.details = details
+        super().__init__(message)

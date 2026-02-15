@@ -12,15 +12,25 @@ Features:
 
 References:
 - lab/lighter/LIGHTER_COMPLETE_VALIDATION.md - Market Data Investigation
+- TASK: Fix Lighter 429 rate-limit
 """
 
-
-from typing import Protocol, List, Optional, Dict
+import asyncio
+import random
+import time
 from datetime import datetime
+from typing import Protocol, List, Optional, Dict
 
+from domain.errors import RateLimitedError
 from foundation.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _is_429(e: Exception) -> bool:
+    """Check if exception indicates 429 Too Many Requests."""
+    msg = str(e).lower()
+    return "429" in msg or "too many requests" in msg or "rate limit" in msg
 
 
 class ILighterMarketDataClient(Protocol):
@@ -232,3 +242,68 @@ class LighterMarketDataClient:
             finally:
                 self._api_client = None
                 self._orders_api = None
+
+
+class CachedLighterMarketDataClient:
+    """
+    Wrapper around ILighterMarketDataClient with 429 retry + exponential backoff.
+
+    get_order_book_orders: retries on 429 with backoff; raises RateLimitedError
+    if still failing after PRICE_FETCH_DEADLINE_S. Other methods delegate.
+    """
+
+    def __init__(
+        self,
+        underlying: ILighterMarketDataClient,
+        deadline_s: float = 15.0,
+        base_delay_s: float = 0.5,
+    ):
+        self._client = underlying
+        self._deadline_s = deadline_s
+        self._base_delay_s = base_delay_s
+
+    def __getattr__(self, name: str):
+        """Delegate unknown attrs to underlying (resolve_symbol_to_market_id, etc.)."""
+        return getattr(self._client, name)
+
+    async def list_order_books(self) -> List:
+        """Delegate to underlying."""
+        return await self._client.list_order_books()
+
+    async def get_order_book_orders(self, market_id: int, limit: int = 10):
+        """
+        Fetch orderbook with 429 retry (exponential backoff + jitter).
+        Raises RateLimitedError if still failing after deadline.
+        """
+        deadline_s = self._deadline_s
+        base_delay = self._base_delay_s
+        started = time.monotonic()
+        attempt = 0
+
+        while True:
+            try:
+                return await self._client.get_order_book_orders(
+                    market_id=market_id,
+                    limit=limit,
+                )
+            except Exception as e:
+                if not _is_429(e):
+                    logger.error(f"get_order_book_orders market_id={market_id}: {e}")
+                    raise
+                elapsed = time.monotonic() - started
+                if elapsed >= deadline_s:
+                    logger.warning(
+                        f"get_order_book_orders market_id={market_id}: 429 retries exhausted "
+                        f"after {elapsed:.1f}s (deadline={deadline_s}s)"
+                    )
+                    raise RateLimitedError(
+                        f"Rate limited (429) after {attempt + 1} retries",
+                        details=str(e),
+                    ) from e
+                delay = base_delay * (2**attempt) + random.uniform(0, 0.5)
+                delay = min(delay, deadline_s - elapsed)
+                attempt += 1
+                logger.debug(
+                    f"get_order_book_orders market_id={market_id}: 429, retry {attempt} in {delay:.2f}s"
+                )
+                await asyncio.sleep(delay)

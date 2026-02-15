@@ -129,7 +129,6 @@ def make_adapter(
             ask=mid + 1.0,
             mid=mid,
             timestamp=datetime.now(timezone.utc),
-            is_market_open=True,
         )
     )
     return adapter

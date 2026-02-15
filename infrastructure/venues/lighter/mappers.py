@@ -202,16 +202,12 @@ def map_order_book_orders_to_price_data(
     # Get timestamp
     timestamp = time_provider()
 
-    # Market is open (assume true if we have prices)
-    is_market_open = True
-
     return PriceData(
         symbol=symbol_normalized,
         bid=bid,
         ask=ask,
         mid=mid,
         timestamp=timestamp,
-        is_market_open=is_market_open,
     )
 
 
@@ -266,6 +262,22 @@ def map_account_to_positions(account_response) -> List[Position]:
         except (ValueError, TypeError):
             notional = size_float * open_price
 
+        # unrealized_pnl i mark_price oficials de Lighter (coincideixen amb la web)
+        unrealized_pnl: Optional[float] = None
+        mark_price: Optional[float] = None
+        upnl_str = getattr(pos, "unrealized_pnl", None)
+        if upnl_str is not None:
+            try:
+                unrealized_pnl = float(upnl_str)
+                # Derive mark_price: unrealized_pnl = (mark - entry) * size (long) o (entry - mark) * size (short)
+                if size_float > 0:
+                    if is_long:
+                        mark_price = open_price + (unrealized_pnl / size_float)
+                    else:
+                        mark_price = open_price - (unrealized_pnl / size_float)
+            except (ValueError, TypeError):
+                pass
+
         # pair_id + trade_index → position_id = "{pair_id}:{trade_index}"
         positions_out.append(
             Position(
@@ -279,6 +291,8 @@ def map_account_to_positions(account_response) -> List[Position]:
                 current_price=open_price,
                 notional=notional,
                 open_time=now,
+                mark_price=mark_price,
+                unrealized_pnl=unrealized_pnl,
             )
         )
 

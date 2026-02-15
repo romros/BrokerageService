@@ -31,7 +31,7 @@ MAX_CANDLES_LIMIT = 10_000
 DEFAULT_OHLCV_LIMIT = 1000  # /ohlcv/{symbol} default
 DEFAULT_TRADES_LIMIT = 500
 MAX_TRADES_LIMIT = 5000
-KNOWN_VENUES = ("lighter", "gtrade")
+KNOWN_VENUES = ("lighter", "gtrade", "paper")
 
 # ============================================
 # FINANCIAL & TRADING
@@ -46,6 +46,12 @@ DEFAULT_INITIAL_BALANCE_USDC = 10000.0
 # Paper trading defaults
 DEFAULT_PAPER_SLIPPAGE_PERCENT = 0.1  # 0.1% slippage
 DEFAULT_PAPER_FEE_PERCENT = 0.05      # 0.05% generic fee
+
+# P3.0 Paper Risk Engine
+PAPER_MAINTENANCE_MARGIN_RATIO_ENV = "PAPER_MAINTENANCE_MARGIN_RATIO"
+DEFAULT_PAPER_MAINTENANCE_MARGIN_RATIO = 0.05  # 5% maintenance margin (conservative)
+PAPER_FEE_BPS_ENV = "PAPER_FEE_BPS"
+DEFAULT_PAPER_FEE_BPS = 0  # 0 bps = no fee per default
 
 # Backtest defaults
 DEFAULT_BACKTEST_SPEED_MULTIPLIER = 1000  # 1000x speed
@@ -99,9 +105,23 @@ DEFAULT_WS_BUFFER_SIZE = 1000  # Replay buffer size
 TICK_QUEUE_MAXSIZE = 1000      # Tick queue capacity
 DEFAULT_TICKER_BROADCAST_MS = 200  # Ticker throttle interval (ms)
 
+# P3.1 Diagnostics (broker hang investigation)
+TESTING_ENV = "TESTING"
+BROKER_DIAG_ENV = "BROKER_DIAG"
+HEARTBEAT_INTERVAL_S = 5
+
 # Fake price feed (testing without network)
 USE_FAKE_PRICE_FEED_ENV = "USE_FAKE_PRICE_FEED"
 DEFAULT_FAKE_TICK_INTERVAL_MS = 500  # Fast ticks for integration tests
+
+# Price cache (Lighter 429 rate-limit mitigation)
+PRICE_CACHE_TTL_S_ENV = "PRICE_CACHE_TTL_S"
+DEFAULT_PRICE_CACHE_TTL_S = 2.0
+DEFAULT_PRICE_CACHE_TTL_S_TESTNET = 5.0
+PRICE_STALE_MAX_S_ENV = "PRICE_STALE_MAX_S"
+DEFAULT_PRICE_STALE_MAX_S = 10.0
+PRICE_FETCH_DEADLINE_S_ENV = "PRICE_FETCH_DEADLINE_S"
+DEFAULT_PRICE_FETCH_DEADLINE_S = 15.0
 
 # WS Soak (P2.2 mainnet)
 WS_SOAK_SYMBOLS_ENV = "WS_SOAK_SYMBOLS"

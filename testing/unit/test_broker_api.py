@@ -5,6 +5,7 @@ Tests /api/v1/broker/* amb mock adapter.
 """
 
 import asyncio
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -12,6 +13,10 @@ from unittest.mock import AsyncMock
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+# Evitar paper execution (requereix Lighter) — lifespan usa else branch
+os.environ["MODE"] = "backtest"
+os.environ["VENUE"] = "gtrade"
 
 from fastapi.testclient import TestClient
 
@@ -50,7 +55,6 @@ def _make_mock_adapter():
             ask=3950.5,
             mid=3950.25,
             timestamp=datetime.now(timezone.utc),
-            is_market_open=True,
         )
     )
     adapter.get_balance = AsyncMock(

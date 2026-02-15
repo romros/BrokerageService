@@ -10,8 +10,10 @@ Responsibilities:
 """
 
 
+import asyncio
 from contextlib import asynccontextmanager
 import os
+import threading
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,7 +21,12 @@ from fastapi.responses import JSONResponse
 
 from application.api.broker_routes import router as broker_router, set_broker_deps
 from application.api.ws_routes import router as ws_router
-from foundation.config.constants import USE_FAKE_PRICE_FEED_ENV
+from foundation.config.constants import (
+    BROKER_DIAG_ENV,
+    HEARTBEAT_INTERVAL_S,
+    TESTING_ENV,
+    USE_FAKE_PRICE_FEED_ENV,
+)
 from foundation.logging import get_logger
 from infrastructure.storage.csv_store import CSVCandleStore
 
@@ -88,12 +95,58 @@ async def lifespan(app: FastAPI):
         canonical_tz=config["canonical_tz"],
     )
 
-    # Set broker API dependencies. Només VENUE=lighter té adapter.
+    # Set broker API dependencies. Paper = zero tx; Lighter = tx reals.
     adapter = None
     market_data_service = None
     use_fake_feed = os.getenv(USE_FAKE_PRICE_FEED_ENV, "").strip() == "1"
+    enable_live = config["enable_live_trading"]
+    mode_lower = (config["mode"] or "").lower()
+    # PAPER: zero tx. Kill switch: ENABLE_LIVE_TRADING=0 → paper. No paper si venue=gtrade (backtest).
+    use_paper_execution = (mode_lower == "paper" or not enable_live) and venue in ("", "lighter", "paper")
 
-    if venue == "lighter":
+    from infrastructure.builders.lighter_di import build_lighter_paper_market_data
+    from infrastructure.venues.lighter.config import (
+        get_lighter_symbols_from_env,
+        get_lighter_tick_interval_ms,
+    )
+
+    if use_paper_execution:
+        # PAPER: execució simulada, zero tx. Market data de pipeline.
+        symbols = get_lighter_symbols_from_env()
+        _, market_data_service = build_lighter_paper_market_data(
+            candle_store=candle_store,
+            canonical_tz=config["canonical_tz"],
+        )
+        await market_data_service.start()
+        source = "fake" if use_fake_feed else "real"
+        logger.info(
+            "execution_mode=paper_simulated market_data_env=%s source=%s",
+            config["market_data_env"],
+            source,
+        )
+
+        async def _get_price(sym: str):
+            from domain.models import PriceData
+            from datetime import datetime, timezone
+            p = market_data_service.get_latest_price(sym)
+            ts = datetime.now(timezone.utc)
+            if p is None:
+                return PriceData(symbol=sym, bid=0, ask=0, mid=0, timestamp=ts)
+            return PriceData(symbol=sym, bid=p, ask=p, mid=p, timestamp=ts)
+
+        from infrastructure.venues.paper.paper_venue_adapter import PaperVenueAdapter
+        paper_adapter = PaperVenueAdapter(get_price=_get_price, symbols=symbols)
+        await paper_adapter.start()
+        adapter = paper_adapter
+        set_broker_deps(
+            candle_store=candle_store,
+            adapter_factory=lambda v: paper_adapter if v == "paper" else None,
+            mode=config["mode"],
+            venue="paper",
+            market_data_env=config["market_data_env"],
+            market_data_source=source,
+        )
+    elif venue == "lighter":
         # Lazy: evita carregar lighter si --venue gtrade
         from infrastructure.builders.lighter_di import (
             build_lighter_paper_adapter,
@@ -103,7 +156,11 @@ async def lifespan(app: FastAPI):
             get_lighter_symbols_from_env,
             get_lighter_tick_interval_ms,
         )
+        from infrastructure.venues.lighter.price_cache import PriceSnapshotCache
+        from infrastructure.venues.lighter.config import get_price_cache_ttl_s
 
+        source = "fake" if use_fake_feed else "real"
+        shared_price_cache = PriceSnapshotCache(ttl_s=get_price_cache_ttl_s())
         if use_fake_feed:
             # P2.0.1: Sense adapter quan fake — broker arrenca sense xarxa
             adapter = None
@@ -113,9 +170,14 @@ async def lifespan(app: FastAPI):
                 mode=config["mode"],
                 venue=venue,
                 market_data_env=config["market_data_env"],
+                market_data_source=source,
             )
         else:
-            adapter = build_lighter_paper_adapter()
+            adapter_mode = "live" if config["enable_live_trading"] else "paper"
+            adapter = build_lighter_paper_adapter(
+                mode=adapter_mode,
+                price_cache=shared_price_cache,
+            )
             await adapter.start()
             set_broker_deps(
                 candle_store=candle_store,
@@ -123,6 +185,7 @@ async def lifespan(app: FastAPI):
                 mode=config["mode"],
                 venue=venue,
                 market_data_env=config["market_data_env"],
+                market_data_source=source,
             )
 
         # P2.0: Arrencar pipeline ticks→candles→store→WS quan MODE in (paper, live)
@@ -133,9 +196,9 @@ async def lifespan(app: FastAPI):
             _, market_data_service = build_lighter_paper_market_data(
                 candle_store=candle_store,
                 canonical_tz=config["canonical_tz"],
+                price_cache=shared_price_cache,
             )
             await market_data_service.start()
-            source = "fake" if use_fake_feed else "real"
             logger.info(
                 "MARKETDATA_START venue=%s source=%s symbols=%s interval_ms=%s",
                 venue,
@@ -150,17 +213,39 @@ async def lifespan(app: FastAPI):
             mode=config["mode"],
             venue=venue,
             market_data_env=config["market_data_env"],
+            market_data_source="n/a",
         )
 
     logger.info("✓ BrokerageService ready")
 
+    # P3.1: Heartbeat per diagnostics (TESTING=1 o BROKER_DIAG=1)
+    heartbeat_task = None
+    if os.getenv(TESTING_ENV, "").strip() == "1" or os.getenv(BROKER_DIAG_ENV, "").strip() == "1":
+        async def _heartbeat_loop():
+            while True:
+                await asyncio.sleep(HEARTBEAT_INTERVAL_S)
+                pending = len(asyncio.all_tasks())
+                th = threading.current_thread().name
+                logger.info("heartbeat alive thread=%s pending_tasks=%d", th, pending)
+
+        heartbeat_task = asyncio.create_task(_heartbeat_loop())
+        logger.info("P3.1 heartbeat enabled (interval=%ds)", HEARTBEAT_INTERVAL_S)
+
     yield  # App is running
 
+    if heartbeat_task:
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
+
     logger.info("🛑 Shutting down BrokerageService...")
+    effective_venue = "paper" if use_paper_execution else venue
     if market_data_service:
         try:
             await market_data_service.stop()
-            logger.info("MARKETDATA_STOP venue=%s", venue)
+            logger.info("MARKETDATA_STOP venue=%s", effective_venue)
         except Exception as e:
             logger.error("MARKETDATA_STOP error: %s", e)
     if adapter:

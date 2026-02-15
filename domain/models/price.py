@@ -17,8 +17,6 @@ class PriceData:
     ask: float
     mid: float
     timestamp: datetime
-    is_market_open: bool
-    is_day_trading_closed: bool = False
 
     @property
     def spread(self) -> float:

@@ -50,6 +50,7 @@ def make_fake_position(
     sign: int = 1,
     avg_entry_price: str = "2000.0",
     position_value: str = "2000.0",
+    unrealized_pnl: str | None = None,
 ):
     p = type("FakePos", (), {})()
     p.market_id = market_id
@@ -58,6 +59,8 @@ def make_fake_position(
     p.sign = sign
     p.avg_entry_price = avg_entry_price
     p.position_value = position_value
+    if unrealized_pnl is not None:
+        p.unrealized_pnl = unrealized_pnl
     return p
 
 
@@ -120,7 +123,6 @@ def make_adapter(
             ask=mid + 1.0,
             mid=mid,
             timestamp=datetime.now(timezone.utc),
-            is_market_open=True,
         )
     )
     return adapter
@@ -326,6 +328,47 @@ async def test_close_position_regression_uses_market_scaling_not_limit():
     print("✓ test_close_position_regression_uses_market_scaling_not_limit")
 
 
+async def test_close_position_429_fallback_uses_positions_mark():
+    """429 rate-limit: get_latest_price fails → fallback to mark_price from positions → close succeeds."""
+    from domain.errors import RateLimitedError
+
+    signer = DummySigner()
+    resp_full = make_fake_account_response([
+        make_fake_position(
+            position="1.0", sign=1, avg_entry_price="2000.0", position_value="2000.0",
+            unrealized_pnl="5.0",
+        ),
+    ])
+    resp_empty = make_fake_account_response([])
+    seq = [resp_full, resp_full, resp_empty, resp_empty] + [resp_empty] * 10
+    mock_account_api = AsyncMock()
+    mock_account_api.account = AsyncMock(side_effect=seq)
+    config = make_config()
+    adapter = LighterVenueAdapter(
+        config=config,
+        mode="live",
+        market_data_client=None,
+        signer=signer,
+        account_api=mock_account_api,
+        order_index_generator=ClientOrderIndexGenerator(seed=9000),
+    )
+
+    async def failing_get_latest_price(symbol: str):
+        raise RateLimitedError("429 Too Many Requests")
+
+    adapter.get_latest_price = failing_get_latest_price
+
+    result = await adapter.close_position("lighter:0", percent=100.0)
+
+    assert result is True
+    assert len(signer.calls) >= 1
+    assert signer.calls[-1]["base_amount"] == 10_000
+    positions = await adapter.get_open_positions()
+    positions_eth = [p for p in positions if p.pair_id == 0]
+    assert len(positions_eth) == 0, "positions_after=0 (flat)"
+    print("✓ test_close_position_429_fallback_uses_positions_mark")
+
+
 async def test_close_position_maker_fallback_positions_after_zero():
     """P1.2: flux realista maker parcial → fallback market → positions_after=0."""
     signer = MakerAwareSigner()
@@ -356,7 +399,6 @@ async def test_close_position_maker_fallback_positions_after_zero():
             ask=2001.0,
             mid=2000.0,
             timestamp=datetime.now(timezone.utc),
-            is_market_open=True,
         )
     )
 
@@ -378,6 +420,7 @@ async def main():
     print()
 
     tests = [
+        test_close_position_429_fallback_uses_positions_mark,
         test_close_position_full_ok,
         test_close_position_partial_ok,
         test_close_position_reduce_only_flag,

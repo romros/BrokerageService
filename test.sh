@@ -8,10 +8,16 @@ CONTAINER_NAME="brokerage-test-$$"
 
 echo "Running tests with live code mounting..."
 
+ENV_ARGS=""
+if [ -f .env ]; then
+  ENV_ARGS="--env-file .env"
+fi
+
 docker run --rm \
   --name "$CONTAINER_NAME" \
   -v "$(pwd):/app" \
   -w /app \
+  $ENV_ARGS \
   "$IMAGE" \
   bash -c "
     echo '📦 Installing dependencies...'

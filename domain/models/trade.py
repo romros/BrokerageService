@@ -10,6 +10,13 @@ from datetime import datetime
 from typing import Optional
 
 
+# P3.0: close_reason per trade history
+CLOSE_REASON_MANUAL = "manual"
+CLOSE_REASON_STOP_LOSS = "stop_loss"
+CLOSE_REASON_TAKE_PROFIT = "take_profit"
+CLOSE_REASON_LIQUIDATION = "liquidation"
+
+
 @dataclass
 class TradeFill:
     """Individual trade fill (execution) — CCXT/Freqtrade compatible"""
@@ -23,3 +30,9 @@ class TradeFill:
     timestamp: Optional[datetime] = None
     order_id: Optional[str] = None
     position_id: Optional[str] = None
+    # P3.0: close_reason per trade history (manual|stop_loss|take_profit|liquidation)
+    close_reason: Optional[str] = None
+    open_ts: Optional[datetime] = None
+    close_ts: Optional[datetime] = None
+    open_price: Optional[float] = None
+    close_price: Optional[float] = None

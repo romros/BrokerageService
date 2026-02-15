@@ -22,6 +22,7 @@ from foundation.logging import get_logger
 from .config import get_lighter_tick_interval_ms, get_lighter_symbols_from_env
 from .market_data_client import ILighterMarketDataClient
 from .mappers import map_order_book_orders_to_price_data, normalize_symbol
+from .price_cache import PriceSnapshotCache
 
 logger = get_logger(__name__)
 
@@ -46,6 +47,7 @@ class LighterPriceFeedClient:
         symbols: Optional[List[str]] = None,
         tick_interval_ms: Optional[int] = None,
         time_provider: Optional[Callable[[], datetime]] = None,
+        price_cache: Optional[PriceSnapshotCache] = None,
     ):
         """
         Args:
@@ -53,8 +55,10 @@ class LighterPriceFeedClient:
             symbols: Symbols to poll (default: from LIGHTER_SYMBOLS / SYMBOLS env)
             tick_interval_ms: Poll interval in ms (default: from LIGHTER_TICK_INTERVAL_MS env)
             time_provider: For timestamps (injectable for tests)
+            price_cache: Shared cache to write prices (for GET /price, close path)
         """
         self._client = market_data_client
+        self._price_cache = price_cache
         self._symbols = symbols or get_lighter_symbols_from_env()
         self._tick_interval_ms = tick_interval_ms if tick_interval_ms is not None else get_lighter_tick_interval_ms()
         self._time_provider = time_provider or _default_time_provider
@@ -115,18 +119,19 @@ class LighterPriceFeedClient:
                     order_book_orders = await self._client.get_order_book_orders(
                         market_id=market_id, limit=10
                     )
+                    sym_normalized = normalize_symbol(symbol)
                     price_data = map_order_book_orders_to_price_data(
                         symbol=symbol,
                         order_book_orders=order_book_orders,
                         time_provider=self._time_provider,
                     )
+                    if self._price_cache:
+                        self._price_cache.set(sym_normalized, price_data)
 
                     now_ms = int(self._time_provider().timestamp() * 1000)
                     last = self._last_ts_ms.get(symbol, 0)
                     ts_ms = max(last + 1, now_ms)
                     self._last_ts_ms[symbol] = ts_ms
-
-                    sym_normalized = normalize_symbol(symbol)
                     try:
                         self._queue.put_nowait((sym_normalized, price_data.mid, ts_ms))
                     except asyncio.QueueFull:

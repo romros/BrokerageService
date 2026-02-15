@@ -42,6 +42,7 @@ logs/
 
 # Data
 data/
+datafiles/
 *.parquet
 *.csv
 

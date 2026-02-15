@@ -59,6 +59,7 @@ class ModeResponse(BaseModel):
     is_backtest: bool
     venue: str
     market_data_env: str = "mainnet"  # mainnet|testnet — font de preus
+    market_data_source: str = "n/a"  # fake|real|n/a — preus fake o API real
 
 
 class ErrorResponse(BaseModel):
@@ -201,6 +202,7 @@ class TradeItem(BaseModel):
     timestamp: str  # ISO8601
     order_id: Optional[str] = None
     position_id: Optional[str] = None
+    close_reason: Optional[str] = None  # P3.0: manual|stop_loss|take_profit|liquidation
 
 
 class TradesResponse(BaseModel):

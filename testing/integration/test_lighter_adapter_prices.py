@@ -146,7 +146,6 @@ async def test_get_latest_price_ok_bid_ask_mid():
     assert price_data.ask == 1973.50
     assert price_data.mid == (1973.34 + 1973.50) / 2.0
     assert isinstance(price_data.timestamp, datetime)
-    assert price_data.is_market_open is True
 
     print("✓ test_get_latest_price_ok_bid_ask_mid")
 

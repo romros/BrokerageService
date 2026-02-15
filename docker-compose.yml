@@ -17,11 +17,12 @@ services:
       # Market data: mainnet|testnet (PAPER Freqtrade = mainnet data + paper execution)
       - MARKET_DATA_ENV=${MARKET_DATA_ENV:-mainnet}
       - ENABLE_LIVE_TRADING=${ENABLE_LIVE_TRADING:-0}
+      - USE_FAKE_PRICE_FEED=${USE_FAKE_PRICE_FEED:-0}
 
       # Storage
       - DATAFILES_ROOT=/datafiles
       - CANONICAL_TZ=America/New_York
-      - SYMBOLS=XAUUSD,EURUSD
+      - SYMBOLS=${SYMBOLS:-XAUUSD,EURUSD}
 
       # Backfill
       - BACKFILL_INTERVAL_SECONDS=${BACKFILL_INTERVAL_SECONDS:-600}
@@ -48,6 +49,8 @@ services:
       - ./logs:/app/logs
     networks:
       - trading
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Linux: connectar al broker via host (localhost:8000)
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/broker/health"]

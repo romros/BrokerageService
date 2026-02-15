@@ -156,6 +156,10 @@ PAPER no vol dir "testnet". PAPER vol dir **mainnet-data + paper execution**, am
 * **Paper execution coherent amb l'API**:
   * `/orders/open` i `/orders/close` creen/tanquen posicions en paper amb `position_id` estable.
   * `positions_after=0` després de tancar (invariant de cleanup).
+* **P3.0 Bracket + liquidation (paper):**
+  * `POST /orders/open` amb `sl_price` i `tp_price` (bracket). Execució automàtica TP/SL quan el preu toca el nivell.
+  * Liquidation simulation: equity ≤ notional × maintenance_margin_ratio → liquidació.
+  * `GET /positions` retorna `sl_price`, `tp_price`, `liquidation_price`. `GET /trades` inclou `close_reason`.
 * **Freqtrade handshake**:
   * Un "freqtrade-like runner" (o Freqtrade real) pot:
     * llegir `/ohlcv/{symbol}` i `/price/latest`
@@ -433,7 +437,7 @@ Response 200: `{"success": true}`
 
 ## 6) Quality Gates
 
-- **Gate A (bloquejador):** `./test.sh testing/run_all.py` passa
+- **Gate A (bloquejador):** `./test.sh testing/run_all.py` passa (default: MVP Lighter, sense gTrade). gTrade tests opt-in amb `--include-gtrade`.
 - **Gate B (bloquejador):** Integration mock SL/TP + Balance passa
 - **Gate C (post-milestone):** 3× smoke real OK; 3× e2e trade real OK (`positions_after=0`)
 - **WS preflight integration (real broker):** `test_ws_preflight_integration_real.py` — fake feed, no network
@@ -463,8 +467,11 @@ testing/
 **Com executar:**
 
 ```bash
-# Suite completa (unit + integration mock + alguns api local)
+# Suite MVP Lighter (core+Lighter; default, sense gTrade)
 ./test.sh testing/run_all.py
+
+# Suite amb gTrade (opt-in; pot fallar sense .env Arbitrum)
+./test.sh testing/run_all.py --include-gtrade
 
 # Un test concret
 ./test.sh testing/unit/test_broker_api.py

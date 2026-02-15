@@ -36,9 +36,15 @@ from foundation.config.constants import (
     DEFAULT_INITIAL_BALANCE_USDC,
 )
 from domain.interfaces import IExecutionEngine
-from domain.models import Position, OrderRequest, OrderResult, OrderSide, Balance
+from domain.models import Position, OrderRequest, OrderResult, OrderSide, Balance, TradeFill
 from domain.models.cost_model import CostModel
 from domain.models.enums import PositionAction
+from domain.models.trade import (
+    CLOSE_REASON_LIQUIDATION,
+    CLOSE_REASON_MANUAL,
+    CLOSE_REASON_STOP_LOSS,
+    CLOSE_REASON_TAKE_PROFIT,
+)
 from foundation.logging import get_logger
 
 if TYPE_CHECKING:
@@ -75,6 +81,7 @@ class PaperExecutionEngine(IExecutionEngine):
         self._balance = initial_balance
         self._initial_balance = initial_balance
         self._positions: Dict[str, Position] = {}  # position_id -> Position
+        self._trade_history: list[TradeFill] = []  # P3.0: closed trades amb close_reason
         self._slippage_bps = slippage_bps
         self._tz = tz or CANONICAL_TIMEZONE
         self._hub = hub
@@ -160,6 +167,7 @@ class PaperExecutionEngine(IExecutionEngine):
             tp_price=request.tp_price,
             open_time=timestamp,
             notional=notional,
+            venue_position_id=position_id,
         )
 
         self._positions[position_id] = position
@@ -175,12 +183,13 @@ class PaperExecutionEngine(IExecutionEngine):
         await self._broadcast_execution_event(position_id, request.symbol, PositionAction.OPENED, executed_price, total_entry_fee)
         await self._broadcast_balance_event()
 
+        size_base = notional / executed_price if executed_price else 0
         return OrderResult(
             success=True,
             position_id=position_id,
             order_id=client_order_id,
             executed_price=executed_price,
-            executed_size=notional,
+            executed_size=size_base,  # Base units (ex. ETH amount) per broker contract
             fee=total_entry_fee,
             slippage=self._slippage_bps,
             timestamp=timestamp,
@@ -193,6 +202,7 @@ class PaperExecutionEngine(IExecutionEngine):
         client_order_id: str,
         current_price: float,
         timestamp: Optional[datetime] = None,
+        close_reason: str = CLOSE_REASON_MANUAL,
     ) -> OrderResult:
         """
         Close an existing position
@@ -260,6 +270,26 @@ class PaperExecutionEngine(IExecutionEngine):
         # Calculate PnL percentages
         pnl_gross_percent = (pnl_gross / position.collateral) * 100
         pnl_net_percent = (pnl_net / position.collateral) * 100
+
+        # P3.0: Store trade history amb close_reason
+        size_base = position.notional / executed_price if executed_price else 0
+        trade_fill = TradeFill(
+            trade_id=f"paper_{position_id}_{int(timestamp.timestamp())}",
+            symbol=position.symbol,
+            side="sell" if position.is_long else "buy",
+            price=executed_price,
+            size=size_base,
+            fee=total_exit_fee,
+            timestamp=timestamp,
+            order_id=client_order_id,
+            position_id=position_id,
+            close_reason=close_reason,
+            open_ts=position.open_time,
+            close_ts=timestamp,
+            open_price=position.open_price,
+            close_price=executed_price,
+        )
+        self._trade_history.append(trade_fill)
 
         # Remove position
         del self._positions[position_id]
@@ -358,13 +388,17 @@ class PaperExecutionEngine(IExecutionEngine):
             if position.sl_price is not None:
                 if position.is_long and current_price <= position.sl_price:
                     logger.info(f"Stop loss hit for {position_id}: {current_price} <= {position.sl_price}")
-                    result = await self.close_position(position_id, f"sl_{position_id}", current_price)
+                    result = await self.close_position(
+                        position_id, f"sl_{position_id}", current_price, close_reason=CLOSE_REASON_STOP_LOSS
+                    )
                     closed_positions.append(result)
                     continue
 
                 if not position.is_long and current_price >= position.sl_price:
                     logger.info(f"Stop loss hit for {position_id}: {current_price} >= {position.sl_price}")
-                    result = await self.close_position(position_id, f"sl_{position_id}", current_price)
+                    result = await self.close_position(
+                        position_id, f"sl_{position_id}", current_price, close_reason=CLOSE_REASON_STOP_LOSS
+                    )
                     closed_positions.append(result)
                     continue
 
@@ -372,17 +406,81 @@ class PaperExecutionEngine(IExecutionEngine):
             if position.tp_price is not None:
                 if position.is_long and current_price >= position.tp_price:
                     logger.info(f"Take profit hit for {position_id}: {current_price} >= {position.tp_price}")
-                    result = await self.close_position(position_id, f"tp_{position_id}", current_price)
+                    result = await self.close_position(
+                        position_id, f"tp_{position_id}", current_price, close_reason=CLOSE_REASON_TAKE_PROFIT
+                    )
                     closed_positions.append(result)
                     continue
 
                 if not position.is_long and current_price <= position.tp_price:
                     logger.info(f"Take profit hit for {position_id}: {current_price} <= {position.tp_price}")
-                    result = await self.close_position(position_id, f"tp_{position_id}", current_price)
+                    result = await self.close_position(
+                        position_id, f"tp_{position_id}", current_price, close_reason=CLOSE_REASON_TAKE_PROFIT
+                    )
                     closed_positions.append(result)
                     continue
 
         return closed_positions
+
+    async def check_stops_and_liquidation(
+        self,
+        current_prices: dict[str, float],
+        maintenance_margin_ratio: float = 0.05,
+    ) -> list[OrderResult]:
+        """
+        P3.0: Check TP/SL + liquidation. Liquidation si equity <= notional * maintenance_margin_ratio.
+        equity = collateral + unrealized_pnl
+        """
+        closed = []
+
+        # Liquidation check (abans de TP/SL per prioritat)
+        for position_id, position in list(self._positions.items()):
+            current_price = current_prices.get(position.symbol)
+            if current_price is None:
+                continue
+            position.current_price = current_price
+
+            # equity = collateral + unrealized_pnl
+            size = (position.notional or 0) / (position.open_price or 1)
+            if position.is_long:
+                unrealized_pnl = (current_price - position.open_price) * size
+            else:
+                unrealized_pnl = (position.open_price - current_price) * size
+            equity = position.collateral + unrealized_pnl
+            notional = position.notional or (position.collateral * position.leverage)
+            maintenance_margin = notional * maintenance_margin_ratio
+
+            if equity <= maintenance_margin:
+                logger.info(
+                    f"Liquidation for {position_id}: equity={equity:.2f} <= maintenance={maintenance_margin:.2f}"
+                )
+                result = await self.close_position(
+                    position_id, f"liq_{position_id}", current_price, close_reason=CLOSE_REASON_LIQUIDATION
+                )
+                closed.append(result)
+                continue
+
+        # TP/SL (només posicions no liquidades)
+        closed.extend(await self.check_stops(current_prices))
+        return closed
+
+    def get_trade_history(
+        self,
+        symbol: Optional[str] = None,
+        since: Optional[datetime] = None,
+        to: Optional[datetime] = None,
+        limit: int = 500,
+    ) -> list[TradeFill]:
+        """P3.0: Retorna trades tancats amb close_reason."""
+        out = list(self._trade_history)
+        if symbol:
+            out = [t for t in out if t.symbol == symbol]
+        if since:
+            out = [t for t in out if t.timestamp and t.timestamp >= since]
+        if to:
+            out = [t for t in out if t.timestamp and t.timestamp <= to]
+        out.sort(key=lambda t: (t.timestamp or datetime.min).timestamp(), reverse=True)
+        return out[:limit]
 
     # ============ WebSocket Broadcasting ============
 

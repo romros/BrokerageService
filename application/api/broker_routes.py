@@ -41,6 +41,8 @@ from foundation.config.constants import (
     DEFAULT_TRADES_LIMIT,
     MAX_TRADES_LIMIT,
     KNOWN_VENUES,
+    PAPER_MAINTENANCE_MARGIN_RATIO_ENV,
+    DEFAULT_PAPER_MAINTENANCE_MARGIN_RATIO,
 )
 from foundation.logging import get_logger
 
@@ -56,6 +58,7 @@ _adapter_factory: Optional[Callable[[str], Any]] = None
 _mode: str = "backtest"
 _venue: str = "gtrade"
 _market_data_env: str = "mainnet"
+_market_data_source: str = "n/a"  # fake|real|n/a — visible a GET /mode i freqtrade_runner
 
 
 def set_broker_deps(
@@ -64,9 +67,10 @@ def set_broker_deps(
     mode: str = _UNSET,
     venue: str = _UNSET,
     market_data_env: str = _UNSET,
+    market_data_source: str = _UNSET,
 ) -> None:
     """Inject dependencies for broker routes."""
-    global _candle_store, _adapter_factory, _mode, _venue, _market_data_env
+    global _candle_store, _adapter_factory, _mode, _venue, _market_data_env, _market_data_source
     if candle_store is not _UNSET:
         _candle_store = candle_store
     if adapter_factory is not _UNSET:
@@ -77,15 +81,29 @@ def set_broker_deps(
         _venue = venue
     if market_data_env is not _UNSET:
         _market_data_env = market_data_env
+    if market_data_source is not _UNSET:
+        _market_data_source = market_data_source
     logger.info(
         f"Broker API deps: mode={_mode}, venue={_venue}, market_data_env={_market_data_env}, "
-        f"adapter_factory={'set' if _adapter_factory else 'None'}"
+        f"market_data_source={_market_data_source}, adapter_factory={'set' if _adapter_factory else 'None'}"
     )
 
 
 def _http_error(status_code: int, code: str, detail: str):
     """Llança HTTPException amb format {detail, code} consistent."""
     raise HTTPException(status_code=status_code, detail={"detail": detail, "code": code})
+
+
+def _get_paper_maintenance_ratio() -> float:
+    """P3.0: Llegeix PAPER_MAINTENANCE_MARGIN_RATIO des de env."""
+    import os
+    val = os.getenv(PAPER_MAINTENANCE_MARGIN_RATIO_ENV, "")
+    if val:
+        try:
+            return float(val)
+        except ValueError:
+            pass
+    return DEFAULT_PAPER_MAINTENANCE_MARGIN_RATIO
 
 
 def _get_adapter_or_http_error(venue: str):
@@ -143,6 +161,9 @@ class PositionItem(BaseModel):
     entry_time: str
     mark_price: Optional[float] = None  # Preu actual (per PnL)
     unrealized_pnl: Optional[float] = None  # PnL no realitzat en USD
+    sl_price: Optional[float] = None  # P3.0 bracket
+    tp_price: Optional[float] = None  # P3.0 bracket
+    liquidation_price: Optional[float] = None  # P3.0 paper risk
 
 
 class PositionsResponse(BaseModel):
@@ -186,6 +207,7 @@ async def get_mode():
         is_backtest=(_mode == "backtest"),
         venue=_venue,
         market_data_env=_market_data_env,
+        market_data_source=_market_data_source,
     )
 
 
@@ -325,16 +347,21 @@ async def get_positions(venue: str = Query(...)):
     adapter = _get_adapter_or_http_error(venue)
     try:
         positions = await adapter.get_open_positions()
-        # Obtenir mark price per cada símbol únic (best-effort)
+        # Mark price: preferir el de la posició (Lighter retorna unrealized_pnl oficial → derivem mark_price)
+        # Fallback: order book mid del nostre price feed
         mark_prices: dict[str, float] = {}
         for p in positions:
             if p.symbol not in mark_prices:
-                try:
-                    px = await adapter.get_latest_price(p.symbol)
-                    mark_prices[p.symbol] = px.mid
-                except Exception as e:
-                    logger.warning("get_positions: no mark price for %s: %s", p.symbol, e)
-        return _map_positions_response(venue, positions, mark_prices)
+                if getattr(p, "mark_price", None) is not None:
+                    mark_prices[p.symbol] = p.mark_price
+                else:
+                    try:
+                        px = await adapter.get_latest_price(p.symbol)
+                        mark_prices[p.symbol] = px.mid
+                    except Exception as e:
+                        logger.warning("get_positions: no mark price for %s: %s", p.symbol, e)
+        ratio = _get_paper_maintenance_ratio()
+        return _map_positions_response(venue, positions, mark_prices, maintenance_margin_ratio=ratio)
     except Exception as e:
         logger.error("get_positions %s: %s", venue, e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -371,6 +398,7 @@ async def get_trades(
                 timestamp=f.timestamp.isoformat() if f.timestamp else "",
                 order_id=f.order_id,
                 position_id=f.position_id,
+                close_reason=getattr(f, "close_reason", None),
             )
             for f in fills
         ]
@@ -397,9 +425,13 @@ async def _do_order_open(req: OrderOpenRequest) -> OrderOpenResponse:
             tp_price=req.tp_price,
             client_order_id=None,
         )
+        # P3.1: Garantir position_id amb prefix venue per paper (consistent amb GET /positions)
+        pid = result.position_id or ""
+        if pid and req.venue == "paper" and ":" not in pid:
+            pid = f"paper:{pid}"
         return OrderOpenResponse(
             success=result.success,
-            position_id=result.position_id or "",
+            position_id=pid,
             order_id=result.order_id or "",
             executed_price=result.executed_price or 0,
             executed_size=result.executed_size or 0,
@@ -491,22 +523,54 @@ def _map_balance_response(bal: Any) -> BalanceResponse:
     )
 
 
-def _map_positions_response(venue: str, positions: list, mark_prices: Optional[dict[str, float]] = None) -> PositionsResponse:
-    """Mapa llista Position domain a PositionsResponse amb mark_price i unrealized_pnl."""
+def _compute_liquidation_price(
+    open_price: float,
+    notional: float,
+    collateral: float,
+    is_long: bool,
+    maintenance_margin_ratio: float,
+) -> Optional[float]:
+    """P3.0: Liquidation price (determinista). equity = collateral + unrealized_pnl."""
+    if notional <= 0 or open_price <= 0:
+        return None
+    size = notional / open_price
+    maintenance_margin = notional * maintenance_margin_ratio
+    # equity = collateral + (liq_price - open_price)*size (long) or (open_price - liq_price)*size (short)
+    # At liquidation: equity = maintenance_margin
+    if is_long:
+        # collateral + (liq - open)*size = maintenance_margin
+        liq_price = open_price + (maintenance_margin - collateral) / size
+    else:
+        # collateral + (open - liq)*size = maintenance_margin
+        liq_price = open_price - (maintenance_margin - collateral) / size
+    return liq_price
+
+
+def _map_positions_response(
+    venue: str,
+    positions: list,
+    mark_prices: Optional[dict[str, float]] = None,
+    maintenance_margin_ratio: float = 0.05,
+) -> PositionsResponse:
+    """Mapa llista Position domain a PositionsResponse amb mark_price, sl/tp, liquidation_price."""
     mark_prices = mark_prices or {}
     items = []
     for p in positions:
         size = (p.notional or 0) / (p.open_price or 1)
         mark_price = mark_prices.get(p.symbol)
-        unrealized_pnl: Optional[float] = None
-        if mark_price is not None and p.open_price:
+        unrealized_pnl: Optional[float] = getattr(p, "unrealized_pnl", None)
+        if unrealized_pnl is None and mark_price is not None and p.open_price:
             if p.is_long:
                 unrealized_pnl = (mark_price - p.open_price) * size
             else:
                 unrealized_pnl = (p.open_price - mark_price) * size
+        liq_price = _compute_liquidation_price(
+            p.open_price, p.notional or 0, p.collateral, p.is_long, maintenance_margin_ratio
+        )
+        pid = f"{venue}:{p.venue_position_id}" if getattr(p, "venue_position_id", None) else f"{venue}:{p.pair_id}"
         items.append(
             PositionItem(
-                position_id=f"{venue}:{p.pair_id}",
+                position_id=pid,
                 symbol=p.symbol,
                 side="LONG" if p.is_long else "SHORT",
                 size=size,
@@ -515,6 +579,9 @@ def _map_positions_response(venue: str, positions: list, mark_prices: Optional[d
                 entry_time=p.open_time.isoformat() if p.open_time else "",
                 mark_price=mark_price,
                 unrealized_pnl=unrealized_pnl,
+                sl_price=getattr(p, "sl_price", None),
+                tp_price=getattr(p, "tp_price", None),
+                liquidation_price=liq_price,
             )
         )
     return PositionsResponse(positions=items)

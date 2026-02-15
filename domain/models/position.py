@@ -29,6 +29,10 @@ class Position:
     open_time: datetime = None
     notional: Optional[float] = None  # Position size in USD
     wallet_address: Optional[str] = None  # Trader wallet (for PositionRef)
+    venue_position_id: Optional[str] = None  # ID venue-specific (ex. paper_xxx); si set, s'usa per close
+    # De Lighter AccountApi.account(): mark_price i unrealized_pnl oficials (eviten discrepància vs web)
+    mark_price: Optional[float] = None
+    unrealized_pnl: Optional[float] = None
 
     @property
     def side(self) -> str:
@@ -37,6 +41,8 @@ class Position:
     @property
     def position_id(self) -> str:
         """Unique position identifier"""
+        if self.venue_position_id:
+            return self.venue_position_id
         return f"{self.pair_id}:{self.trade_index}"
 
     def get_ref(self) -> Optional["PositionRef"]:

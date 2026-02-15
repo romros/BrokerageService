@@ -13,7 +13,12 @@ from .market_errors import (
     NoTradableSymbolError,
     PairNotTradableError,
 )
-from .trading_errors import InsufficientBalanceError, VenueAPIError, PositionNotFoundError
+from .trading_errors import (
+    InsufficientBalanceError,
+    PositionNotFoundError,
+    RateLimitedError,
+    VenueAPIError,
+)
 
 __all__ = [
     "MarketError",
@@ -25,4 +30,5 @@ __all__ = [
     "VenueAPIError",
     "InsufficientBalanceError",
     "PositionNotFoundError",
+    "RateLimitedError",
 ]

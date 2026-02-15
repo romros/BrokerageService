@@ -31,6 +31,7 @@ from foundation.config.constants import SLTP_IDEMPOTENCY_PRECISION
 from domain.errors import (
     MarketNotFoundError,
     NoLiquidityError,
+    RateLimitedError,
     VenueAPIError,
     InsufficientBalanceError,
     PositionNotFoundError,
@@ -47,9 +48,14 @@ from domain.models import (
 )
 from foundation.logging import get_logger
 
-from .config import LighterConfig
+from .config import LighterConfig, get_price_cache_ttl_s, get_price_stale_max_s
 from .key_manager import build_signer_client
-from .market_data_client import LighterMarketDataClient, ILighterMarketDataClient
+from .market_data_client import (
+    CachedLighterMarketDataClient,
+    ILighterMarketDataClient,
+    LighterMarketDataClient,
+)
+from .price_cache import PriceSnapshotCache
 from .mappers import (
     normalize_symbol,
     map_order_books_to_trading_pairs,
@@ -93,6 +99,7 @@ class LighterVenueAdapter(IVenueAdapter):
         signer: Optional[Any] = None,
         account_api: Optional[Any] = None,
         sltp_store: Optional[Any] = None,
+        price_cache: Optional[PriceSnapshotCache] = None,
     ):
         """
         Initialize Lighter adapter
@@ -113,6 +120,7 @@ class LighterVenueAdapter(IVenueAdapter):
         self._api_client = None  # ApiClient for AccountApi (initialized in start())
         self._account_api = account_api  # AccountApi for get_open_positions (injected or created in start())
         self._market_data_client = market_data_client or LighterMarketDataClient(config.base_url)
+        self._price_cache = price_cache
         self._idempotency_store = idempotency_store
         self._order_index_gen = order_index_generator
         self._signer_override = signer
@@ -294,7 +302,8 @@ class LighterVenueAdapter(IVenueAdapter):
             self._api_client = None
             self._account_api = None
 
-        if isinstance(self._market_data_client, LighterMarketDataClient):
+        client = getattr(self._market_data_client, "_client", self._market_data_client)
+        if isinstance(client, LighterMarketDataClient):
             await self._market_data_client.stop()
 
         logger.info("Lighter adapter stopped")
@@ -338,7 +347,8 @@ class LighterVenueAdapter(IVenueAdapter):
         symbol_normalized = normalize_symbol(symbol)
         market_id = self._config.markets.get(symbol_normalized)
 
-        if market_id is None and isinstance(self._market_data_client, LighterMarketDataClient):
+        client = getattr(self._market_data_client, "_client", self._market_data_client)
+        if market_id is None and isinstance(client, LighterMarketDataClient):
             await self._market_data_client._ensure_market_cache_loaded()
             market_id = self._market_data_client.resolve_symbol_to_market_id(symbol_normalized)
 
@@ -362,41 +372,64 @@ class LighterVenueAdapter(IVenueAdapter):
         for sym, mid in self._config.markets.items():
             if mid == market_id:
                 return normalize_symbol(sym)
-        if isinstance(self._market_data_client, LighterMarketDataClient) and self._market_data_client._symbol_to_market_id:
-            for sym, mid in self._market_data_client._symbol_to_market_id.items():
+        symbol_cache = getattr(self._market_data_client, "_symbol_to_market_id", None) or getattr(
+            getattr(self._market_data_client, "_client", None), "_symbol_to_market_id", None
+        )
+        if symbol_cache:
+            for sym, mid in symbol_cache.items():
                 if mid == market_id:
                     return normalize_symbol(sym)
         return None
 
     async def get_latest_price(self, symbol: str) -> PriceData:
         """
-        Get current price for symbol
+        Get current price for symbol.
 
-        Args:
-            symbol: Trading symbol (e.g., "ETH", "ETH-USDC")
-
-        Returns:
-            PriceData with bid/ask/mid
-
-        Raises:
-            MarketNotFoundError: If symbol not found
-            NoLiquidityError: If orderbook has no bids/asks
+        Uses cache (fresh → API → stale cache on 429). Logs price_source.
         """
         symbol_normalized = normalize_symbol(symbol)
-        market_id = await self._resolve_market_id(symbol)
+        ttl_s = get_price_cache_ttl_s()
+        stale_max_s = get_price_stale_max_s()
 
-        order_book_orders = await self._market_data_client.get_order_book_orders(
-            market_id=market_id,
-            limit=10,
-        )
-        price_data = map_order_book_orders_to_price_data(
-            symbol=symbol_normalized,
-            order_book_orders=order_book_orders,
-        )
-        logger.debug(
-            f"get_latest_price({symbol}) → {price_data.mid:.2f} (bid={price_data.bid:.2f}, ask={price_data.ask:.2f})"
-        )
-        return price_data
+        # 1) Cache hit (fresh)
+        if self._price_cache:
+            cached = self._price_cache.get(symbol_normalized, max_age_s=ttl_s)
+            if cached is not None:
+                logger.debug(
+                    f"get_latest_price({symbol}) price_source=cache → {cached.mid:.2f}"
+                )
+                return cached
+
+        # 2) Fetch from API (with 429 retry in CachedLighterMarketDataClient)
+        try:
+            market_id = await self._resolve_market_id(symbol)
+            order_book_orders = await self._market_data_client.get_order_book_orders(
+                market_id=market_id,
+                limit=10,
+            )
+            price_data = map_order_book_orders_to_price_data(
+                symbol=symbol_normalized,
+                order_book_orders=order_book_orders,
+            )
+            if self._price_cache:
+                self._price_cache.set(symbol_normalized, price_data)
+            logger.debug(
+                f"get_latest_price({symbol}) price_source=orderbook → {price_data.mid:.2f} (bid={price_data.bid:.2f}, ask={price_data.ask:.2f})"
+            )
+            return price_data
+        except RateLimitedError:
+            # 3) Fallback: stale cache
+            if self._price_cache:
+                stale = self._price_cache.get_stale(symbol_normalized, max_stale_s=stale_max_s)
+                if stale is not None:
+                    logger.info(
+                        f"get_latest_price({symbol}) price_source=stale_cache (429 fallback) → {stale.mid:.2f}"
+                    )
+                    return stale
+            raise VenueAPIError(
+                f"Rate limited (429) and no cached price for {symbol}",
+                details="Try again or increase PRICE_CACHE_TTL_S / PRICE_STALE_MAX_S",
+            )
 
     async def stream_prices(self, symbol: str) -> AsyncIterator[PriceData]:
         """Stream real-time prices (TASK 3)"""
@@ -567,13 +600,27 @@ class LighterVenueAdapter(IVenueAdapter):
         for_symbol = [p for p in positions if p.pair_id == pair_id]
         symbol = for_symbol[0].symbol if for_symbol else f"MKT{pair_id}"
 
+        price_source = "orderbook"
+        mid = None
+        bid = None
+        ask = None
         try:
             px = await self.get_latest_price(symbol)
             mid = getattr(px, "mid", None) or getattr(px, "ask", None) or getattr(px, "bid", None)
             bid = getattr(px, "bid", None) or mid
             ask = getattr(px, "ask", None) or mid
-        except Exception as e:
-            raise VenueAPIError(f"Failed to get price for {symbol}: {e}") from e
+        except (VenueAPIError, RateLimitedError) as e:
+            # Fallback: mark_price from positions (429 / cache miss)
+            if for_symbol and getattr(for_symbol[0], "mark_price", None) and for_symbol[0].mark_price > 0:
+                mid = for_symbol[0].mark_price
+                bid = mid
+                ask = mid
+                price_source = "positions_mark"
+                logger.info(
+                    f"close_position price_source={price_source} (fallback after {type(e).__name__}) mid={mid:.2f}"
+                )
+            else:
+                raise VenueAPIError(f"Failed to get price for {symbol}: {e}") from e
         if mid is None or mid <= 0:
             raise VenueAPIError(f"No price for {symbol}")
 

@@ -76,6 +76,17 @@ Preus esperats: ETH ~2088$ (coherent amb Lighter web). Execució segueix sent si
 
 ---
 
+## 2d) Paper risk model (TP/SL/liquidation)
+
+**P3.0:** venue=paper suporta bracket orders i liquidation simulation. Determinista, zero tx.
+
+- **TP/SL triggers:** PaperRiskEngine comprova mark_price cada 1s. LONG: SL si mark≤sl_price, TP si mark≥tp_price. SHORT: invers.
+- **Liquidation:** equity = collateral + unrealized_pnl. Si equity ≤ notional × maintenance_margin_ratio → liquidació.
+- **Config:** `PAPER_MAINTENANCE_MARGIN_RATIO` (default 0.05), `PAPER_FEE_BPS` (default 0).
+- **GET /trades:** inclou `close_reason`: `manual` | `stop_loss` | `take_profit` | `liquidation`.
+
+---
+
 ## 3) Guards de risc
 
 | Variable | Què fa | Valor recomanat |
@@ -124,8 +135,11 @@ docker compose run --rm brokerage python3 -m application.e2e_trade \
 ## 6) Comandes (copiable)
 
 ```bash
-# Suite general (mock + API smoke)
+# Suite general (MVP Lighter: core+Lighter, sense gTrade)
 ./test.sh testing/run_all.py
+
+# Incloure gTrade (opt-in)
+./test.sh testing/run_all.py --include-gtrade
 
 # Smoke mock (ràpid)
 docker compose run --rm brokerage python3 -m application.smoke --venue mock --mode PAPER --seconds 5

@@ -17,7 +17,7 @@
 
 - ✅ **Lighter M1+M2+M3** DONE: marketdata, SL/TP, balance, reconcile, guards, bootstrap, smoke runner, e2e trade
 - ✅ **3× smoke real** + **3× e2e trade real** (paper testnet) — `positions_after=0`
-- ✅ **50+ tests** passa (unit + integration mock + API smoke localhost); inclou `test_ws_preflight_contract` (P2.0), `test_ws_preflight_integration_real` (P2.0.1), `test_ws_soak_short` (P2.1), `test_close_maker_first` (P1.2)
+- ✅ **44 tests MVP Lighter** passa (unit + integration + API smoke); 13 gTrade opt-in amb `--include-gtrade`; inclou freqtrade runner (paper+fake, 0 network), `test_ws_preflight_contract` (P2.0), `test_close_maker_first` (P1.2)
 - ✅ **Broker API canònic** `/api/v1/broker/*` (POST body únic per ordres) — AGENTS §3
 - ✅ **Freqtrade P0** PAPER mainnet-data: `MARKET_DATA_ENV`, `ENABLE_LIVE_TRADING`, wiring Lighter/gTrade, `GET /mode` → `market_data_env`
 - ✅ **venue=paper** (zero tx): `MODE=paper` o `ENABLE_LIVE_TRADING=0` → PaperVenueAdapter, market data mainnet, execució simulada
@@ -25,6 +25,8 @@
 - ⛔ **Backtest**: pendent
 
 **DONE (sanity):** `run_all` OK + smoke 3× OK + e2e 3× OK (paper testnet) + **soak 10 min** OK + **WS soak 15 min** OK + **WS soak 15 min MAINNET EURUSD** OK (via Lighter feed real) + **Freqtrade paper 15 min** OK (venue=paper, positions_after=0) + **Paper soak real 120 min** OK (preus Lighter, positions_after=0, missing_minutes=0)
+
+**P3.2:** `run_all` default = MVP Lighter (core+Lighter, sense gTrade). gTrade tests opt-in amb `--include-gtrade`.
 
 ---
 
@@ -60,6 +62,9 @@
 
 | Run | Resultat | Log |
 |-----|----------|-----|
+| **P3.2 gTrade aïllat** | ✅ run_all default = MVP Lighter (sense gTrade); --include-gtrade opt-in | testing/run_all.py |
+| **P3.1 Broker hang diagnostics** | ✅ Logs subprocess a fitxer; dump últimes 300 línies en fallada; heartbeat TESTING=1; test_freqtrade_runner_short → paper+fake (0 network) | testing/helpers/run_broker_subprocess.py |
+| **P3.0 PAPER bracket + liquidation** | ✅ tests + integration OK | test_paper_risk_engine, test_paper_bracket_orders_integration |
 | **Freqtrade paper 15 min** (venue=paper, fake feed) | ✅ open→position_pnl→close OK positions_after=0 candles=15 | `datafiles/freqtrade_runs/20260215_001044_ETH_15m.log` |
 | **Fix 429 rate-limit** (LIVE testnet) | ✅ close OK malgrat 429; fallback cache/positions_mark | Evidència run_freqtrade_live_testnet.sh 15 min |
 | **Paper soak real 120 min** | ✅ positions_after=0 missing_minutes=0 market_data_source=real candles=219 | `datafiles/freqtrade_runs/20260215_074407_ETH_120m_real.log` — latency_ohlcv_p95=17.8ms, latency_close_p95=6.4ms |
@@ -68,12 +73,12 @@
 
 | Run | Resultat | Log |
 |-----|----------|-----|
-| `testing/run_all.py` | ✅ 49 passed | — |
+| `testing/run_all.py` | ✅ 44 passed, 13 skipped (gTrade) | MVP Lighter default; P3.2 |
 | **WS Soak 15 min** (fake feed) | ✅ candles=15 status=OK | `datafiles/ws_soak/20260214_011714_ws_soak_15m.log` |
 | **WS Soak 15 min MAINNET EURUSD** (Lighter real) | ✅ candles=15 status=OK missing_minutes=0 | `datafiles/ws_soak/20260214_071609_ws_soak_15m_mainnet.log` |
 | **P1.1 SL/TP idempotència** | ✅ test_sltp_idempotency, test_lighter_adapter_sltp (8 tests) | reducció risc duplicació SL/TP en retries/restarts |
 | **P1.2 maker-first close** | ✅ test_close_maker_first (4 unit), test_close_position_maker_fallback_positions_after_zero (integration) | millor control de sortida i menys risc de slippage en closes |
-| **PAPER DONE handshake** | ✅ freqtrade_runner.py, test_freqtrade_runner_short (skip si no .env) | Freqtrade-first: candles + price + open/close via HTTP, positions_after=0 |
+| **PAPER DONE handshake** | ✅ freqtrade_runner.py, test_freqtrade_runner_short (P3.1: paper+fake, 0 network) | Freqtrade-first: candles + price + open/close via HTTP, positions_after=0; no .env |
 | **GET /positions + PnL** | ✅ mark_price, unrealized_pnl a PositionItem | Veure com va la posició des de l'API sense calcular manualment |
 | **freqtrade_runner position_pnl** | ✅ --position-poll-s 30 (per defecte) | Cada 30s consulta GET /positions i loga mark_price, unrealized_pnl |
 | **freqtrade_runner closed_pnl** | ✅ després del close | GET /trades → close trade → calcula realized_pnl ($ i %) per comparar amb web; fix Lighter market_id→symbol |
@@ -110,8 +115,11 @@ Soak llarg amb PAPER (zero tx) i preus reals per validar estabilitat abans de Da
 ## Comandes ràpides
 
 ```bash
-# Suite general (mock + API smoke)
+# Suite general (MVP Lighter: core+Lighter, sense gTrade)
 ./test.sh testing/run_all.py
+
+# Incloure gTrade (pot fallar sense .env Arbitrum)
+./test.sh testing/run_all.py --include-gtrade
 
 # Lighter SL/TP + Balance (integration mock)
 ./test.sh testing/integration/test_lighter_adapter_sltp.py
@@ -120,10 +128,10 @@ Soak llarg amb PAPER (zero tx) i preus reals per validar estabilitat abans de Da
 ./test.sh testing/unit/test_close_maker_first.py
 ./test.sh testing/integration/test_lighter_adapter_close.py
 
-# PAPER DONE handshake (requereix broker + pipeline; test skip si no Lighter .env)
+# PAPER DONE handshake (P3.1: paper+fake, 0 network — CI-friendly)
 ./test.sh testing/integration/test_freqtrade_runner_short.py
-# Broker ha d'estar en marxa amb VENUE=lighter (adapter per open/close)
-VENUE=lighter docker compose up -d brokerage
+./test.sh testing/integration/test_freqtrade_runner_short_paper.py
+# Manual freqtrade: broker amb VENUE=paper o VENUE=lighter (docker compose up -d brokerage)
 docker compose run --rm brokerage python3 -m application.tools.freqtrade_runner --venue lighter --mode PAPER --symbol ETH --minutes 15
 
 # venue=paper (zero tx, sense Lighter): VENUE=paper + MODE=paper + ENABLE_LIVE_TRADING=0
@@ -206,6 +214,12 @@ docker compose run --rm brokerage python3 -m application.tools.ws_soak \
 * ~~market_data_source + paper preus reals~~ ✅ GET /mode market_data_source (fake|real), freqtrade_runner ho mostra; paper amb USE_FAKE_PRICE_FEED=0 → preus ~2088$; position_id fallback
 * ~~Fix Lighter 429 rate-limit~~ ✅ PriceSnapshotCache compartit (candle pipeline, GET /price, close); 429 retry amb backoff; fallback cache stale / positions_mark; logs price_source; PRICE_CACHE_TTL_S, PRICE_STALE_MAX_S, PRICE_FETCH_DEADLINE_S
 * Normalització addresses checksum
+
+### P3
+
+* ~~P3.0 PAPER bracket + liquidation~~ ✅ test_paper_risk_engine, test_paper_bracket_orders_integration
+* ~~P3.1 Broker hang diagnostics~~ ✅ Logs subprocess a fitxer; heartbeat TESTING=1; test_freqtrade_runner_short → paper+fake (0 network)
+* ~~P3.2 gTrade aïllat~~ ✅ run_all default = MVP Lighter; --include-gtrade opt-in
 
 ---
 
