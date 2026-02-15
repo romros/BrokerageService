@@ -1,6 +1,6 @@
 # ESTAT DEL PROJECTE — BrokerageService
 
-**Data:** 2026-02-15  
+**Data:** 2026-02-16  
 **Repo/Path:** `/mnt/volume-SQ/dev/BrokerageService`  
 **Venues:** **Lighter (principal — MVP 100%)** · gTrade (futur)  
 **TZ canònica (config):** `CANONICAL_TZ=America/New_York`  
@@ -20,10 +20,11 @@
 - ✅ **50+ tests** passa (unit + integration mock + API smoke localhost); inclou `test_ws_preflight_contract` (P2.0), `test_ws_preflight_integration_real` (P2.0.1), `test_ws_soak_short` (P2.1), `test_close_maker_first` (P1.2)
 - ✅ **Broker API canònic** `/api/v1/broker/*` (POST body únic per ordres) — AGENTS §3
 - ✅ **Freqtrade P0** PAPER mainnet-data: `MARKET_DATA_ENV`, `ENABLE_LIVE_TRADING`, wiring Lighter/gTrade, `GET /mode` → `market_data_env`
+- ✅ **venue=paper** (zero tx): `MODE=paper` o `ENABLE_LIVE_TRADING=0` → PaperVenueAdapter, market data mainnet, execució simulada
 - 🟡 **gTrade**: existent (paper OK); no prioritzat MVP; futur
 - ⛔ **Backtest**: pendent
 
-**DONE (sanity):** `run_all` OK + smoke 3× OK + e2e 3× OK (paper testnet) + **soak 10 min** OK + **WS soak 15 min** OK + **WS soak 15 min MAINNET EURUSD** OK (via Lighter feed real)
+**DONE (sanity):** `run_all` OK + smoke 3× OK + e2e 3× OK (paper testnet) + **soak 10 min** OK + **WS soak 15 min** OK + **WS soak 15 min MAINNET EURUSD** OK (via Lighter feed real) + **Freqtrade paper 15 min** OK (venue=paper, positions_after=0) + **Paper soak real 120 min** OK (preus Lighter, positions_after=0, missing_minutes=0)
 
 ---
 
@@ -55,6 +56,14 @@
 
 ## Evidència recent
 
+**2026-02-16**
+
+| Run | Resultat | Log |
+|-----|----------|-----|
+| **Freqtrade paper 15 min** (venue=paper, fake feed) | ✅ open→position_pnl→close OK positions_after=0 candles=15 | `datafiles/freqtrade_runs/20260215_001044_ETH_15m.log` |
+| **Fix 429 rate-limit** (LIVE testnet) | ✅ close OK malgrat 429; fallback cache/positions_mark | Evidència run_freqtrade_live_testnet.sh 15 min |
+| **Paper soak real 120 min** | ✅ positions_after=0 missing_minutes=0 market_data_source=real candles=219 | `datafiles/freqtrade_runs/20260215_074407_ETH_120m_real.log` — latency_ohlcv_p95=17.8ms, latency_close_p95=6.4ms |
+
 **2026-02-15**
 
 | Run | Resultat | Log |
@@ -68,6 +77,9 @@
 | **GET /positions + PnL** | ✅ mark_price, unrealized_pnl a PositionItem | Veure com va la posició des de l'API sense calcular manualment |
 | **freqtrade_runner position_pnl** | ✅ --position-poll-s 30 (per defecte) | Cada 30s consulta GET /positions i loga mark_price, unrealized_pnl |
 | **freqtrade_runner closed_pnl** | ✅ després del close | GET /trades → close trade → calcula realized_pnl ($ i %) per comparar amb web; fix Lighter market_id→symbol |
+| **GET /mode market_data_source** | ✅ fake\|real\|n/a | Visible al freqtrade_runner per saber si preus són fake (3500 base) o reals (Lighter API). Evita confusió mark_price 3695 vs Lighter 2085. |
+| **Paper amb preus reals** | ✅ USE_FAKE_PRICE_FEED=0 + .env | Preus de Lighter mainnet (~2088$ ETH). Execució segueix sent simulada (zero tx). Evidència: mark_price 2087-2094, positions_after=0. |
+| **position_id fallback** | ✅ freqtrade_runner | Si open no retorna position_id, s'obté de GET /positions per poder tancar. |
 | **Evidència testnet PAPER** | ✅ múltiples runs 15 min | freqtrade_runner ETH 15m: open→position_pnl cada 30s→close→positions_after=0. Trade History web: PnL verificat ($3.80, -$3.26, $2.29) coincideix amb càlcul (open_price, close_price, size). Logs: `datafiles/freqtrade_runs/20260214_*_ETH_15m.log` |
 
 **2026-02-13**
@@ -77,6 +89,21 @@
 | Smoke 3× (lighter, 120s) | ✅ ok=3 failed=0 | `datafiles/smoke_runs/2026-02-13_154710_lighter_3x.log` |
 | E2E trade 3× (ETH, 100 USDC, 20x) | ✅ positions_after=0 | `datafiles/e2e_runs/2026-02-13_*_lighter_ETH.log` |
 | Soak 10 min (lighter, PAPER) | ✅ status=OK failed=0 | `datafiles/smoke_runs/soak_20260213_212644.log` |
+
+---
+
+## Paper soak real (preus Lighter)
+
+Soak llarg amb PAPER (zero tx) i preus reals per validar estabilitat abans de Data Layer:
+
+```bash
+# Soak 2h (mínim), 6h o 12h
+./scripts/soak_freqtrade_paper_real.sh 120   # 2h
+./scripts/soak_freqtrade_paper_real.sh 360   # 6h
+./scripts/soak_freqtrade_paper_real.sh 720   # 12h
+```
+
+**Requisits:** `.env` amb credencials Lighter. **Health gate:** exit 2 (positions_after!=0), 3 (missing_minutes>1), 4 (market_data_source!=real). **Log:** `datafiles/freqtrade_runs/<ts>_ETH_<N>m_real.log`
 
 ---
 
@@ -98,6 +125,23 @@
 # Broker ha d'estar en marxa amb VENUE=lighter (adapter per open/close)
 VENUE=lighter docker compose up -d brokerage
 docker compose run --rm brokerage python3 -m application.tools.freqtrade_runner --venue lighter --mode PAPER --symbol ETH --minutes 15
+
+# venue=paper (zero tx, sense Lighter): VENUE=paper + MODE=paper + ENABLE_LIVE_TRADING=0
+./test.sh testing/integration/test_freqtrade_runner_short_paper.py
+./scripts/run_freqtrade_paper.sh 3   # 3 min (script espera broker + executa runner)
+# Paper amb preus FAKE (sense .env): USE_FAKE_PRICE_FEED=1
+MODE=paper VENUE=paper ENABLE_LIVE_TRADING=0 USE_FAKE_PRICE_FEED=1 SYMBOLS=ETH,BTC docker compose up -d brokerage
+# Paper amb preus REALS (cal .env Lighter): USE_FAKE_PRICE_FEED=0, mark_price ~2088$
+MODE=paper VENUE=paper ENABLE_LIVE_TRADING=0 USE_FAKE_PRICE_FEED=0 SYMBOLS=ETH,BTC LIGHTER_SYMBOLS=ETH,BTC docker compose up -d brokerage
+# Esperar ~10s; després (host.docker.internal evita NameResolutionError):
+docker compose run --rm brokerage python3 -m application.tools.freqtrade_runner \
+  --broker-url http://host.docker.internal:8000 --venue paper --symbol ETH --minutes 15
+
+# LIVE testnet (tx reals, comparar preus/PnL amb web):
+./scripts/run_freqtrade_live_testnet.sh 15   # 15 min
+# Manual: MODE=live VENUE=lighter ENABLE_LIVE_TRADING=1 MARKET_DATA_ENV=testnet docker compose up -d brokerage
+# Després: freqtrade_runner --venue lighter --symbol ETH --minutes 15
+# Comparar: mark_price, unrealized_pnl, realized_pnl del log vs testnet.app.lighter.xyz Trade History
 
 # Smoke (Docker)
 docker compose run --rm brokerage python3 -m application.smoke --venue mock --mode PAPER --seconds 5
@@ -159,6 +203,8 @@ docker compose run --rm brokerage python3 -m application.tools.ws_soak \
 * ~~P2.0.1 Fake price feed + WS preflight integració~~ ✅ USE_FAKE_PRICE_FEED=1, test_ws_preflight_integration_real (broker real, fake feed, sense xarxa)
 * ~~Soak WS 15 min / telemetria (P2.1)~~ ✅ ws_soak.py, scripts/soak_ws.sh, docker-compose.soak.yml, evidència 20260214_011714 (15 candles, status=OK)
 * ~~P2.2 WS soak 15 min mainnet (real feed)~~ ✅ scripts/soak_ws_mainnet.sh, autodetect, EURUSD/XAU (docker-compose.mainnet-eurusd.yml), evidència 20260214_071609
+* ~~market_data_source + paper preus reals~~ ✅ GET /mode market_data_source (fake|real), freqtrade_runner ho mostra; paper amb USE_FAKE_PRICE_FEED=0 → preus ~2088$; position_id fallback
+* ~~Fix Lighter 429 rate-limit~~ ✅ PriceSnapshotCache compartit (candle pipeline, GET /price, close); 429 retry amb backoff; fallback cache stale / positions_mark; logs price_source; PRICE_CACHE_TTL_S, PRICE_STALE_MAX_S, PRICE_FETCH_DEADLINE_S
 * Normalització addresses checksum
 
 ---
