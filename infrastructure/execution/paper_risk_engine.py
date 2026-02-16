@@ -9,6 +9,7 @@ Determinista, zero tx. Documentat a SAFETY_RUNBOOK.
 """
 
 import asyncio
+import os
 from datetime import datetime, timezone
 from typing import Awaitable, Callable, Dict, List, Optional
 
@@ -23,7 +24,6 @@ logger = get_logger(__name__)
 
 def _get_maintenance_margin_ratio() -> float:
     """Llegeix PAPER_MAINTENANCE_MARGIN_RATIO des de env (0.05 default)."""
-    import os
     val = os.getenv(PAPER_MAINTENANCE_MARGIN_RATIO_ENV, "")
     if val:
         try:

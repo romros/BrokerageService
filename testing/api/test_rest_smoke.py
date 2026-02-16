@@ -13,8 +13,10 @@ Note: Requires server to be running (or starts it in subprocess)
 
 from datetime import datetime, timedelta
 from pathlib import Path
+import os
 import shutil
 import signal
+import traceback
 import subprocess
 import sys
 import tempfile
@@ -43,7 +45,6 @@ class APITestServer:
         """Start FastAPI server in subprocess"""
         print(f"Starting test server on port {self.port}...")
 
-        import os
         env = os.environ.copy()
         env["DATAFILES_ROOT"] = self.tmpdir
         env["MODE"] = "backtest"
@@ -282,7 +283,6 @@ def main():
 
     except Exception as e:
         print(f"\n✗ Unexpected error: {e}")
-        import traceback
         traceback.print_exc()
         return 1
 

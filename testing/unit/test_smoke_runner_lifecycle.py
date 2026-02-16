@@ -8,8 +8,11 @@ Tests (mock):
 """
 
 import asyncio
+import os
 import sys
+import tempfile
 from pathlib import Path
+from io import StringIO
 from unittest.mock import AsyncMock, patch, call
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -19,7 +22,6 @@ from application import smoke as smoke_module
 
 def _capture_main(argv):
     """Run smoke.main() with given argv; return (exit_code, stdout_str, stderr_str)."""
-    from io import StringIO
     old_argv = sys.argv
     old_stdout = sys.stdout
     old_stderr = sys.stderr
@@ -39,9 +41,6 @@ def _capture_main(argv):
 
 def test_lighter_start_stop_called_per_run():
     """--venue lighter --repeat 3: adapter.start() and stop() called 3 times each (1 per run)."""
-    import tempfile
-    import os
-
     # Mock adapter with start/stop
     mock_adapter = AsyncMock()
     mock_adapter.start = AsyncMock()
@@ -80,9 +79,6 @@ def test_lighter_start_stop_called_per_run():
 
 def test_lighter_stop_called_even_on_bootstrap_failure():
     """If bootstrap fails, adapter.stop() still called (try/finally)."""
-    import tempfile
-    import os
-
     mock_adapter = AsyncMock()
     mock_adapter.start = AsyncMock()
     mock_adapter.stop = AsyncMock()
@@ -119,9 +115,6 @@ def test_lighter_stop_called_even_on_bootstrap_failure():
 
 def test_lighter_stop_called_even_with_tick_errors():
     """Even if reconcile tick has errors, adapter.stop() is called (cleanup guaranteed)."""
-    import tempfile
-    import os
-
     mock_adapter = AsyncMock()
     mock_adapter.start = AsyncMock()
     mock_adapter.stop = AsyncMock()

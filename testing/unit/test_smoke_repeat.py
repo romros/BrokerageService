@@ -10,6 +10,7 @@ Tests (mock, no network):
 
 import asyncio
 import os
+from io import StringIO
 import re
 import sys
 import tempfile
@@ -23,7 +24,6 @@ from application import smoke as smoke_module
 
 def _capture_main(argv):
     """Run smoke.main() with given argv; return (exit_code, stdout_str, stderr_str)."""
-    from io import StringIO
     old_argv = sys.argv
     old_stdout = sys.stdout
     old_stderr = sys.stderr

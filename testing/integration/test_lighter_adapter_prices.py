@@ -11,6 +11,8 @@ Uses mocked ILighterMarketDataClient (NO network calls).
 """
 
 
+import asyncio
+import traceback
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 from typing import List
@@ -282,7 +284,6 @@ async def main():
             passed += 1
         except Exception as e:
             print(f"❌ {test.__name__}: {e}")
-            import traceback
             traceback.print_exc()
             failed += 1
 
@@ -295,5 +296,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    import asyncio
     exit(asyncio.run(main()))

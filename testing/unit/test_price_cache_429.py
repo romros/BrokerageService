@@ -5,6 +5,7 @@ Unit tests: PriceSnapshotCache + 429 retry + fallback (TASK: Fix Lighter 429 rat
 - on 429, retry occurs and then uses stale cache fallback
 """
 
+import asyncio
 import os
 import time
 from datetime import datetime, timezone
@@ -47,8 +48,6 @@ def test_cache_hit_reduces_orderbook_calls():
         price_cache=cache,
     )
 
-    import asyncio
-
     async def run():
         px = await adapter.get_latest_price("ETH")
         assert px.mid == 2000.0
@@ -90,8 +89,6 @@ def test_429_retry_then_stale_cache_fallback():
             market_data_client=wrapped,
             price_cache=cache,
         )
-
-        import asyncio
 
         async def run():
             px = await adapter.get_latest_price("ETH")

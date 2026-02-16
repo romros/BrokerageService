@@ -11,6 +11,7 @@ No network calls; adapter i local provider mockats.
 """
 
 import asyncio
+import os
 from pathlib import Path
 import sys
 
@@ -173,7 +174,6 @@ async def test_loop_respects_interval_no_real_sleep():
 
 def test_reconcile_interval_from_env_default():
     """Sense RECONCILE_INTERVAL_S retorna default 60."""
-    import os
     old = os.environ.get("RECONCILE_INTERVAL_S")
     try:
         os.environ.pop("RECONCILE_INTERVAL_S", None)
@@ -187,7 +187,6 @@ def test_reconcile_interval_from_env_default():
 
 def test_reconcile_interval_from_env_set():
     """Amb RECONCILE_INTERVAL_S retorna el valor."""
-    import os
     os.environ["RECONCILE_INTERVAL_S"] = "30"
     try:
         val = reconcile_interval_sec_from_env()

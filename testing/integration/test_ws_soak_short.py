@@ -10,10 +10,12 @@ Arrenca broker amb USE_FAKE_PRICE_FEED=1 (sense xarxa).
 """
 
 import os
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
+import traceback
 import time
 from pathlib import Path
 
@@ -167,13 +169,11 @@ def main() -> int:
 
     except Exception as e:
         print(f"✗ Error: {e}")
-        import traceback
         traceback.print_exc()
         return 1
 
     finally:
         _stop_broker(process)
-        import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 

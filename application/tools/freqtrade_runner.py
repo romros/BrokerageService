@@ -18,6 +18,7 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,8 @@ from typing import Optional
 from urllib.parse import urljoin
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
+from foundation.utils.file_permissions import set_host_readable_permissions
 
 try:
     import requests
@@ -495,13 +498,13 @@ def main() -> int:
         try:
             log_dir.mkdir(parents=True, exist_ok=True)
         except OSError:
-            import tempfile
             log_dir = Path(tempfile.gettempdir()) / "freqtrade_runs"
             log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / f"{ts}_{args.symbol}_{int(args.minutes)}m.log"
 
     with open(log_path, "w", encoding="utf-8") as f:
         f.write(f"# Freqtrade runner {ts} venue={args.venue} symbol={args.symbol} minutes={args.minutes}\n")
+    set_host_readable_permissions(log_path)
 
     exit_code, summary = run(
         broker_url=args.broker_url,

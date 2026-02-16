@@ -8,6 +8,8 @@ Tests open_position() with mocked signer and market data (zero network):
 - InsufficientBalanceError when SDK returns "not enough margin"
 """
 
+import asyncio
+import traceback
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 from typing import Optional, Dict, Any, List
@@ -264,7 +266,6 @@ async def main():
             passed += 1
         except Exception as e:
             print(f"❌ {test.__name__}: {e}")
-            import traceback
             traceback.print_exc()
             failed += 1
 
@@ -276,5 +277,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    import asyncio
     exit(asyncio.run(main()))

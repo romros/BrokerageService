@@ -5,20 +5,27 @@ Prefix: /api/v1/broker
 POST /orders/open i /orders/close amb JSON body.
 """
 
-from datetime import datetime, timezone
+import os
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Callable, Any
 
 from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
+from infrastructure.storage.gap_validator import GapValidator
+from application.api.repair_stats import get_last_repair
 
 from application.api.candle_helpers import resolve_candle_range, read_candles
 from application.api.error_codes import (
     ADAPTER_NOT_AVAILABLE,
     CANDLE_STORE_NOT_AVAILABLE,
+    DATA_STATUS_NOT_AVAILABLE,
     VENUE_NOT_CONFIGURED,
     TIMEFRAME_NOT_SUPPORTED,
     SYMBOL_NOT_FOUND,
     POSITION_NOT_FOUND,
+    MIXED_SOURCE_NOT_ALLOWED,
 )
 from application.api.models import (
     HealthResponse,
@@ -34,6 +41,7 @@ from application.api.models import (
 from domain.errors import PositionNotFoundError, MarketNotFoundError
 from foundation.config.constants import (
     CANONICAL_TIMEZONE,
+    CANONICAL_TIMEZONE_NAME,
     SUPPORTED_TIMEFRAME,
     DEFAULT_CANDLES_LIMIT,
     DEFAULT_OHLCV_LIMIT,
@@ -59,6 +67,7 @@ _mode: str = "backtest"
 _venue: str = "gtrade"
 _market_data_env: str = "mainnet"
 _market_data_source: str = "n/a"  # fake|real|n/a — visible a GET /mode i freqtrade_runner
+_fallback_provider: Optional[Any] = None  # P7: DukascopyBackfillProvider (read-only)
 
 
 def set_broker_deps(
@@ -68,13 +77,16 @@ def set_broker_deps(
     venue: str = _UNSET,
     market_data_env: str = _UNSET,
     market_data_source: str = _UNSET,
+    fallback_provider: Any = _UNSET,
 ) -> None:
     """Inject dependencies for broker routes."""
-    global _candle_store, _adapter_factory, _mode, _venue, _market_data_env, _market_data_source
+    global _candle_store, _adapter_factory, _mode, _venue, _market_data_env, _market_data_source, _fallback_provider
     if candle_store is not _UNSET:
         _candle_store = candle_store
     if adapter_factory is not _UNSET:
         _adapter_factory = adapter_factory
+    if fallback_provider is not _UNSET:
+        _fallback_provider = fallback_provider
     if mode is not _UNSET:
         _mode = mode
     if venue is not _UNSET:
@@ -96,7 +108,6 @@ def _http_error(status_code: int, code: str, detail: str):
 
 def _get_paper_maintenance_ratio() -> float:
     """P3.0: Llegeix PAPER_MAINTENANCE_MARGIN_RATIO des de env."""
-    import os
     val = os.getenv(PAPER_MAINTENANCE_MARGIN_RATIO_ENV, "")
     if val:
         try:
@@ -270,23 +281,107 @@ async def get_price_latest(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _read_candles_response(
+def _build_p5_headers(
+    candle_range: Any,
+    start: datetime,
+    end: datetime,
+    symbol: str,
+    source: str = "primary",
+    cutover_ts: Optional[int] = None,
+) -> dict[str, str]:
+    """P5/P7: Headers d'observabilitat OHLCV (coverage, gaps, repair)."""
+    report = GapValidator.validate(
+        candle_range.candles, start, end, symbol=symbol
+    )
+    max_gap_s = (
+        max(g.count * 60 for g in report.gaps)
+        if report.gaps
+        else 0
+    )
+    repair_at, repair_filled, repair_symbol = get_last_repair()
+    repair_status = "applied" if repair_filled > 0 and repair_symbol == symbol else "none"
+
+    headers: dict[str, str] = {
+        "X-Data-Source": source,
+        "X-Data-Coverage-From": str(int(start.timestamp())),
+        "X-Data-Coverage-To": str(int(end.timestamp())),
+        "X-Data-Missing-Minutes": str(report.missing_count),
+        "X-Data-Max-Gap-S": str(max_gap_s),
+        "X-Data-Repair": repair_status,
+        "X-Data-Repair-Filled": str(repair_filled if repair_status == "applied" else 0),
+    }
+    if source == "mixed" and cutover_ts is not None:
+        headers["X-Data-Cutover-Ts"] = str(cutover_ts)
+    return headers
+
+
+async def _read_candles_response(
     symbol: str,
     limit: int,
     since: Optional[int],
     to: Optional[int],
     validate_gaps: bool = True,
-) -> OHLCVResponse:
-    """Lògica compartida per candles/ohlcv."""
+) -> JSONResponse:
+    """Lògica compartida per candles/ohlcv. P7: rang explícit (since/to) → stitching."""
     store = _require_candle_store()
     symbol = _normalize_symbol(symbol)
     end = datetime.now(CANONICAL_TIMEZONE)
     start, end = resolve_candle_range(end=end, limit=limit, since_epoch=since, to_epoch=to, tz=CANONICAL_TIMEZONE)
+    since_ts = int(start.timestamp())
+    to_ts = int(end.timestamp())
+
+    use_p7 = since is not None or to is not None
+    if use_p7 and _fallback_provider is not None:
+        from application.data.compat_registry import get_compat_status  # lazy: evita carregar P7 si no es demana rang
+        from application.services.candle_stitching_service import get_candles_with_source  # lazy: evita carregar P7 si no es demana rang
+
+        try:
+            r, source, cutover_ts = await get_candles_with_source(
+                symbol=symbol,
+                since_ts=since_ts,
+                to_ts=to_ts,
+                limit=limit,
+                csv_store=store,
+                fallback_provider=_fallback_provider,
+                get_compat_status_fn=lambda s: get_compat_status(s),
+            )
+            resp = _map_ohlcv_response(r, symbol, start, end)
+            headers = _build_p5_headers(r, start, end, symbol, source=source, cutover_ts=cutover_ts)
+            return JSONResponse(content=resp.model_dump(mode="json"), headers=headers)
+        except ValueError as e:
+            if "MIXED_SOURCE_NOT_ALLOWED" in str(e):
+                _http_error(
+                    422,
+                    MIXED_SOURCE_NOT_ALLOWED,
+                    "Mixed source not allowed for this symbol/range (compat_probe not PASS)",
+                )
+            raise
+        except RuntimeError as e:
+            if "FALLBACK_NOT_AVAILABLE" in str(e):
+                _http_error(503, CANDLE_STORE_NOT_AVAILABLE, "Fallback provider not available")
+            raise
+    elif use_p7 and _fallback_provider is None:
+        cutover_dt = store.get_earliest_timestamp(symbol)
+        cutover_ts = int(cutover_dt.timestamp()) if cutover_dt else None
+        from application.services.candle_stitching_service import resolve_source  # lazy: evita carregar P7 si no es demana rang
+        from application.data.compat_registry import get_compat_status  # lazy: evita carregar P7 si no es demana rang
+        source = resolve_source(since_ts, to_ts, cutover_ts, get_compat_status(symbol))
+        if source == "deny":
+            _http_error(
+                422,
+                MIXED_SOURCE_NOT_ALLOWED,
+                "Mixed source not allowed for this symbol/range (compat_probe not PASS)",
+            )
+        if source in ("fallback", "mixed"):
+            _http_error(503, CANDLE_STORE_NOT_AVAILABLE, "Fallback provider not available")
+
     r = read_candles(store, symbol=symbol, start=start, end=end, validate_gaps=validate_gaps)
-    return _map_ohlcv_response(r, symbol, start, end)
+    resp = _map_ohlcv_response(r, symbol, start, end)
+    headers = _build_p5_headers(r, start, end, symbol, source="primary")
+    return JSONResponse(content=resp.model_dump(mode="json"), headers=headers)
 
 
-@router.get("/ohlcv/{symbol}", response_model=OHLCVResponse)
+@router.get("/ohlcv/{symbol}")
 async def get_ohlcv(
     symbol: str,
     tf: str = Query(default=SUPPORTED_TIMEFRAME),
@@ -298,7 +393,7 @@ async def get_ohlcv(
     if tf != SUPPORTED_TIMEFRAME:
         _http_error(422, TIMEFRAME_NOT_SUPPORTED, f"Only {SUPPORTED_TIMEFRAME} timeframe supported")
     try:
-        return _read_candles_response(symbol, limit, since, to, validate_gaps=True)
+        return await _read_candles_response(symbol, limit, since, to, validate_gaps=True)
     except HTTPException:
         raise
     except Exception as e:
@@ -306,7 +401,75 @@ async def get_ohlcv(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/candles", response_model=OHLCVResponse)
+@router.get("/coverage")
+async def get_coverage(
+    symbol: str = Query(..., description="Symbol (e.g. EURUSD)"),
+    resolution: str = Query(default="1m", description="Resolution (only 1m supported)"),
+):
+    """
+    P5: Data coverage per symbol — earliest/latest ts del store, window_72h stats.
+    """
+    if resolution != "1m":
+        _http_error(422, TIMEFRAME_NOT_SUPPORTED, f"Only 1m resolution supported")
+    store = _require_candle_store()
+    symbol = _normalize_symbol(symbol)
+
+    earliest_ts = None
+    latest_ts = None
+    earliest_dt = store.get_earliest_timestamp(symbol)
+    latest_dt = store.get_last_timestamp(symbol)
+    if earliest_dt:
+        earliest_ts = int(earliest_dt.timestamp())
+    if latest_dt:
+        latest_ts = int(latest_dt.timestamp())
+
+    # window_72h: computed from store read_range
+    end = datetime.now(CANONICAL_TIMEZONE)
+    start_72h = end - timedelta(hours=72)
+    r = read_candles(store, symbol=symbol, start=start_72h, end=end, validate_gaps=True)
+    report = GapValidator.validate(r.candles, start_72h, end, symbol=symbol)
+    max_gap_s = max(g.count * 60 for g in report.gaps) if report.gaps else 0
+
+    return {
+        "symbol": symbol,
+        "resolution": resolution,
+        "earliest_ts": earliest_ts,
+        "latest_ts": latest_ts,
+        "window_72h": {
+            "expected_minutes": report.expected_count,
+            "candles": report.actual_count,
+            "missing_minutes": report.missing_count,
+            "max_gap_s": max_gap_s,
+        },
+        "source": "primary",
+        "notes": "UTC start-of-minute, closed only",
+    }
+
+
+@router.get("/data_status")
+async def get_data_status():
+    """
+    P7c: Data Layer telemetria (counters, last_ts per símbol).
+    503 si metrics no wired (sense pipeline).
+    """
+    from application.data.data_layer_metrics import get_data_layer_metrics  # lazy: evita carregar data_layer si no hi ha pipeline
+
+    metrics = get_data_layer_metrics()
+    if metrics is None:
+        _http_error(503, DATA_STATUS_NOT_AVAILABLE, "Data Layer metrics not available (no pipeline)")
+
+    snapshot = metrics.snapshot()
+    return {
+        "symbols": snapshot["symbols"],
+        "ws_reconnects": snapshot["ws_reconnects"],
+        "server_time": datetime.now(timezone.utc).isoformat(),
+        "canonical_tz": CANONICAL_TIMEZONE_NAME,
+        "mode": _mode,
+        "market_data_env": _market_data_env,
+    }
+
+
+@router.get("/candles")
 async def get_candles(
     symbol: str = Query(...),
     timeframe: str = Query(default=SUPPORTED_TIMEFRAME),
@@ -318,7 +481,7 @@ async def get_candles(
     if timeframe != SUPPORTED_TIMEFRAME:
         _http_error(422, TIMEFRAME_NOT_SUPPORTED, f"Only {SUPPORTED_TIMEFRAME} timeframe supported")
     try:
-        return _read_candles_response(symbol, limit, since, to, validate_gaps=True)
+        return await _read_candles_response(symbol, limit, since, to, validate_gaps=True)
     except HTTPException:
         raise
     except Exception as e:

@@ -111,6 +111,10 @@ Imports sempre a capçalera; zero hardcode (constants a `foundation/config` o lo
 - Lazy import per evitar càrrega pesada (p.ex. llibreria molt costosa) amb comentari `# lazy import to reduce startup cost`.
 - Aquestes excepcions han de ser rares i justificades.
 
+**No és excepció vàlida:** "evitar pol·luir namespace" per mòduls de la stdlib lleugers (`traceback`, `asyncio`, `shutil`, `tempfile`, `os`, `io`). Aquests han d'anar a la capçalera.
+
+**Regla obligatòria:** Si un import no compleix la regla (p.ex. és dins d'una funció o mòdul), cal posar un comentari **a la línia de l'import** explicant el motiu (p.ex. `# local import to avoid circular dependency`, `# lazy import to reduce startup cost`). Sense comentari, es considera violació.
+
 #### B) Zero hardcode (regla general)
 - No posar valors màgics (strings, ints, floats, paths, timeouts, limits) dins la lògica.
 - Tot valor "policy" o "protocol" ha d'estar en:
@@ -183,6 +187,10 @@ PAPER no vol dir "testnet". PAPER vol dir **mainnet-data + paper execution**, am
 Objectiu: que el servei pugui funcionar com a **"capa de dades 1m"** robusta i repetible.
 
 **Time semantics (validated):** Lighter Candlestick `t` = UTC start-of-minute; returns closed-only (`latest = now_floor-60`). Dataset keeps `ts` epoch UTC; `CANONICAL_TZ` only affects queries/partition/display.
+
+**P4.0:** BackfillService wired in lifespan; LighterCandlestickBackfillProvider (IBackfillProvider); gap repair via Candlestick API.
+
+**P4.1:** Consistency gate — WS-built candles vs Candlestick REST; test_ws_vs_candlestick_consistency (opt-in).
 
 #### 2.7.1 Requisits canònics del Data Layer
 
@@ -546,6 +554,8 @@ Response 200: `{"success": true}`
 
 **Lighter (evidència P0.3b):** `lab/lighter/scripts/time_semantics_probe.py` — t és UTC start-of-minute. L'API retorna només tancades (latest = now_floor - 60). NO hi ha conversió de TZ al dataset; ts epoch UTC. TZ NY a AGENTS és per particions/display, no per re-etiquetar candles.
 
+**Data contracts (P4):** Candles persistits com UTC start-of-minute epoch; validat per `test_lighter_candles_time_semantics`, `test_lighter_backfill_pagination_dedup`, `test_gap_repair_flow`.
+
 ---
 
 ## 6) Quality Gates
@@ -662,7 +672,7 @@ volumes:
 
 **Per què:** Evitar que scripts executats des del host (p.ex. `fetch_historical_candles.py`, `run_freqtrade_paper.sh`) no puguin llegir/escriure als mateixos fitxers que el container. Els paths `./` garanteixen que tot està dins l'arrel del projecte i accessible des de host i Docker.
 
-**Si hi ha problemes de permisos:** Els directoris creats per Docker poden quedar amb `root`. Crear-los des del host abans: `mkdir -p datafiles logs`.
+**Si hi ha problemes de permisos:** Els directoris creats per Docker poden quedar amb `root`. Crear-los des del host abans: `mkdir -p datafiles logs`. Si ja hi ha fitxers creats per Docker: `./scripts/fix_datafiles_permissions.sh` (requereix sudo).
 
 **Neteja de logs antics:** Els logs a `datafiles/` (smoke_runs, ws_soak, freqtrade_runs, e2e_runs) es poden acumular. Per eliminar els que ja no calen (conservant evidència ESTAT):
 ```bash

@@ -8,6 +8,7 @@ Tests message parsing logic without actual WebSocket connection.
 from pathlib import Path
 import asyncio
 import json
+import traceback
 import sys
 
 
@@ -217,7 +218,6 @@ def main():
 
     except Exception as e:
         print(f"\n✗ Unexpected error: {e}")
-        import traceback
         traceback.print_exc()
         return 1
 

@@ -19,7 +19,7 @@ References:
 - https://docs.gains.trade/developer/integrators/backend
 """
 
-
+import os
 from datetime import datetime
 from typing import List, Optional, AsyncIterator, Any
 
@@ -470,9 +470,6 @@ class GTradeVenueAdapter(IVenueAdapter):
             NoTradableSymbolError: If all symbols (primary + fallbacks) fail
             ValueError: If wallet not configured or live trading disabled
         """
-        # Lazy: os només es necessita dins aquest mètode (evita pol·luir namespace)
-        import os
-
         # Check if live trading enabled
         if os.getenv("ENABLE_LIVE_TRADING") != "1":
             raise NotImplementedError("Live trading disabled (ENABLE_LIVE_TRADING != 1)")
@@ -546,9 +543,6 @@ class GTradeVenueAdapter(IVenueAdapter):
 
         FASE 6B.1.B.2 - ABI encoding (placeholder signatures)
         """
-        # Lazy: os només es necessita dins aquest mètode (evita pol·luir namespace)
-        import os
-
         # Check if live trading enabled
         if os.getenv("ENABLE_LIVE_TRADING") != "1":
             raise NotImplementedError("Live trading disabled (ENABLE_LIVE_TRADING != 1)")

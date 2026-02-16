@@ -15,6 +15,7 @@ Tests the complete paper trading flow:
 from datetime import datetime
 from pathlib import Path
 import asyncio
+import traceback
 import sys
 
 from zoneinfo import ZoneInfo
@@ -454,7 +455,6 @@ def main():
 
     except Exception as e:
         print(f"\n✗ Unexpected error: {e}")
-        import traceback
         traceback.print_exc()
         return 1
 

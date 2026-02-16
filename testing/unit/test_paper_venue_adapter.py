@@ -3,6 +3,7 @@ Unit test: PaperVenueAdapter — open → close 100% → positions_after=0
 """
 
 import asyncio
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys_path = Path(__file__).resolve().parents[2]
@@ -16,7 +17,6 @@ from infrastructure.venues.paper.paper_venue_adapter import PaperVenueAdapter
 async def _get_price_eth(sym: str) -> PriceData:
     """Mock price provider: ETH=3000, BTC=60000."""
     prices = {"ETH": 3000.0, "BTC": 60000.0}
-    from datetime import datetime, timezone
     p = prices.get(sym, 0.0)
     return PriceData(symbol=sym, bid=p, ask=p, mid=p, timestamp=datetime.now(timezone.utc))
 

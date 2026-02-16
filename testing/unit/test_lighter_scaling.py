@@ -10,6 +10,7 @@ Tests:
 
 from pathlib import Path
 import sys
+import traceback
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -200,7 +201,6 @@ def main():
 
     except Exception as e:
         print(f"\n✗ Unexpected error: {e}")
-        import traceback
         traceback.print_exc()
         return 1
 

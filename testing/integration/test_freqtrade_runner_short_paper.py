@@ -8,10 +8,12 @@ P3.1: Logs del broker a fitxer; en fallada imprimeix últimes línies.
 """
 
 import os
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
+import traceback
 import time
 from pathlib import Path
 
@@ -176,14 +178,12 @@ def main() -> int:
     except Exception as e:
         if broker_log_path and broker_log_path.exists():
             dump_broker_log_on_failure(broker_log_path)
-        print(f"✗ Error: {e}")
-        import traceback
-        traceback.print_exc()
+            print(f"✗ Error: {e}")
+            traceback.print_exc()
         return 1
 
     finally:
-        _stop_broker(process)
-        import shutil
+            _stop_broker(process)
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 

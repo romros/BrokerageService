@@ -12,6 +12,7 @@ Validates M1 pipeline: Lighter market data → candles 1m → CSV → WS-ready.
 """
 
 import asyncio
+import traceback
 import sys
 import tempfile
 from datetime import datetime
@@ -223,7 +224,6 @@ def main():
         return 1
     except Exception as e:
         print(f"\n✗ Error: {e}")
-        import traceback
         traceback.print_exc()
         return 1
 

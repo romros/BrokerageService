@@ -8,6 +8,8 @@ Tests close_position() market reduce-only with mocked account API and signer (ze
 - P1.2: maker-first close amb fallback → positions_after=0
 """
 
+import asyncio
+import traceback
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 from typing import List, Optional, Dict, Any
@@ -16,7 +18,7 @@ from infrastructure.venues.lighter.config import LighterConfig
 from infrastructure.venues.lighter.lighter_adapter import LighterVenueAdapter
 from infrastructure.venues.lighter.idempotency import ClientOrderIndexGenerator
 from infrastructure.venues.lighter.scaling import acceptable_price_int
-from domain.errors import PositionNotFoundError
+from domain.errors import PositionNotFoundError, RateLimitedError
 from domain.models import PriceData
 
 
@@ -330,7 +332,6 @@ async def test_close_position_regression_uses_market_scaling_not_limit():
 
 async def test_close_position_429_fallback_uses_positions_mark():
     """429 rate-limit: get_latest_price fails → fallback to mark_price from positions → close succeeds."""
-    from domain.errors import RateLimitedError
 
     signer = DummySigner()
     resp_full = make_fake_account_response([
@@ -442,7 +443,6 @@ async def main():
             passed += 1
         except Exception as e:
             print(f"❌ {test.__name__}: {e}")
-            import traceback
             traceback.print_exc()
             failed += 1
 
@@ -454,5 +454,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    import asyncio
     exit(asyncio.run(main()))

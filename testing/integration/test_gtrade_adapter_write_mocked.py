@@ -44,7 +44,7 @@ def create_mock_web3(chain_id=42161):
     mock_w3.eth.get_balance = AsyncMock(return_value=1_000_000_000_000_000_000)
 
     # Mock from_wei
-    from web3 import Web3
+    from web3 import Web3  # lazy: evita carregar web3 si no es fa servir gTrade
     mock_w3.from_wei = Web3.from_wei
 
     # Mock contract

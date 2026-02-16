@@ -14,6 +14,7 @@ Starts its own test server automatically.
 
 from datetime import datetime
 from pathlib import Path
+import traceback
 from typing import Optional
 import asyncio
 import json
@@ -464,7 +465,6 @@ def main():
         print("\n" + "="*60)
         print(f"✗ WebSocket tests failed: {e}")
         print("="*60 + "\n")
-        import traceback
         traceback.print_exc()
         return 1
 

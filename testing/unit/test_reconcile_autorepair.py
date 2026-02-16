@@ -17,6 +17,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from domain.models import Position, ReconcileResult, PositionMismatch
+from infrastructure.reconcile import LoggingReconcileSink
 from domain.models.reconcile_actions import MarkStalePosition, RequestResync
 from application.services.reconcile_service import (
     ReconcileService,
@@ -97,8 +98,6 @@ def test_build_actions_missing_locally():
 
 def test_sink_extra_locally_mark_stale_called_once():
     """extra_locally -> sink calls tracker.mark_stale once."""
-    from infrastructure.reconcile import LoggingReconcileSink
-
     tracker = FakeTracker()
     sink = LoggingReconcileSink(tracker)
     actions = [MarkStalePosition("1:1", "extra_locally", [])]
@@ -110,8 +109,6 @@ def test_sink_extra_locally_mark_stale_called_once():
 
 def test_sink_mismatch_mark_stale_with_reason_fields():
     """mismatch -> mark_stale called with reason including fields."""
-    from infrastructure.reconcile import LoggingReconcileSink
-
     tracker = FakeTracker()
     sink = LoggingReconcileSink(tracker)
     actions = [MarkStalePosition("2:3", "mismatch:size,is_long", ["size", "is_long"])]
