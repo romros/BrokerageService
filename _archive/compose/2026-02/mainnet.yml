@@ -1,7 +1,5 @@
+# ARXIVAT 2026-02. Reemplaçament: deploy/compose/overrides/soak.yml (ws) o data-layer.yml
 # Override per WS soak MAINNET (real feed, sense fake)
-# Requereix: .env amb LIGHTER_L1_ADDRESS, LIGHTER_L1_PRIVATE_KEY, LIGHTER_API_PRIVATE_KEY
-# Us: docker compose -f docker-compose.yml -f docker-compose.mainnet.yml up -d
-#     ./scripts/soak_ws_mainnet.sh 900
 
 services:
   brokerage:

@@ -278,6 +278,7 @@ def main():
         testing_dir / "unit" / "test_data_layer_prod_service.py",  # Data Layer prod v0 (prefetch, writer, gates)
         testing_dir / "unit" / "test_data_layer_startup_gate.py",  # Startup gate (0 network)
         testing_dir / "unit" / "test_data_layer_run_eval.py",  # run eval exit codes (0 network)
+        testing_dir / "unit" / "test_compose_profiles.py",  # profiles resolen paths, compose config (0 network)
         testing_dir / "unit" / "test_symbol_selection_soak.py",  # P7c.1 select_soak_symbol (0 network)
         testing_dir / "unit" / "test_p7_mixed_gated_stitching.py",  # P7 Mixed gated stitching (0 network)
         testing_dir / "unit" / "test_p8_read_through_response_only.py",  # P8.0 Read-through gap serving (0 network)

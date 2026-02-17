@@ -1,0 +1,8 @@
+# ARXIVAT 2026-02. Reemplaçament: deploy/compose/overrides/ (Lighter-specific, pivot Ostium)
+# Override per WS soak MAINNET amb EURUSD/XAU (Lighter forex i metalls)
+
+services:
+  brokerage:
+    environment:
+      - SYMBOLS=ETH,BTC,EURUSD,XAU
+      - LIGHTER_SYMBOLS=ETH,BTC,EURUSD,XAU

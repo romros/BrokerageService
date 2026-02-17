@@ -1,6 +1,8 @@
 # Override per WS soak: pipeline candles actiu (fake feed, sense xarxa)
-# Ús: docker compose -f docker-compose.yml -f docker-compose.soak.yml up -d
-#     ./scripts/soak_ws.sh 900
+#
+# Ús:
+#   docker compose -f docker-compose.yml -f deploy/compose/overrides/soak.yml up -d brokerage
+#   ./scripts/run_soak.sh 15 ws
 
 services:
   brokerage:

@@ -1,0 +1,12 @@
+# Placeholder per Ostium (market data live collector, sense històric)
+# Històric vindrà de Dukascopy. Ostium en LAB; activar quan provider integrat.
+#
+# Ús (quan estigui integrat):
+#   docker compose -f docker-compose.yml -f deploy/compose/overrides/ostium.yml up -d brokerage
+
+services:
+  brokerage:
+    environment:
+      # Placeholder: variables per Ostium provider (no activat)
+      - OSTIUM_PROVIDER_ENABLED=${OSTIUM_PROVIDER_ENABLED:-0}
+      - OSTIUM_RPC_URL=${OSTIUM_RPC_URL:-}

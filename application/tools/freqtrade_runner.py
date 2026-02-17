@@ -2,7 +2,7 @@
 Freqtrade-like runner — PAPER DONE handshake (AGENTS §2.6)
 
 Client pur HTTP: llegeix candles, preu, obre/tanca posicions paper via API.
-Assumeix broker en marxa amb pipeline actiu (com docker-compose.soak.yml).
+Assumeix broker en marxa amb pipeline actiu (com deploy/compose/overrides/soak.yml).
 
 Ús:
   python -m application.tools.freqtrade_runner --venue lighter --mode PAPER --symbol ETH --minutes 15

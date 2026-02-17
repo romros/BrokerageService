@@ -31,9 +31,9 @@
 
 **Activar:** `DATA_LAYER_ENABLED=1` (default 0). Prefetch + writer loop + gates.
 
-**Docker prod-ish:** `docker compose -f docker-compose.yml -f docker-compose.data-layer.yml up -d brokerage`
+**Docker prod-ish:** `docker compose -f docker-compose.yml -f deploy/compose/overrides/data-layer.yml up -d brokerage`
 
-**Scripts:** `./scripts/run_data_layer_smoke.sh` (3 min), `./scripts/run_data_layer_soak.sh 30` (30 min). Artifacts a `datafiles/data_layer_prod_runs/`.
+**Scripts canònics:** `./scripts/run_smoke.sh data-layer` (3 min), `./scripts/run_soak.sh 30 data-layer` (30 min). Artifacts a `datafiles/data_layer_prod_runs/`.
 
 **Startup gate:** `DATA_LAYER_STARTUP_GATE=1` → health=degraded si Data Layer DEGRADED; startup falla si gate ON i prefetch degradat.
 
@@ -67,12 +67,12 @@ Llindars via env: `DATA_LAYER_GATES_MAX_GAP_S`, `DATA_LAYER_GATES_MAX_MISSING_PE
 | Gate 2 | ops | `docker compose down && up` |
 
 ```bash
-# Docker prod-ish
-docker compose -f docker-compose.yml -f docker-compose.data-layer.yml up -d brokerage
+# Docker prod-ish (veure Operativa canònica)
+docker compose -f docker-compose.yml -f deploy/compose/overrides/data-layer.yml up -d brokerage
 
-# Scripts operatius (smoke 3 min, soak N min)
-./scripts/run_data_layer_smoke.sh
-./scripts/run_data_layer_soak.sh 30
+# Scripts canònics (profile data-layer)
+./scripts/run_smoke.sh data-layer
+./scripts/run_soak.sh 30 data-layer
 
 # Manual
 curl -s http://localhost:8000/api/v1/broker/data_status
@@ -110,9 +110,21 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 - [ ] Cutover policy: primary/fallback per símbol (EURUSD especial)
 - [ ] Doc "operar data layer" (runbook)
 
-**Com validar:** `curl data_status`; `./test.sh testing/integration/test_data_layer_soak_metrics.py --minutes N`; `docker compose down && up`.
+**Com validar:** `curl data_status`; `./scripts/run_soak.sh N data-layer`; `docker compose down && up`.
 
 **Backlog (no compromès):** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
+
+---
+
+## Operativa canònica (scripts + compose profiles)
+
+| Profile | Compose override | Smoke | Soak |
+|---------|------------------|-------|------|
+| data-layer | deploy/compose/overrides/data-layer.yml | `run_smoke.sh data-layer` | `run_soak.sh 30 data-layer` |
+| ws | deploy/compose/overrides/soak.yml | — | `run_soak.sh 15 ws` |
+| ostium | deploy/compose/overrides/ostium.yml | placeholder | — |
+
+**Regla:** No crear scripts nous ad-hoc. Lògica a `application/tools/*.py`; wrappers a `scripts/*.sh`.
 
 ---
 
@@ -120,11 +132,12 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 
 ```bash
 ./test.sh testing/run_all.py
+./scripts/run_smoke.sh data-layer
+./scripts/run_soak.sh 30 data-layer
 curl -s http://localhost:8000/api/v1/broker/data_status
 curl -s "http://localhost:8000/api/v1/broker/coverage?symbol=ETH&resolution=1m"
 curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-Data
-./test.sh testing/integration/test_data_layer_soak_metrics.py --minutes 2
-./test.sh testing/run_all.py --include-data-layer-soak
+docker compose -f docker-compose.yml -f deploy/compose/overrides/data-layer.yml config  # validar
 docker compose build brokerage
 docker compose down && docker compose up -d brokerage
 ```

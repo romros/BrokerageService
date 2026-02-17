@@ -1,7 +1,9 @@
 # Override per Data Layer prod v0 (prefetch + writer + gates)
-# Ús: docker compose -f docker-compose.yml -f docker-compose.data-layer.yml up -d brokerage
-#     ./scripts/run_data_layer_smoke.sh
-#     ./scripts/run_data_layer_soak.sh 30
+#
+# Ús:
+#   docker compose -f docker-compose.yml -f deploy/compose/overrides/data-layer.yml up -d brokerage
+#   ./scripts/run_smoke.sh data-layer
+#   ./scripts/run_soak.sh 30 data-layer
 
 services:
   brokerage:
@@ -12,5 +14,4 @@ services:
       - DATA_LAYER_STALE_SECONDS=180
       - DATA_LAYER_GATES_MAX_GAP_S=180
       - DATA_LAYER_GATES_MAX_MISSING_PER_24H=1
-      # Startup gate: 1 = health degraded si Data Layer DEGRADED al boot
       - DATA_LAYER_STARTUP_GATE=${DATA_LAYER_STARTUP_GATE:-0}

@@ -321,6 +321,13 @@ volumes:
   - ./logs:/app/logs
 ```
 
+### 11.3 Operational Surface Area (regles per no créixer caos)
+
+- **No crear scripts nous ad-hoc** per cada cas. Entrypoints: `application/tools/*.py` (lògica) + `scripts/*.sh` (wrappers mínims).
+- **Docker compose overrides** a `deploy/compose/overrides/` amb convenció de noms (data-layer.yml, soak.yml, ostium.yml).
+- **El que ja no és camí principal** → `_archive/` amb README (què era, per què arxivat, reemplaçament canònic).
+- **Scripts canònics:** `run_smoke.sh [profile]`, `run_soak.sh <minutes> [profile]`. Profile = data-layer | ws | ostium.
+
 ---
 
 ## 12) Maturity model (per venue)

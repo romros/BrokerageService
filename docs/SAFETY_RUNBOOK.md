@@ -83,7 +83,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=10" | grep -i
 
 | Situació | Acció |
 |----------|-------|
-| **Restart** | `docker compose down`; `docker compose up -d brokerage` |
+| **Restart** | `docker compose down`; `docker compose up -d brokerage` (amb override si Data Layer: `-f deploy/compose/overrides/data-layer.yml`) |
 | **Backfill / repair** | BackfillService (lifespan) + read-through (GET ohlcv si `ENABLE_READ_THROUGH=1`); test: `test_gap_repair_flow.py` (--include-lighter-backfill) |
 | **Disable symbol** | Env: `SYMBOLS`, `LIGHTER_SYMBOLS`, `BACKFILL_SYMBOLS`; no policy registry per ara |
 | **Degrade mode** | Fallback-only (no mixed); 422 mixed si compat FAIL |
@@ -94,9 +94,11 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=10" | grep -i
 
 ```bash
 ./test.sh testing/run_all.py
+./scripts/run_smoke.sh data-layer
+./scripts/run_soak.sh 30 data-layer
 curl -s http://localhost:8000/api/v1/broker/data_status
 curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-Data
-./test.sh testing/integration/test_data_layer_soak_metrics.py --minutes 2
+docker compose -f docker-compose.yml -f deploy/compose/overrides/data-layer.yml config  # validar
 docker compose build brokerage
 docker compose down && docker compose up -d brokerage
 ```
