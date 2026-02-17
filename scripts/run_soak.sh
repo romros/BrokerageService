@@ -2,9 +2,10 @@
 # Soak operatiu canònic. Profile determina compose override i tipus de soak.
 #
 # Ús:
-#   ./scripts/run_soak.sh <minutes> [profile]
+#   ./scripts/run_soak.sh <minutes> [profile] [post-compat]
 #
-# Profiles: data-layer (default), ws
+# Profiles: data-layer (default), ws, ostium
+#   post-compat: només per profile ostium; executa compat al final del soak
 #   data-layer: Data Layer soak (loop data_status cada 60s)
 #   ws: WS soak (candle:ETH:1m, pipeline fake feed)
 #
@@ -18,6 +19,7 @@ cd "$PROJECT_ROOT"
 
 MINUTES=${1:-30}
 PROFILE=${2:-data-layer}
+POST_COMPAT=${3:-}
 OVERRIDES_DIR="$PROJECT_ROOT/deploy/compose/overrides"
 BROKER_URL="${BROKER_URL:-http://localhost:8000}"
 HEALTH_URL="${BROKER_URL}/api/v1/broker/health"
@@ -71,7 +73,11 @@ export PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 
 case "$PROFILE" in
   data-layer|ostium)
-    python3 -m application.tools.data_layer_soak "$MINUTES"
+    SOAK_ARGS="$MINUTES"
+    if [ "$POST_COMPAT" = "post-compat" ] && [ "$PROFILE" = "ostium" ]; then
+      SOAK_ARGS="$SOAK_ARGS --post-compat 1"
+    fi
+    python3 -m application.tools.data_layer_soak $SOAK_ARGS
     ;;
   ws)
     MINUTES=$((MINUTES < 1 ? 1 : MINUTES))

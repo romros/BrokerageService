@@ -14,6 +14,7 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import List, Optional
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
@@ -54,6 +55,7 @@ async def run_compat(
     datafiles_root: str,
     broker: str = "gtrade",
     canonical_tz: str = "America/New_York",
+    candles_b_override: Optional[List] = None,
 ) -> dict:
     """
     Executa compat Ostium vs Dukascopy per un símbol.
@@ -62,7 +64,6 @@ async def run_compat(
         Report dict amb verdict, verdict_reason, path, registry_updated.
     """
     store = CSVCandleStore(root_path=datafiles_root, broker=broker, canonical_tz=canonical_tz)
-    provider = DukascopyBackfillProvider(cache_root=datafiles_root)
 
     now = datetime.now(timezone.utc)
     end = now.replace(second=0, microsecond=0)
@@ -92,19 +93,23 @@ async def run_compat(
             "registry_updated": False,
         }
 
-    # Dukascopy (B)
-    try:
-        candles_b = await provider.fetch_ohlcv(symbol, start, end)
-    except Exception as e:
-        logger.warning("ostium_compat: Dukascopy fetch failed for %s: %s", symbol, e)
-        return {
-            "symbol": symbol,
-            "verdict": "FAIL",
-            "verdict_reason": f"dukascopy fetch error: {e}",
-            "aligned_count": 0,
-            "path": None,
-            "registry_updated": False,
-        }
+    # Dukascopy (B) — o candles_b_override per testing 0-network
+    if candles_b_override is not None:
+        candles_b = candles_b_override
+    else:
+        provider = DukascopyBackfillProvider(cache_root=datafiles_root)
+        try:
+            candles_b = await provider.fetch_ohlcv(symbol, start, end)
+        except Exception as e:
+            logger.warning("ostium_compat: Dukascopy fetch failed for %s: %s", symbol, e)
+            return {
+                "symbol": symbol,
+                "verdict": "FAIL",
+                "verdict_reason": f"dukascopy fetch error: {e}",
+                "aligned_count": 0,
+                "path": None,
+                "registry_updated": False,
+            }
 
     if not candles_b:
         return {

@@ -137,6 +137,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-17 | Ostium compat + graduation gate | ✅ compat report Ostium↔Dukascopy, registry, run_compat.sh | PASS → ostium_primary_allowed |
 | 2026-02-17 | Ostium primary serving v1 | ✅ policy per símbol, X-Data-Source=ostium_recorded, data_status primary_allowed_by_symbol | headers + coverage + tests |
 | 2026-02-17 | Market-hours aware gates | ✅ is_market_open, closed_intervals; stale/missing ajustats; data_status market_open | soak cap de setmana no DEGRADED |
+| 2026-02-17 | Ostium Graduation Loop v1 | ✅ run_soak.sh 30 ostium post-compat; SKIP si no candles; graduation_summary a artifact | `./scripts/run_soak.sh 2 ostium post-compat` (SKIP per falta Dukascopy) |
 
 **Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 
@@ -177,6 +178,8 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | ws | deploy/compose/overrides/soak.yml | — | `run_soak.sh 15 ws` | — |
 | ostium | deploy/compose/overrides/ostium.yml | `run_smoke.sh ostium` | `run_soak.sh 30 ostium` | `run_compat.sh ostium` |
 
+**Graduation loop Ostium:** `./scripts/run_soak.sh 30 ostium post-compat` — soak + compat automàtic al final. Si no hi ha candles suficients o Dukascopy falta → SKIP (exit 0). Artifact inclou `graduation_summary`. Quan acabi la 24h i Dukascopy tingui delay resolt, correr compat 1440: `run_compat.sh ostium` amb `OSTIUM_COMPAT_WINDOW_MINUTES=1440`.
+
 **Regla:** No crear scripts nous ad-hoc. Lògica a `application/tools/*.py`; wrappers a `scripts/*.sh`.
 
 ---
@@ -190,6 +193,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 ./scripts/run_compat.sh ostium  # Ostium vs Dukascopy compat (graduation gate)
 ./scripts/run_soak.sh 30 data-layer
 ./scripts/run_soak.sh 30 ostium
+./scripts/run_soak.sh 30 ostium post-compat   # soak + compat automàtic (graduation loop)
 curl -s http://localhost:8000/api/v1/broker/data_status
 curl -s "http://localhost:8000/api/v1/broker/coverage?symbol=ETH&resolution=1m"
 curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-Data

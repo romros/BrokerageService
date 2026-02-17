@@ -3,9 +3,14 @@ Data Layer soak (30–120 min). Invocat per scripts/run_soak.sh <minutes> data-l
 
 Loop cada 60s, loga resum. Al final artifact JSON + exit code.
 
+Post-compat (Ostium): si --post-compat 1, al final del soak intenta compat Ostium vs Dukascopy,
+actualitza registry i afegeix graduation_summary a l'artifact. SKIP si no hi ha candles suficients.
+
 Exit: 0 OK, 2 DEGRADED, 3 missing/gap, 4 dupes/ts_step, 5 stale, 6 health fail
 """
 
+import argparse
+import asyncio
 import json
 import os
 import sys
@@ -42,9 +47,79 @@ def _get(url: str, timeout: int = 10) -> dict | None:
     return None
 
 
+def _run_post_compat(
+    compat_symbol: str,
+    compat_candles: int,
+    datafiles_root: str,
+    broker: str,
+) -> dict:
+    """
+    Executa post-compat Ostium vs Dukascopy.
+    Retorna dict amb symbol, verdict, ostium_primary_allowed, reason, skipped.
+    """
+    try:
+        from application.tools.ostium_compat_report import run_compat
+    except ImportError:
+        return {
+            "symbol": compat_symbol,
+            "verdict": "SKIP",
+            "ostium_primary_allowed": False,
+            "reason": "ostium_compat_report not available",
+            "skipped": True,
+        }
+
+    result = asyncio.run(
+        run_compat(
+            symbol=compat_symbol,
+            window_minutes=compat_candles,
+            datafiles_root=datafiles_root,
+            broker=broker,
+        )
+    )
+
+    # Si no hi ha Ostium candles o Dukascopy → SKIP (no registry write)
+    verdict_reason = result.get("verdict_reason", "")
+    if not result.get("registry_updated", False):
+        if "no Ostium candles" in verdict_reason or "store read" in verdict_reason:
+            return {
+                "symbol": compat_symbol,
+                "verdict": "SKIP",
+                "ostium_primary_allowed": False,
+                "reason": verdict_reason,
+                "skipped": True,
+            }
+        if "no Dukascopy" in verdict_reason or "dukascopy" in verdict_reason.lower():
+            return {
+                "symbol": compat_symbol,
+                "verdict": "SKIP",
+                "ostium_primary_allowed": False,
+                "reason": verdict_reason,
+                "skipped": True,
+            }
+
+    status = result.get("status", "FAIL")
+    return {
+        "symbol": compat_symbol,
+        "verdict": status,
+        "ostium_primary_allowed": result.get("ostium_primary_allowed", False),
+        "reason": verdict_reason,
+        "skipped": False,
+        "path": result.get("path"),
+    }
+
+
 def main() -> int:
-    minutes = int(sys.argv[1]) if len(sys.argv) > 1 else 30
-    minutes = max(1, min(120, minutes))
+    parser = argparse.ArgumentParser(description="Data Layer soak (loop data_status)")
+    parser.add_argument("minutes", type=int, nargs="?", default=30, help="Duration minutes (1-120)")
+    parser.add_argument("--post-compat", type=int, default=0, help="1 = run Ostium compat after soak (ostium profile)")
+    parser.add_argument("--compat-symbol", default=os.getenv("OSTIUM_COMPAT_SYMBOL", "EURUSD"), help="Symbol for compat")
+    parser.add_argument("--compat-candles", type=int, default=int(os.getenv("OSTIUM_COMPAT_WINDOW_MINUTES", "650")), help="Window minutes for compat")
+    args = parser.parse_args()
+
+    minutes = max(1, min(120, args.minutes))
+    post_compat = args.post_compat == 1
+    compat_symbol = args.compat_symbol.upper()
+    compat_candles = args.compat_candles
 
     base = BROKER_URL.rstrip("/")
     data_status_url = f"{base}/api/v1/broker/data_status"
@@ -56,6 +131,8 @@ def main() -> int:
     print(f"  Broker: {base}")
     print(f"  Duration: {minutes} min")
     print(f"  Symbols: {symbols}")
+    if post_compat:
+        print(f"  Post-compat: {compat_symbol} ({compat_candles}m)")
     print()
 
     start = time.monotonic()
@@ -116,6 +193,38 @@ def main() -> int:
         "snapshots_count": len(snapshots),
         "data_status_final": last_data_status,
     }
+
+    graduation_summary = None
+    if post_compat:
+        # Run post-compat si verdict OK o degraded (no dupes/ts_step ni health_fail)
+        exit_ok_for_compat = last_result and last_result.exit_code in (0, 2, 3, 5)
+        if exit_ok_for_compat:
+            broker_venue = os.getenv("VENUE", "gtrade")
+            grad = _run_post_compat(
+                compat_symbol=compat_symbol,
+                compat_candles=compat_candles,
+                datafiles_root=str(datafiles_root),
+                broker=broker_venue,
+            )
+            graduation_summary = grad
+            print(f"\n  Post-compat {compat_symbol}: {grad['verdict']} — ostium_primary_allowed={grad['ostium_primary_allowed']}")
+            if grad.get("skipped"):
+                print(f"    SKIP: {grad.get('reason', '')}")
+            elif grad.get("path"):
+                print(f"    artifact={grad['path']}")
+        else:
+            graduation_summary = {
+                "symbol": compat_symbol,
+                "verdict": "SKIP",
+                "ostium_primary_allowed": False,
+                "reason": f"soak verdict {last_result.verdict if last_result else 'health_fail'} not suitable for compat",
+                "skipped": True,
+            }
+            print(f"\n  Post-compat {compat_symbol}: SKIP (soak verdict not suitable)")
+
+    if graduation_summary:
+        artifact["graduation_summary"] = graduation_summary
+
     with open(artifact_path, "w", encoding="utf-8") as f:
         json.dump(artifact, f, indent=2)
     print(f"\n  Artifact: {artifact_path}")
