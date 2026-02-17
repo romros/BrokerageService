@@ -1,14 +1,14 @@
 {
   "EURUSD": {
-    "last_ts_written": 1771354800,
-    "candles_total": 659
+    "last_ts_written": 1771366260,
+    "candles_total": 850
   },
   "XAUUSD": {
-    "last_ts_written": 1771354800,
-    "candles_total": 659
+    "last_ts_written": 1771365480,
+    "candles_total": 838
   },
   "GBPUSD": {
-    "last_ts_written": 1771354800,
-    "candles_total": 659
+    "last_ts_written": 1771366260,
+    "candles_total": 850
   }
 }

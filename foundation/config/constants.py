@@ -87,6 +87,9 @@ DEFAULT_LOG_DIR = "logs"
 # P7b: Compat registry (compat_probe output)
 COMPAT_REGISTRY_RELATIVE_PATH = "compat_probe/compat_registry.json"
 
+# Ostium compat (Ostium vs Dukascopy graduation gate)
+OSTIUM_COMPAT_REGISTRY_RELATIVE_PATH = "compat_reports/ostium_compat_registry.json"
+
 # Storage tuning
 MONTHS_TO_CHECK_BACKWARD = 12  # How many months to scan for files
 

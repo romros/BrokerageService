@@ -374,8 +374,14 @@ async def _read_candles_response(
 
     use_p7 = since is not None or to is not None
     if use_p7 and _fallback_provider is not None:
-        from application.data.compat_registry import get_compat_status  # lazy: evita carregar P7 si no es demana rang
         from application.services.candle_stitching_service import get_candles_with_source  # lazy: evita carregar P7 si no es demana rang
+
+        def _compat_fn(s: str) -> str:
+            if _ostium_ingest_enabled:
+                from application.data.ostium_compat_registry import get_ostium_primary_allowed
+                return "PASS" if get_ostium_primary_allowed(s) else "FAIL"
+            from application.data.compat_registry import get_compat_status
+            return get_compat_status(s)
 
         try:
             r, source, cutover_ts = await get_candles_with_source(
@@ -385,7 +391,7 @@ async def _read_candles_response(
                 limit=limit,
                 csv_store=store,
                 fallback_provider=_fallback_provider,
-                get_compat_status_fn=lambda s: get_compat_status(s),
+                get_compat_status_fn=_compat_fn,
             )
             resp = _map_ohlcv_response(r, symbol, start, end)
             headers = _build_p5_headers(r, start, end, symbol, source=source, cutover_ts=cutover_ts)
@@ -406,8 +412,15 @@ async def _read_candles_response(
         cutover_dt = store.get_earliest_timestamp(symbol)
         cutover_ts = int(cutover_dt.timestamp()) if cutover_dt else None
         from application.services.candle_stitching_service import resolve_source  # lazy: evita carregar P7 si no es demana rang
-        from application.data.compat_registry import get_compat_status  # lazy: evita carregar P7 si no es demana rang
-        source = resolve_source(since_ts, to_ts, cutover_ts, get_compat_status(symbol))
+
+        def _compat_fn(s: str) -> str:
+            if _ostium_ingest_enabled:
+                from application.data.ostium_compat_registry import get_ostium_primary_allowed
+                return "PASS" if get_ostium_primary_allowed(s) else "FAIL"
+            from application.data.compat_registry import get_compat_status
+            return get_compat_status(s)
+
+        source = resolve_source(since_ts, to_ts, cutover_ts, _compat_fn(symbol))
         if source == "deny":
             _http_error(
                 422,
@@ -422,8 +435,15 @@ async def _read_candles_response(
     if _primary_backfill_provider is not None:
         enabled = os.getenv(ENABLE_READ_THROUGH_ENV, "").strip() == "1"
         if enabled:
-            from application.data.compat_registry import get_compat_status
             from application.services.read_through_service import maybe_fill_gaps_response_only
+
+            def _compat_fn(s: str) -> str:
+                if _ostium_ingest_enabled:
+                    from application.data.ostium_compat_registry import get_ostium_primary_allowed
+                    return "PASS" if get_ostium_primary_allowed(s) else "FAIL"
+                from application.data.compat_registry import get_compat_status
+                return get_compat_status(s)
+
             max_missing = int(os.getenv(READ_THROUGH_MAX_MISSING_ENV, str(DEFAULT_READ_THROUGH_MAX_MISSING)))
             timeout_s = float(os.getenv(READ_THROUGH_TIMEOUT_ENV, str(DEFAULT_READ_THROUGH_TIMEOUT_S)))
             r, read_through_stats = await maybe_fill_gaps_response_only(
@@ -431,7 +451,7 @@ async def _read_candles_response(
                 candle_range=r,
                 primary_provider=_primary_backfill_provider,
                 fallback_provider=_fallback_provider,
-                get_compat_status_fn=get_compat_status,
+                get_compat_status_fn=_compat_fn,
                 enabled=True,
                 max_missing=max_missing,
                 timeout_s=timeout_s,

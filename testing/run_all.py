@@ -65,6 +65,11 @@ COMPAT_REPORT_TEST_PATHS = frozenset({
     "integration/test_compat_report_real.py",
 })
 
+# Ostium compat real (Ostium vs Dukascopy). Opt-in amb --include-ostium-compat.
+OSTIUM_COMPAT_TEST_PATHS = frozenset({
+    "integration/test_ostium_compat_report_real.py",
+})
+
 # P4.2: Exit code que els tests opt-in retornen quan fan skip (no fail)
 EXIT_SKIP = 2
 
@@ -138,6 +143,15 @@ def _is_compat_report_test(test_path: Path, testing_dir: Path) -> bool:
         return False
 
 
+def _is_ostium_compat_test(test_path: Path, testing_dir: Path) -> bool:
+    """True si el test requereix Ostium compat real (opt-in)."""
+    try:
+        rel = test_path.resolve().relative_to(testing_dir.resolve())
+        return str(rel).replace("\\", "/") in OSTIUM_COMPAT_TEST_PATHS
+    except ValueError:
+        return False
+
+
 def run_test(script_path: Path) -> str:
     """
     Run a test script
@@ -200,6 +214,11 @@ def main():
         action="store_true",
         help="Include P8.1 compat_report real (Lighter vs Dukascopy, network)",
     )
+    parser.add_argument(
+        "--include-ostium-compat",
+        action="store_true",
+        help="Include Ostium compat real (Ostium vs Dukascopy, network)",
+    )
     args = parser.parse_args()
 
     print("\n" + "="*60)
@@ -218,6 +237,8 @@ def main():
         parts.append("data-layer-soak")
     if args.include_compat_report:
         parts.append("compat-report")
+    if args.include_ostium_compat:
+        parts.append("ostium-compat")
     suite_mode = "+".join(parts) or "core+Lighter (MVP)"
     print(f"Suite: {suite_mode}")
     if not args.include_gtrade:
@@ -232,6 +253,8 @@ def main():
         print("  (P7c Data Layer soak excluded; use --include-data-layer-soak to add)")
     if not args.include_compat_report:
         print("  (P8.1 compat_report excluded; use --include-compat-report to add)")
+    if not args.include_ostium_compat:
+        print("  (Ostium compat excluded; use --include-ostium-compat to add)")
     print("="*60)
 
     testing_dir = Path(__file__).parent
@@ -286,6 +309,8 @@ def main():
         testing_dir / "unit" / "test_compat_registry_parsing.py",  # P7b compat registry robustesa
         testing_dir / "unit" / "test_dukascopy_provider.py",  # P6 Dukascopy provider (cache, parser)
         testing_dir / "unit" / "test_compat_report_service.py",  # P8 Compat report (0 network)
+        testing_dir / "unit" / "test_ostium_compat_report_service.py",  # Ostium compat (0 network)
+        testing_dir / "unit" / "test_compat_registry_ostium_gate.py",  # Ostium graduation gate (0 network)
         testing_dir / "unit" / "test_p8_provenance_rest_only.py",  # P8.2 Provenance REST-only (0 network)
         testing_dir / "unit" / "test_ws_collector_persistence.py",  # P8.4 WS Candle Collector persistence (0 network)
         testing_dir / "unit" / "test_trade_history_models.py",  # P1 TradeFill mapping
@@ -308,6 +333,7 @@ def main():
         testing_dir / "integration" / "test_ws_vs_candlestick_consistency.py",  # P4.1 (opt-in: --include-consistency)
         testing_dir / "integration" / "test_compat_probe_strategy_level.py",  # P6 (opt-in: --include-compat-probe)
         testing_dir / "integration" / "test_compat_report_real.py",  # P8.1 (opt-in: --include-compat-report)
+        testing_dir / "integration" / "test_ostium_compat_report_real.py",  # Ostium compat (opt-in: --include-ostium-compat)
         testing_dir / "integration" / "test_data_layer_soak_metrics.py",  # P7c (opt-in: --include-data-layer-soak)
         testing_dir / "integration" / "test_gtrade_adapter_readonly.py",
         testing_dir / "integration" / "test_gtrade_backend_positions.py",
@@ -375,6 +401,12 @@ def main():
         # P8.1: Excloure compat_report real per defecte (requereix Lighter + Dukascopy)
         if not args.include_compat_report and _is_compat_report_test(test_path, testing_dir):
             print(f"\n⊘ Skipped: {test_path.name} (P8.1 compat_report; use --include-compat-report)")
+            skipped += 1
+            continue
+
+        # Ostium compat: excloure per defecte (requereix Ostium store + Dukascopy)
+        if not args.include_ostium_compat and _is_ostium_compat_test(test_path, testing_dir):
+            print(f"\n⊘ Skipped: {test_path.name} (Ostium compat; use --include-ostium-compat)")
             skipped += 1
             continue
 

@@ -50,6 +50,27 @@
 
 ---
 
+## Ostium ↔ Dukascopy compat (graduation gate)
+
+**Propòsit:** Validar compatibilitat quantitativa Ostium (realtime recorded) vs Dukascopy (fallback històric). Només si **PASS** → `ostium_primary_allowed=true` per aquell símbol.
+
+**Com validar:**
+```bash
+./scripts/run_compat.sh ostium [symbol]   # default symbol=EURUSD
+```
+
+**Artifact path:** `datafiles/compat_reports/<timestamp>_compat_<symbol>_<Nm>.json`
+
+**Registry:** `datafiles/compat_reports/ostium_compat_registry.json` — font de veritat per `get_ostium_primary_allowed(symbol)`.
+
+**Verdict:** PASS | PARTIAL | FAIL (llindars via `compat_report_service` + constants). PASS → primary allowed; PARTIAL/FAIL → opt-in experimental sense declarar primary.
+
+**Com afecta serving:** El gate formal impedeix declarar Ostium primary per símbol fins que compat PASS. Si no PASS, el servei continua en mode "opt-in experimental".
+
+**Tests:** Unit 0-network: `test_ostium_compat_report_service.py`, `test_compat_registry_ostium_gate.py`. Opt-in real: `./test.sh testing/run_all.py --include-ostium-compat`.
+
+---
+
 ## Data Layer readiness gates (prod)
 
 Llindars via env: `DATA_LAYER_GATES_MAX_GAP_S`, `DATA_LAYER_GATES_MAX_MISSING_PER_24H`, `DATA_LAYER_STALE_SECONDS` (defaults a constants.py).
@@ -95,6 +116,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-17 | Ostium LAB | 🏃 24h captura en curs | lab/ostium |
 | 2026-02-17 | Docs coherents Ostium | ✅ AGENTS + ESTAT + overrides alineats | graduation path, prod-ish opt-in |
 | 2026-02-17 | Ostium Recorder prod-ish v1 | ✅ ingest real 1m, gates, data_status ingest_source | write_mode realtime_plus_backfill |
+| 2026-02-17 | Ostium compat + graduation gate | ✅ compat report Ostium↔Dukascopy, registry, run_compat.sh | PASS → ostium_primary_allowed |
 
 **Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 
@@ -129,11 +151,11 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 
 ## Operativa canònica (scripts + compose profiles)
 
-| Profile | Compose override | Smoke | Soak |
-|---------|------------------|-------|------|
-| data-layer | deploy/compose/overrides/data-layer.yml | `run_smoke.sh data-layer` | `run_soak.sh 30 data-layer` |
-| ws | deploy/compose/overrides/soak.yml | — | `run_soak.sh 15 ws` |
-| ostium | deploy/compose/overrides/ostium.yml | `run_smoke.sh ostium` | `run_soak.sh 30 ostium` |
+| Profile | Compose override | Smoke | Soak | Compat |
+|---------|------------------|-------|------|--------|
+| data-layer | deploy/compose/overrides/data-layer.yml | `run_smoke.sh data-layer` | `run_soak.sh 30 data-layer` | — |
+| ws | deploy/compose/overrides/soak.yml | — | `run_soak.sh 15 ws` | — |
+| ostium | deploy/compose/overrides/ostium.yml | `run_smoke.sh ostium` | `run_soak.sh 30 ostium` | `run_compat.sh ostium` |
 
 **Regla:** No crear scripts nous ad-hoc. Lògica a `application/tools/*.py`; wrappers a `scripts/*.sh`.
 
@@ -145,6 +167,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 ./test.sh testing/run_all.py
 ./scripts/run_smoke.sh data-layer
 ./scripts/run_smoke.sh ostium   # Ostium realtime + Dukascopy backfill
+./scripts/run_compat.sh ostium  # Ostium vs Dukascopy compat (graduation gate)
 ./scripts/run_soak.sh 30 data-layer
 ./scripts/run_soak.sh 30 ostium
 curl -s http://localhost:8000/api/v1/broker/data_status

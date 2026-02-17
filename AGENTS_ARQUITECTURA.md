@@ -284,6 +284,8 @@ Per fonts de dades (ex. Ostium):
 2. **prod-ish opt-in:** integrat al codi, activable via env (`OSTIUM_ENABLED=1`), scripts canònics (`run_smoke.sh ostium`), compose override. **Encara no primary**.
 3. **primary recorder:** declarat authoritative quan passi gates (soak + compat). Fins llavors, no es declara primary.
 
+**Regla (Data Layer / graduation):** Només si **compat PASS** (Ostium vs Dukascopy) per un símbol → es pot declarar Ostium primary per aquell símbol. Font de veritat: `ostium_compat_registry.json` via `get_ostium_primary_allowed(symbol)`. Si no PASS: el servei continua en mode "opt-in experimental" sense declarar primary.
+
 **Regla:** `docs/ESTAT.md` és la font d'operativa diària; `AGENTS_ARQUITECTURA.md` reflecteix l'estat de graduació (LAB / prod-ish opt-in / primary).
 
 ---
