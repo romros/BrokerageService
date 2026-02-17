@@ -16,7 +16,7 @@
 
 - **Multi-venue per disseny:** un venue pot aportar **execució**, **market data**, o totes dues coses.
 - **Data Layer és canònic:** candles 1m es serveixen **sense venue** via `candle_store` + policy (primary/fallback/mixed).
-- **Primary data (target):** Ostium polling recorder (planned; avui Lighter exec MVP + data-layer en curs).
+- **Primary (authoritative):** dades gravades pel servei (recorder). Exemple actual: Data Layer prod v0 sobre Lighter backfill provider (mentre Ostium està en LAB). Ostium planned primary recorder (no prod encara).
 - **Fallback històric:** **Dukascopy** (read-only) amb stitching **gated** per compat.
 - **Exec venue (actual):** Lighter està implementat i "execution-ready". El canvi d'execució (p.ex. Ostium) ve després.
 - ✅ **Normes de codi:** imports a capçalera + zero hardcode.
@@ -70,7 +70,7 @@ Responsable de:
 ### 3.1 Fonts
 
 - **Primary (authoritative):** dades gravades pel servei (recorder).  
-  Exemple actual: **Ostium polling → ticks → candles 1m → `candle_store`**
+  Exemple actual: **Data Layer prod v0** sobre Lighter backfill provider (mentre Ostium és LAB). Ostium planned primary recorder (no prod encara).
 - **Fallback (read-only):** vendor extern per prehistòria o gaps.  
   Exemple: **Dukascopy 1m**
 

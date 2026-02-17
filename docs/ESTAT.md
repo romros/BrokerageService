@@ -6,7 +6,7 @@
 **TZ canònica (config):** `CANONICAL_TZ=America/New_York`  
 **TZ container (runtime/logs):** `TZ=America/New_York`  
 **Doc referència:** [AGENTS_ARQUITECTURA.md](../AGENTS_ARQUITECTURA.md)  
-**Runbook operatiu:** [SAFETY_RUNBOOK.md](SAFETY_RUNBOOK.md) (incidents, health checks, kill switches)  
+**Runbook operatiu curt:** [SAFETY_RUNBOOK.md](SAFETY_RUNBOOK.md)  
 **Històric (read-only):** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 
 **Recorda Docker:** Si has canviat codi, reconstruir abans: `docker compose build brokerage`. Vegeu AGENTS §11.
@@ -31,20 +31,25 @@
 
 **Activar:** `DATA_LAYER_ENABLED=1` (default 0). Prefetch + writer loop + gates.
 
+**Provider actual:** LighterCandlestickBackfillProvider (fins recorder Ostium).
+
+**Observabilitat:** `GET /api/v1/broker/data_status` → `symbol_state` + `degrade_reason`.
+
 **Config:** `DATA_LAYER_PREFETCH_MINUTES`, `DATA_LAYER_WRITE_SYMBOLS`, `DATA_LAYER_GATES_MAX_GAP_S`, `DATA_LAYER_GATES_MAX_MISSING_PER_24H`, `DATA_LAYER_STALE_SECONDS`.
 
-**symbol_state:** `ACTIVE` | `DEGRADED`. Si DEGRADED → writer aturat per aquell símbol; `data_status` mostra `degrade_reason`.
+**symbol_state:** `ACTIVE` | `DEGRADED`. Si DEGRADED → writer aturat per aquell símbol.
 
 ---
 
 ## Data Layer readiness gates (prod)
 
+Llindars via env: `DATA_LAYER_GATES_MAX_GAP_S`, `DATA_LAYER_GATES_MAX_MISSING_PER_24H`, `DATA_LAYER_STALE_SECONDS` (defaults a constants.py).
+
 **Gate 0 (core):**
-- duplicates=0
-- ts_step_errors=0
-- missing ≤ 1/24h
-- max_gap_s ≤ 180
-- stale=0
+- duplicates=0, ts_step_errors=0
+- missing ≤ 1/24h (`DATA_LAYER_GATES_MAX_MISSING_PER_24H`)
+- max_gap_s ≤ 180 (`DATA_LAYER_GATES_MAX_GAP_S`)
+- stale=0 (`DATA_LAYER_STALE_SECONDS`)
 
 **Gate 1 (serving):** headers X-Data coherents, coverage coherent, read-through funciona.  
 **Gate 2 (ops):** restart safe, data_status 200, logs path, rotació.
@@ -66,15 +71,13 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 
 ## Evidència recent
 
-| Data | Run | Resultat | Artifact/Log |
-|------|-----|----------|--------------|
-| 2026-02-17 | `run_all.py` | ✅ passa | testing/run_all.py |
-| 2026-02-17 | Ostium compat (388c) | ✅ PARTIAL — Corr 0.976, Dir 92.7% | lab/out/ostium_compat_EURUSD_388c.json |
-| 2026-02-17 | Lab Ostium | 🏃 24h captura en curs | lab/ostium |
-| 2026-02-17 | P7 Mixed gated | ✅ stitching primary/fallback/mixed | — |
-| 2026-02-17 | Data Layer soak | ✅ 2m: missing=0, dup=0 | test_data_layer_soak_metrics |
+| Data | Run | Resultat | Com validar |
+|------|-----|----------|-------------|
+| 2026-02-17 | `run_all.py` | ✅ passa | `./test.sh testing/run_all.py` |
+| 2026-02-17 | Data Layer soak | ✅ 2m: missing=0, dup=0 | `./test.sh testing/integration/test_data_layer_soak_metrics.py --minutes 2` |
+| 2026-02-17 | Ostium LAB | 🏃 24h captura en curs | lab/ostium |
 
-**Detall:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
+**Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 
 ---
 
@@ -82,20 +85,20 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 
 **Objectiu:** activar Data Layer a prod amb prefetch + observability + gates.
 
-**D0:**
+**D0 (avui):**
 - [ ] Prefetch recent (N hores/dies) a prod env
 - [ ] Scheduler (cron/loop) + idempotència
 - [ ] Alert mínim: stale>… / missing>… / duplicates>0
 - [ ] Rotació artifacts/logs
 
-**D1:**
+**D1 (demà):**
 - [ ] Soak 6–12h amb prefetch actiu
 - [ ] Cutover policy: primary/fallback per símbol (EURUSD especial)
 - [ ] Doc "operar data layer" (runbook)
 
-**Top 10:** Prefetch job, Scheduler, Gates automàtics, Rotació, Cutover policy, Degradació segura, Soak 6–12h, Doc runbook, Ostium compat 1440c, Backtest pipeline.
+**Com validar:** `curl data_status`; `./test.sh testing/integration/test_data_layer_soak_metrics.py --minutes N`; `docker compose down && up`.
 
-**Backlog complet:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
+**Backlog (no compromès):** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 
 ---
 
