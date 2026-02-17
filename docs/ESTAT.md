@@ -93,6 +93,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-17 | `run_all.py` | ✅ passa | `./test.sh testing/run_all.py` |
 | 2026-02-17 | Data Layer soak | ✅ 2m: missing=0, dup=0 | `./test.sh testing/integration/test_data_layer_soak_metrics.py --minutes 2` |
 | 2026-02-17 | Ostium LAB | 🏃 24h captura en curs | lab/ostium |
+| 2026-02-17 | Docs coherents Ostium | ✅ AGENTS + ESTAT + overrides alineats | graduation path, prod-ish opt-in |
 
 **Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 
@@ -116,6 +117,12 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 **Com validar:** `curl data_status`; `./scripts/run_soak.sh N data-layer`; `docker compose down && up`.
 
 **Backlog (no compromès):** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
+
+**DoD tasca coherència Ostium (2026-02-17):**
+- [x] Docs coherents: ESTAT.md i AGENTS_ARQUITECTURA.md no es contradiuen
+- [x] Operativa: deploy/compose/overrides/README.md reflecteix profile ostium (opt-in experimental)
+- [x] Scripts: run_smoke.sh ostium / run_soak.sh ostium usen override ostium i produeixen artifacts
+- [x] Tests: run_all.py passa (default, 0-network); ostium wiring + backfill_only contract
 
 ---
 

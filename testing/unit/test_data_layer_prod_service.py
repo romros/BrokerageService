@@ -109,6 +109,39 @@ def test_writer_no_duplicates():
     asyncio.run(run())
 
 
+def test_backfill_only_no_writer_loop():
+    """write_mode=backfill_only → no writer loop; no escriu candles (Ostium contract)."""
+    print("Testing backfill_only no writer loop...")
+
+    async def run():
+        with tempfile.TemporaryDirectory() as tmp:
+            store = CSVCandleStore(root_path=tmp, broker="test", canonical_tz="America/New_York")
+            provider = MockBackfillProvider(base_price=2700.0, seed=42)
+            set_data_layer_metrics(DataLayerMetrics())
+
+            svc = DataLayerProdService(
+                store=store,
+                provider=provider,
+                symbols=["EURUSD"],
+                prefetch_minutes=0,
+                max_gap_s=180,
+                max_missing_per_24h=2000,
+                stale_seconds=3600,
+                write_mode="backfill_only",
+                writer_interval_seconds=2,
+            )
+            await svc.start()
+            await asyncio.sleep(5)
+            await svc.stop()
+
+            last = store.get_last_timestamp("EURUSD")
+            assert last is None, "backfill_only no hauria d'escriure (Ostium escriu realtime)"
+        set_data_layer_metrics(None)
+        print("✓ backfill_only no writer loop OK")
+
+    asyncio.run(run())
+
+
 def test_gate_degraded_on_duplicates():
     """Si store té dupes → symbol_state=DEGRADED."""
     print("Testing gate DEGRADED on duplicates...")
@@ -195,6 +228,7 @@ def main():
     test_data_status_includes_symbol_state()
     test_prefetch_respects_boundaries()
     test_writer_no_duplicates()
+    test_backfill_only_no_writer_loop()
     test_gate_degraded_on_duplicates()
     print("\n✓ Tots els tests Data Layer prod v0 passats")
 

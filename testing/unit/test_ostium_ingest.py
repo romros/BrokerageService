@@ -174,6 +174,21 @@ def test_ostium_ingest_resume_state():
     asyncio.run(run())
 
 
+def test_ostium_env_wiring_backfill_only():
+    """OSTIUM_ENABLED=1 + DATA_LAYER_WRITE_MODE=backfill_only → write_mode correcte (0-network)."""
+    import os
+    from application.services.data_layer_prod_service import _get_config
+    from foundation.config.constants import DATA_LAYER_WRITE_MODE_ENV
+
+    os.environ[DATA_LAYER_WRITE_MODE_ENV] = "backfill_only"
+    try:
+        cfg = _get_config()
+        assert cfg["write_mode"] == "backfill_only"
+    finally:
+        os.environ.pop(DATA_LAYER_WRITE_MODE_ENV, None)
+    print("✓ test_ostium_env_wiring_backfill_only OK")
+
+
 def test_data_status_contract_ostium():
     """data_status inclou symbol_state, stale_seconds, missing_minutes_24h, max_gap_s, degrade_reason."""
     set_data_layer_metrics(DataLayerMetrics())
@@ -208,6 +223,7 @@ def main():
     test_ostium_aggregation_excludes_open_minute()
     test_ostium_ingest_writes_closed_minute_only()
     test_ostium_ingest_resume_state()
+    test_ostium_env_wiring_backfill_only()
     test_data_status_contract_ostium()
     print("\n✓ Tots els tests Ostium ingest passats")
 

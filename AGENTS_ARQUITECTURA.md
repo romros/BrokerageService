@@ -16,7 +16,7 @@
 
 - **Multi-venue per disseny:** un venue pot aportar **execució**, **market data**, o totes dues coses.
 - **Data Layer és canònic:** candles 1m es serveixen **sense venue** via `candle_store` + policy (primary/fallback/mixed).
-- **Primary (authoritative):** dades gravades pel servei (recorder). Exemple actual: Data Layer prod v0 sobre Lighter backfill provider (mentre Ostium està en LAB). Ostium planned primary recorder (no prod encara).
+- **Primary (authoritative):** dades gravades pel servei (recorder). Exemple actual: Data Layer prod v0 sobre Lighter backfill provider. Ostium està integrat com a **prod-ish opt-in recorder** (`OSTIUM_ENABLED=1`), però **NO es declara primary** fins passar gates (soak + compat).
 - **Fallback històric:** **Dukascopy** (read-only) amb stitching **gated** per compat.
 - **Exec venue (actual):** Lighter està implementat i "execution-ready". El canvi d'execució (p.ex. Ostium) ve després.
 - ✅ **Normes de codi:** imports a capçalera + zero hardcode.
@@ -70,7 +70,7 @@ Responsable de:
 ### 3.1 Fonts
 
 - **Primary (authoritative):** dades gravades pel servei (recorder).  
-  Exemple actual: **Data Layer prod v0** sobre Lighter backfill provider (mentre Ostium és LAB). Ostium planned primary recorder (no prod encara).
+  Exemple actual: **Data Layer prod v0** sobre Lighter backfill provider. Ostium està integrat com a **prod-ish opt-in recorder** (`OSTIUM_ENABLED=1`), però **NO es declara primary** fins passar gates (soak + compat).
 - **Fallback (read-only):** vendor extern per prehistòria o gaps.  
   Exemple: **Dukascopy 1m**
 
@@ -276,6 +276,16 @@ LAB **no** és producció. No es trenca arquitectura per un "resultat parcial" d
 2. hi ha test que evita regressió
 3. hi ha decisió escrita a `docs/ESTAT.md`
 
+### 8.4 Graduation path: LAB → prod-ish opt-in → primary recorder
+
+Per fonts de dades (ex. Ostium):
+
+1. **LAB:** validació, probes, compat. Artifacts a `lab/out/`.
+2. **prod-ish opt-in:** integrat al codi, activable via env (`OSTIUM_ENABLED=1`), scripts canònics (`run_smoke.sh ostium`), compose override. **Encara no primary**.
+3. **primary recorder:** declarat authoritative quan passi gates (soak + compat). Fins llavors, no es declara primary.
+
+**Regla:** `docs/ESTAT.md` és la font d'operativa diària; `AGENTS_ARQUITECTURA.md` reflecteix l'estat de graduació (LAB / prod-ish opt-in / primary).
+
 ---
 
 ## 9) Wiring i DI (minimalista)
@@ -358,10 +368,12 @@ Decisió de "venue principal" sempre és en 2 eixos:
 - **Ostium:** 🧪 LAB (testnet validat, mainnet pendent)
 
 ### Data Layer
-- **Primary recorder:** 🟡 In progress (no prod)
-  - Ostium polling (REST `/latest-price` cada 2s)
-  - Build candles 1m, persist `candle_store`
-  - LAB capture 24h en curs (lab/ostium)
+- **Primary recorder (Lighter):** ✅ Data Layer prod v0 sobre Lighter backfill provider
+- **Ostium recorder:** ✅ prod-ish opt-in (`OSTIUM_ENABLED=1`)
+  - OstiumCandleIngestService: poll REST `/latest-price`, build candles 1m, persist `candle_store`
+  - `DATA_LAYER_WRITE_MODE=backfill_only` → DataLayerProdService només prefetch/repair; Ostium escriu realtime
+  - Històric/gaps: DukascopyBackfillProvider
+  - **NO es declara primary** fins passar gates (soak + compat)
 - **Fallback:** ✅ Dukascopy implementat i validat
 - **Compat:** ✅ Ostium vs Dukascopy — Corr 0.976, Dir 92.7% (PARTIAL, 388c)
   - Amb 1440c esperat PASS
@@ -376,7 +388,7 @@ Decisió de "venue principal" sempre és en 2 eixos:
 
 ## 15) Changelog
 
-- **2026-02-17** — Data Layer canònic formalitzat; primary data = recorder (Ostium polling); fallback històric = Dukascopy; exec desacoblat; lab Ostium en validació. Normes (§6), Testing sense pytest (§7), LAB (§8), Docker (§11).
+- **2026-02-17** — Ostium prod-ish opt-in: graduation path (§8.4); Ostium integrat com a recorder opt-in (no primary fins gates). Data Layer canònic; fallback Dukascopy; exec desacoblat. Normes (§6), Testing sense pytest (§7), LAB (§8), Docker (§11).
 - **2026-02-14** — API canònica `/api/v1/broker/*`, candles sense venue, semàntica 1m (UTC start-of-minute).
 - **2026-02-13** — Lighter execution MVP (smoke/e2e) i quality gates base.
 
