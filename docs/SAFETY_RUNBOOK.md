@@ -50,11 +50,13 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=10" | grep -i
 
 ### Data Layer incidents (prioritari)
 
+**symbol_state=DEGRADED:** Mirar `degrade_reason` a `data_status`. Si duplicates>0 o ts_step_errors>0 → writer aturat; no contaminar primary. Si stale o missing → restart pipeline; check upstream.
+
 | Incident | Diagnòstic | Acció |
 |----------|------------|-------|
 | **Stale feed** (stale_seconds > X) | data_status, last_candle_ts | Restart pipeline; check upstream; mark degraded |
 | **Missing minutes** | X-Data-Missing-Minutes, coverage | Activar read-through (serve-only); executar repair; no mutar primary |
-| **Duplicates / ts_step_errors** | data_status, integrity | Hard stop (no declarar primary); investigar writer |
+| **Duplicates / ts_step_errors** | data_status, integrity | Hard stop (no declarar primary); symbol_state=DEGRADED; investigar writer |
 | **503 / pipeline down** | health, data_status | Restart; check logs |
 
 ---

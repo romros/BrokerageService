@@ -25,14 +25,17 @@ Servei de brokerage independent. **MVP 100% Lighter**; altres venues (gTrade, et
 
 ---
 
-## Estat actual (2026-02-13)
+## Estat actual (2026-02-17)
 
-- ✅ **Lighter M1+M2+M3** DONE: marketdata, SL/TP, balance, reconcile, guards, smoke, e2e
-- ✅ **44 tests** passa; smoke 3× + e2e 3× + **soak 10 min** OK
+- ✅ **MVP Lighter** DONE: marketdata, SL/TP, balance, reconcile, guards, smoke, e2e
+- ✅ **Data Layer** (P4–P7c): backfill, gap repair, headers X-Data, /coverage, /data_status, read-through, stitching gated
+- ✅ **Data Layer prod v0** (opt-in): prefetch + writer loop + gates; `DATA_LAYER_ENABLED=1`
 - ✅ **Broker API canònica** POST body únic per ordres
-- ✅ **Freqtrade P0** PAPER mainnet-data
-- 🟡 **gTrade**: existent (paper OK); no prioritzat per MVP; s’incorporarà en el futur
+- 🟡 **gTrade**: existent (paper OK); no prioritzat
 - ⛔ **Backtest**: pendent
+- 🧪 **Ostium LAB** en curs
+
+**Evidència i backlog:** [docs/ESTAT.md](docs/ESTAT.md)
 
 ---
 
@@ -46,6 +49,8 @@ Servei de brokerage independent. **MVP 100% Lighter**; altres venues (gTrade, et
 | GET | `/pairs` | Pairs (requereix `venue`) |
 | GET | `/price/latest` | Preu actual |
 | GET | `/candles`, `/ohlcv/{symbol}` | Candles OHLCV 1m |
+| GET | `/data_status` | Data Layer telemetria (symbol_state, mètriques) |
+| GET | `/coverage?symbol=...&resolution=1m` | Coverage per símbol |
 | GET | `/balance`, `/positions` | Balance i posicions |
 | POST | `/orders/open` | Obrir posició (JSON body) |
 | POST | `/orders/close` | Tancar posició (JSON body) |
@@ -75,10 +80,14 @@ Servei de brokerage independent. **MVP 100% Lighter**; altres venues (gTrade, et
 docker compose up -d brokerage
 
 # Health
-curl http://localhost:8000/api/v1/broker/health
+curl -s http://localhost:8000/api/v1/broker/health
 
 # Mode (inclou market_data_env)
-curl http://localhost:8000/api/v1/broker/mode
+curl -s http://localhost:8000/api/v1/broker/mode
+
+# Data Layer (quan pipeline actiu)
+curl -s http://localhost:8000/api/v1/broker/data_status
+curl -s "http://localhost:8000/api/v1/broker/coverage?symbol=ETH&resolution=1m"
 
 # Candles
 curl "http://localhost:8000/api/v1/broker/ohlcv/XAUUSD?limit=10"
@@ -100,6 +109,11 @@ ENABLE_LIVE_TRADING=0            # kill switch (paper sempre 0)
 CANONICAL_TZ=America/New_York
 DATAFILES_ROOT=/datafiles
 SYMBOLS=XAUUSD,EURUSD
+
+# Data Layer prod v0 (opt-in, default OFF)
+DATA_LAYER_ENABLED=0             # 1 = prefetch + writer loop + gates
+DATA_LAYER_PREFETCH_MINUTES=120  # minuts a omplir a l'arrencada
+DATA_LAYER_WRITE_SYMBOLS=       # default = SYMBOLS
 ```
 
 ---
@@ -151,9 +165,11 @@ BrokerageService/
 ./test.sh testing/run_all.py
 ```
 
-- **Unit:** 44 tests (store, lighter, gtrade, broker_api, mode_market_data_env, etc.)
-- **Integration:** Lighter adapter, flows, backfill
+- **Unit:** store, lighter, gtrade, broker_api, Data Layer prod v0, P5/P7/P8, etc.
+- **Integration:** Lighter adapter, flows, backfill, data layer soak (opt-in)
 - **API:** REST smoke, WS smoke
+
+**Recorda:** Si has canviat codi → `docker compose build brokerage` (AGENTS §11)
 
 ---
 

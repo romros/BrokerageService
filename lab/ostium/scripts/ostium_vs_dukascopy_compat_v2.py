@@ -223,18 +223,21 @@ def main():
     
     print("Correlation:")
     returns = report.get('returns', {})
-    print(f"  Returns corr (lag 0):  {returns.get('corr_at_lag0', 0):.4f}")
     lag_scan = report.get('lag_scan', {})
+    corr_val = returns.get('corr', 0) or lag_scan.get('corr_at_best_lag', 0)
+    dir_val = returns.get('dir_agree_pct', 0)
+    print(f"  Returns corr (lag 0):  {corr_val:.4f}")
     print(f"  Best lag:              {lag_scan.get('best_lag_minutes', 0)} min")
     print(f"  Corr at best lag:      {lag_scan.get('corr_at_best_lag', 0):.4f}")
-    proxy = report.get('proxy_strategy', {})
-    print(f"  Direction agree:       {proxy.get('dir_agree_pct', 0):.1f}%")
+    print(f"  Direction agree:       {dir_val:.1f}%")
     print()
     
     print("Quality:")
     quality = report.get('candle_quality', {})
-    print(f"  Zero range A (Ostium):    {quality.get('zero_range_ratio_a', 0) * 100:.1f}%")
-    print(f"  Zero range B (Dukascopy): {quality.get('zero_range_ratio_b', 0) * 100:.1f}%")
+    zr_a = quality.get('a', {}).get('zero_range_ratio', 0)
+    zr_b = quality.get('b', {}).get('zero_range_ratio', 0)
+    print(f"  Zero range A (Ostium):    {zr_a * 100:.1f}%")
+    print(f"  Zero range B (Dukascopy): {zr_b * 100:.1f}%")
     print()
     
     print("Price diffs (A-B):")
@@ -250,9 +253,9 @@ def main():
     print("=" * 80)
     print()
     
-    corr_val = returns.get('corr_at_lag0', 0)
-    dir_val = proxy.get('dir_agree_pct', 0)
-    zero_val = quality.get('zero_range_ratio_a', 0)
+    corr_val = returns.get('corr', 0) or lag_scan.get('corr_at_best_lag', 0)
+    dir_val = returns.get('dir_agree_pct', 0)
+    zero_val = zr_a
     
     corr_pass = corr_val > 0.7
     dir_pass = dir_val > 65

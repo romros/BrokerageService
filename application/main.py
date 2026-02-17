@@ -23,6 +23,7 @@ from application.api.broker_routes import router as broker_router, set_broker_de
 from application.api.ws_routes import router as ws_router
 from foundation.config.constants import (
     BROKER_DIAG_ENV,
+    DATA_LAYER_ENABLED_ENV,
     HEARTBEAT_INTERVAL_S,
     TESTING_ENV,
     USE_FAKE_PRICE_FEED_ENV,
@@ -231,10 +232,33 @@ async def lifespan(app: FastAPI):
 
     logger.info("✓ BrokerageService ready")
 
-    # P7c: DataLayerMetrics (telemetria) quan tenim pipeline
-    if market_data_service is not None:
+    # P7c: DataLayerMetrics (telemetria) quan tenim pipeline o Data Layer prod
+    data_layer_prod_service = None
+    if market_data_service is not None or os.getenv(DATA_LAYER_ENABLED_ENV, "0") == "1":
         from application.data.data_layer_metrics import DataLayerMetrics, set_data_layer_metrics  # lazy: només quan hi ha pipeline
         set_data_layer_metrics(DataLayerMetrics())
+
+    # Data Layer prod v0: prefetch + writer loop (DATA_LAYER_ENABLED=1)
+    if os.getenv(DATA_LAYER_ENABLED_ENV, "0") == "1":
+        try:
+            from application.services.data_layer_prod_service import DataLayerProdService, _get_config  # lazy
+            from infrastructure.venues.lighter.lighter_candlestick_backfill_provider import LighterCandlestickBackfillProvider  # lazy
+            cfg = _get_config()
+            if cfg["symbols"]:
+                provider = LighterCandlestickBackfillProvider()
+                data_layer_prod_service = DataLayerProdService(
+                    store=candle_store,
+                    provider=provider,
+                    symbols=cfg["symbols"],
+                    prefetch_minutes=cfg["prefetch_minutes"],
+                    max_gap_s=cfg["max_gap_s"],
+                    max_missing_per_24h=cfg["max_missing_per_24h"],
+                    stale_seconds=cfg["stale_seconds"],
+                )
+                await data_layer_prod_service.start()
+                logger.info("Data Layer prod v0 started symbols=%s prefetch_min=%s", cfg["symbols"], cfg["prefetch_minutes"])
+        except Exception as e:
+            logger.warning("Data Layer prod v0 not started: %s", e)
 
     # P4.0: BackfillService (gap repair) quan tenim Lighter market data
     if market_data_service is not None:
@@ -287,6 +311,12 @@ async def lifespan(app: FastAPI):
 
     logger.info("🛑 Shutting down BrokerageService...")
     effective_venue = "paper" if use_paper_execution else venue
+    if data_layer_prod_service:
+        try:
+            await data_layer_prod_service.stop()
+            logger.info("Data Layer prod v0 stopped")
+        except Exception as e:
+            logger.error("DataLayerProdService stop error: %s", e)
     if backfill_service:
         try:
             await backfill_service.stop()

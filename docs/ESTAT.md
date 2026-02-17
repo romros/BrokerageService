@@ -17,12 +17,23 @@
 
 - ✅ **MVP Lighter** DONE: marketdata, SL/TP, balance, reconcile, guards, smoke, e2e
 - ✅ **Data Layer** (P4–P7c): backfill, gap repair, headers X-Data, /coverage, /data_status, read-through, stitching gated
+- ✅ **Data Layer prod v0** (opt-in): prefetch + writer loop + gates; `DATA_LAYER_ENABLED=1`
 - ✅ **Broker API** `/api/v1/broker/*` (POST body únic)
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - ⛔ **Backtest** pendent
 - 🧪 **Ostium LAB** en curs — [lab/ostium/README.md](../lab/ostium/README.md)
 
 > **Focus 48h:** Data Layer en producció (prefetch + gates + observability).
+
+---
+
+## Data Layer prod v0
+
+**Activar:** `DATA_LAYER_ENABLED=1` (default 0). Prefetch + writer loop + gates.
+
+**Config:** `DATA_LAYER_PREFETCH_MINUTES`, `DATA_LAYER_WRITE_SYMBOLS`, `DATA_LAYER_GATES_MAX_GAP_S`, `DATA_LAYER_GATES_MAX_MISSING_PER_24H`, `DATA_LAYER_STALE_SECONDS`.
+
+**symbol_state:** `ACTIVE` | `DEGRADED`. Si DEGRADED → writer aturat per aquell símbol; `data_status` mostra `degrade_reason`.
 
 ---
 

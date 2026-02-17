@@ -51,10 +51,17 @@ class ValidationReport:
     has_duplicates: bool
     is_sorted: bool
     gaps: List[Gap]
+    ts_step_errors: int = 0  # Count of timestamps not exactly +60s from previous
+    duplicate_count: int = 0  # Number of duplicate timestamps
 
     def is_valid(self) -> bool:
-        """Check if data is valid (no gaps, duplicates, sorted)"""
-        return not self.has_gaps and not self.has_duplicates and self.is_sorted
+        """Check if data is valid (no gaps, duplicates, sorted, no ts_step_errors)"""
+        return (
+            not self.has_gaps
+            and not self.has_duplicates
+            and self.is_sorted
+            and self.ts_step_errors == 0
+        )
 
     def __str__(self) -> str:
         status = "✓ VALID" if self.is_valid() else "✗ INVALID"
@@ -112,6 +119,8 @@ class GapValidator:
                 has_duplicates=False,
                 is_sorted=True,
                 gaps=[Gap(start=start, end=end, count=expected_count)],
+                ts_step_errors=0,
+                duplicate_count=0,
             )
 
         actual_count = len(candles)
@@ -121,13 +130,19 @@ class GapValidator:
 
         # Check for duplicates
         timestamps = [c.timestamp for c in candles]
-        has_duplicates = len(timestamps) != len(set(timestamps))
+        unique_count = len(set(timestamps))
+        has_duplicates = len(timestamps) != unique_count
+        duplicate_count = len(timestamps) - unique_count if has_duplicates else 0
 
-        # Check if sorted
-        is_sorted = all(
-            candles[i].timestamp < candles[i + 1].timestamp
-            for i in range(len(candles) - 1)
-        )
+        # Check if sorted and ts_step (exactly +60s between consecutive)
+        is_sorted = True
+        ts_step_errors = 0
+        for i in range(len(candles) - 1):
+            if candles[i].timestamp >= candles[i + 1].timestamp:
+                is_sorted = False
+            delta_s = (candles[i + 1].timestamp - candles[i].timestamp).total_seconds()
+            if delta_s != 60:
+                ts_step_errors += 1
 
         # Find gaps
         gaps = GapValidator.find_gaps(candles, start, end)
@@ -146,6 +161,8 @@ class GapValidator:
             has_duplicates=has_duplicates,
             is_sorted=is_sorted,
             gaps=gaps,
+            ts_step_errors=ts_step_errors,
+            duplicate_count=duplicate_count,
         )
 
     @staticmethod

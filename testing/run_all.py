@@ -275,6 +275,7 @@ def main():
         testing_dir / "unit" / "test_broker_api.py",  # Broker API
         testing_dir / "unit" / "test_broker_api_trades.py",  # P1 GET /trades
         testing_dir / "unit" / "test_p5_ohlcv_headers_coverage.py",  # P5 Data Observability v0
+        testing_dir / "unit" / "test_data_layer_prod_service.py",  # Data Layer prod v0 (prefetch, writer, gates)
         testing_dir / "unit" / "test_symbol_selection_soak.py",  # P7c.1 select_soak_symbol (0 network)
         testing_dir / "unit" / "test_p7_mixed_gated_stitching.py",  # P7 Mixed gated stitching (0 network)
         testing_dir / "unit" / "test_p8_read_through_response_only.py",  # P8.0 Read-through gap serving (0 network)
