@@ -11,7 +11,7 @@ services:
   brokerage:
     environment:
       - DATA_LAYER_ENABLED=1
-      - DATA_LAYER_WRITE_MODE=backfill_only
+      - DATA_LAYER_WRITE_MODE=realtime_plus_backfill
       - DATA_LAYER_PREFETCH_MINUTES=${DATA_LAYER_PREFETCH_MINUTES:-120}
       - DATA_LAYER_WRITE_SYMBOLS=${DATA_LAYER_WRITE_SYMBOLS:-EURUSD,XAUUSD}
       - DATA_LAYER_STALE_SECONDS=180

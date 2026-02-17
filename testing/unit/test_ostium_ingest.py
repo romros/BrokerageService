@@ -189,6 +189,21 @@ def test_ostium_env_wiring_backfill_only():
     print("✓ test_ostium_env_wiring_backfill_only OK")
 
 
+def test_backfill_only_ingest_not_allowed():
+    """write_mode=backfill_only → Ostium ingest NO hauria d'arrencar (contracte)."""
+    from foundation.config.constants import DATA_LAYER_WRITE_MODES_OSTIUM_INGEST
+
+    for mode in ("backfill_only", "realtime"):
+        allowed = mode in DATA_LAYER_WRITE_MODES_OSTIUM_INGEST
+        if mode == "backfill_only":
+            assert not allowed, "backfill_only no hauria de permetre Ostium ingest"
+        elif mode == "realtime":
+            assert not allowed, "realtime (Lighter) no és Ostium ingest"
+    assert "realtime_plus_backfill" in DATA_LAYER_WRITE_MODES_OSTIUM_INGEST
+    assert "realtime_only" in DATA_LAYER_WRITE_MODES_OSTIUM_INGEST
+    print("✓ test_backfill_only_ingest_not_allowed OK")
+
+
 def test_data_status_contract_ostium():
     """data_status inclou symbol_state, stale_seconds, missing_minutes_24h, max_gap_s, degrade_reason."""
     set_data_layer_metrics(DataLayerMetrics())
@@ -224,6 +239,7 @@ def main():
     test_ostium_ingest_writes_closed_minute_only()
     test_ostium_ingest_resume_state()
     test_ostium_env_wiring_backfill_only()
+    test_backfill_only_ingest_not_allowed()
     test_data_status_contract_ostium()
     print("\n✓ Tots els tests Ostium ingest passats")
 

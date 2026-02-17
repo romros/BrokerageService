@@ -371,7 +371,7 @@ Decisió de "venue principal" sempre és en 2 eixos:
 - **Primary recorder (Lighter):** ✅ Data Layer prod v0 sobre Lighter backfill provider
 - **Ostium recorder:** ✅ prod-ish opt-in (`OSTIUM_ENABLED=1`)
   - OstiumCandleIngestService: poll REST `/latest-price`, build candles 1m, persist `candle_store`
-  - `DATA_LAYER_WRITE_MODE=backfill_only` → DataLayerProdService només prefetch/repair; Ostium escriu realtime
+  - `DATA_LAYER_WRITE_MODE=realtime_plus_backfill` → Ostium ingest ON + Dukascopy backfill; `backfill_only` → ingest OFF
   - Històric/gaps: DukascopyBackfillProvider
   - **NO es declara primary** fins passar gates (soak + compat)
 - **Fallback:** ✅ Dukascopy implementat i validat

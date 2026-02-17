@@ -45,7 +45,7 @@ def _get_config() -> dict:
     symbols_raw = os.getenv(DATA_LAYER_WRITE_SYMBOLS_ENV) or os.getenv("SYMBOLS", "XAUUSD,EURUSD")
     symbols = [s.strip() for s in symbols_raw.split(",") if s.strip()]
     write_mode = os.getenv(DATA_LAYER_WRITE_MODE_ENV, "realtime").lower()
-    if write_mode not in ("realtime", "backfill_only"):
+    if write_mode not in ("realtime", "backfill_only", "realtime_only", "realtime_plus_backfill"):
         write_mode = "realtime"
     return {
         "enabled": os.getenv(DATA_LAYER_ENABLED_ENV, "0") == "1",
@@ -85,7 +85,7 @@ class DataLayerProdService:
         self.max_missing_per_24h = max_missing_per_24h
         self.stale_seconds = stale_seconds
         self.writer_interval_seconds = writer_interval_seconds
-        self.write_mode = write_mode  # realtime | backfill_only
+        self.write_mode = write_mode  # realtime | backfill_only | realtime_only | realtime_plus_backfill
 
         self._running = False
         self._task: Optional[asyncio.Task] = None
@@ -115,7 +115,7 @@ class DataLayerProdService:
         if self.prefetch_minutes > 0:
             await self._run_prefetch()
 
-        # Writer loop (només si realtime; backfill_only = Ostium escriu realtime)
+        # Writer loop (només si realtime Lighter; altres modes = Ostium o backfill)
         if self.write_mode == "realtime":
             self._task = asyncio.create_task(self._writer_loop())
         else:

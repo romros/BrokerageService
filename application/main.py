@@ -241,14 +241,17 @@ async def lifespan(app: FastAPI):
         set_data_layer_metrics(DataLayerMetrics())
 
     # Data Layer prod v0: prefetch + writer loop (DATA_LAYER_ENABLED=1)
-    # Ostium mode: backfill_only + Dukascopy prefetch; OstiumCandleIngestService escriu realtime
+    # Ostium mode: realtime_plus_backfill (ingest) | backfill_only (no ingest)
     ostium_enabled = os.getenv(OSTIUM_ENABLED_ENV, "0") == "1"
+    cfg = {}
     if os.getenv(DATA_LAYER_ENABLED_ENV, "0") == "1":
         try:
             from application.services.data_layer_prod_service import DataLayerProdService, _get_config  # lazy
             cfg = _get_config()
             if ostium_enabled:
-                cfg["write_mode"] = "backfill_only"
+                cfg["write_mode"] = os.getenv("DATA_LAYER_WRITE_MODE", "realtime_plus_backfill").lower()
+                if cfg["write_mode"] not in ("realtime_only", "realtime_plus_backfill", "backfill_only"):
+                    cfg["write_mode"] = "realtime_plus_backfill"
                 ostium_symbols = os.getenv("OSTIUM_SYMBOLS", os.getenv("SYMBOLS", "EURUSD,XAUUSD")).split(",")
                 cfg["symbols"] = [s.strip() for s in ostium_symbols if s.strip()]
                 from infrastructure.venues.dukascopy.dukascopy_backfill_provider import DukascopyBackfillProvider  # lazy
@@ -269,6 +272,7 @@ async def lifespan(app: FastAPI):
                 )
                 await data_layer_prod_service.start()
                 logger.info("Data Layer prod v0 started symbols=%s prefetch_min=%s", cfg["symbols"], cfg["prefetch_minutes"])
+                set_broker_deps(data_layer_write_mode=cfg.get("write_mode", "realtime"))
                 # Startup gate: si activat i Data Layer DEGRADED → fallar startup
                 if os.getenv(DATA_LAYER_STARTUP_GATE_ENV, "0") == "1":
                     ok, reason = data_layer_prod_service.run_startup_gate_check()
@@ -278,10 +282,13 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning("Data Layer prod v0 not started: %s", e)
 
-    # Ostium realtime writer (OSTIUM_ENABLED=1)
+    # Ostium realtime writer (OSTIUM_ENABLED=1 + write_mode permet ingest)
     ostium_ingest_service = None
     ostium_symbols = [s.strip() for s in os.getenv("OSTIUM_SYMBOLS", os.getenv("SYMBOLS", "EURUSD,XAUUSD")).split(",") if s.strip()]
-    if ostium_enabled and ostium_symbols:
+    _write_mode = (cfg.get("write_mode", os.getenv("DATA_LAYER_WRITE_MODE", "realtime_plus_backfill")) if ostium_enabled else "realtime"
+    _write_mode = str(_write_mode).lower()
+    ostium_ingest_allowed = _write_mode in ("realtime_only", "realtime_plus_backfill")
+    if ostium_enabled and ostium_symbols and ostium_ingest_allowed:
         try:
             from application.services.ostium_candle_ingest_service import OstiumCandleIngestService  # lazy
             from foundation.config.constants import (
@@ -304,8 +311,15 @@ async def lifespan(app: FastAPI):
             )
             await ostium_ingest_service.start()
             logger.info("OstiumCandleIngestService started symbols=%s", ostium_symbols)
+            set_broker_deps(
+                data_layer_write_mode=_write_mode,
+                ostium_ingest_enabled=True,
+                ostium_ingest_poll_s=int(os.getenv(OSTIUM_POLL_S_ENV, str(DEFAULT_OSTIUM_POLL_S))),
+            )
         except Exception as e:
             logger.warning("OstiumCandleIngestService not started: %s", e)
+    elif ostium_enabled and not ostium_ingest_allowed:
+        set_broker_deps(data_layer_write_mode=_write_mode, ostium_ingest_enabled=False)
 
     # P4.0: BackfillService (gap repair) quan tenim Lighter market data
     if market_data_service is not None:

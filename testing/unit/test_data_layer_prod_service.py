@@ -111,8 +111,17 @@ def test_writer_no_duplicates():
 
 def test_backfill_only_no_writer_loop():
     """write_mode=backfill_only → no writer loop; no escriu candles (Ostium contract)."""
-    print("Testing backfill_only no writer loop...")
+    _run_no_writer_test("backfill_only")
 
+
+def test_realtime_plus_backfill_no_writer_loop():
+    """write_mode=realtime_plus_backfill → no writer loop (Ostium ingest escriu)."""
+    _run_no_writer_test("realtime_plus_backfill")
+
+
+def _run_no_writer_test(write_mode: str):
+    """write_mode sense Lighter writer → no escriu candles."""
+    print(f"Testing {write_mode} no writer loop...")
     async def run():
         with tempfile.TemporaryDirectory() as tmp:
             store = CSVCandleStore(root_path=tmp, broker="test", canonical_tz="America/New_York")
@@ -127,7 +136,7 @@ def test_backfill_only_no_writer_loop():
                 max_gap_s=180,
                 max_missing_per_24h=2000,
                 stale_seconds=3600,
-                write_mode="backfill_only",
+                write_mode=write_mode,
                 writer_interval_seconds=2,
             )
             await svc.start()
@@ -135,10 +144,9 @@ def test_backfill_only_no_writer_loop():
             await svc.stop()
 
             last = store.get_last_timestamp("EURUSD")
-            assert last is None, "backfill_only no hauria d'escriure (Ostium escriu realtime)"
+            assert last is None, f"{write_mode} no hauria d'escriure (Ostium o backfill)"
         set_data_layer_metrics(None)
-        print("✓ backfill_only no writer loop OK")
-
+        print(f"✓ {write_mode} no writer loop OK")
     asyncio.run(run())
 
 
@@ -229,6 +237,7 @@ def main():
     test_prefetch_respects_boundaries()
     test_writer_no_duplicates()
     test_backfill_only_no_writer_loop()
+    test_realtime_plus_backfill_no_writer_loop()
     test_gate_degraded_on_duplicates()
     print("\n✓ Tots els tests Data Layer prod v0 passats")
 

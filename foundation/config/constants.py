@@ -165,9 +165,10 @@ DEFAULT_DATA_LAYER_GATES_MAX_GAP_S = 180
 DEFAULT_DATA_LAYER_GATES_MAX_MISSING_PER_24H = 1
 DEFAULT_DATA_LAYER_STALE_SECONDS = 180
 
-# Data Layer write mode: realtime (Lighter writer loop) | backfill_only (Ostium realtime writer)
+# Data Layer write mode: realtime (Lighter writer) | backfill_only (no ingest) | realtime_only | realtime_plus_backfill (Ostium ingest)
 DATA_LAYER_WRITE_MODE_ENV = "DATA_LAYER_WRITE_MODE"
 DEFAULT_DATA_LAYER_WRITE_MODE = "realtime"
+DATA_LAYER_WRITE_MODES_OSTIUM_INGEST = ("realtime_only", "realtime_plus_backfill")
 
 # Ostium (RWA price source, REST polling)
 OSTIUM_ENABLED_ENV = "OSTIUM_ENABLED"

@@ -76,6 +76,9 @@ _market_data_env: str = "mainnet"
 _market_data_source: str = "n/a"  # fake|real|n/a — visible a GET /mode i freqtrade_runner
 _fallback_provider: Optional[Any] = None  # P7: DukascopyBackfillProvider (read-only)
 _primary_backfill_provider: Optional[Any] = None  # P8: LighterCandlestickBackfillProvider (read-through)
+_data_layer_write_mode: str = "realtime"
+_ostium_ingest_enabled: bool = False
+_ostium_ingest_poll_s: int = 2
 
 
 def set_broker_deps(
@@ -87,9 +90,13 @@ def set_broker_deps(
     market_data_source: str = _UNSET,
     fallback_provider: Any = _UNSET,
     primary_backfill_provider: Any = _UNSET,
+    data_layer_write_mode: str = _UNSET,
+    ostium_ingest_enabled: bool = _UNSET,
+    ostium_ingest_poll_s: int = _UNSET,
 ) -> None:
     """Inject dependencies for broker routes."""
-    global _candle_store, _adapter_factory, _mode, _venue, _market_data_env, _market_data_source, _fallback_provider, _primary_backfill_provider
+    global _candle_store, _adapter_factory, _mode, _venue, _market_data_env, _market_data_source
+    global _fallback_provider, _primary_backfill_provider, _data_layer_write_mode, _ostium_ingest_enabled, _ostium_ingest_poll_s
     if candle_store is not _UNSET:
         _candle_store = candle_store
     if adapter_factory is not _UNSET:
@@ -106,6 +113,12 @@ def set_broker_deps(
         _market_data_env = market_data_env
     if market_data_source is not _UNSET:
         _market_data_source = market_data_source
+    if data_layer_write_mode is not _UNSET:
+        _data_layer_write_mode = data_layer_write_mode
+    if ostium_ingest_enabled is not _UNSET:
+        _ostium_ingest_enabled = ostium_ingest_enabled
+    if ostium_ingest_poll_s is not _UNSET:
+        _ostium_ingest_poll_s = ostium_ingest_poll_s
     logger.info(
         f"Broker API deps: mode={_mode}, venue={_venue}, market_data_env={_market_data_env}, "
         f"market_data_source={_market_data_source}, adapter_factory={'set' if _adapter_factory else 'None'}"
@@ -506,14 +519,20 @@ async def get_data_status():
         _http_error(503, DATA_STATUS_NOT_AVAILABLE, "Data Layer metrics not available (no pipeline)")
 
     snapshot = metrics.snapshot()
-    return {
+    result = {
         "symbols": snapshot["symbols"],
         "ws_reconnects": snapshot["ws_reconnects"],
         "server_time": datetime.now(timezone.utc).isoformat(),
         "canonical_tz": CANONICAL_TIMEZONE_NAME,
         "mode": _mode,
         "market_data_env": _market_data_env,
+        "write_mode": _data_layer_write_mode,
+        "ingest_enabled": _ostium_ingest_enabled,
+        "ingest_poll_s": _ostium_ingest_poll_s,
     }
+    if _ostium_ingest_enabled:
+        result["ingest_source"] = "ostium_realtime"
+    return result
 
 
 @router.get("/candles")

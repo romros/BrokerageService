@@ -59,6 +59,18 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=10" | grep -i
 | **Duplicates / ts_step_errors** | data_status, integrity | Hard stop (no declarar primary); symbol_state=DEGRADED; investigar writer |
 | **503 / pipeline down** | health, data_status | Restart; check logs |
 
+### Ostium ingest (profile ostium)
+
+| Incident | Diagnòstic | Acció |
+|----------|------------|-------|
+| **Stale feed** (stale_seconds > threshold) | data_status, last_candle_ts per symbol | Check Ostium API; restart brokerage; symbol_state=DEGRADED |
+| **Gaps / missing minutes** | data_status missing_minutes_24h, max_gap_s | Dukascopy backfill; comprovar trading hours Ostium |
+| **Duplicates / ts_step_errors** | data_status degrade_reason | Hard stop ingest per symbol; investigar writer; no declarar primary |
+| **ingest_enabled=false** amb OSTIUM_ENABLED=1 | data_status write_mode | Si write_mode=backfill_only → ingest OFF per disseny; usar realtime_plus_backfill |
+| **Ostium API 429 / timeout** | Logs OstiumCandleIngestService | Retry automàtic; si persistent → DEGRADED |
+
+**Comandes Ostium:** `./scripts/run_smoke.sh ostium`, `./scripts/run_soak.sh 30 ostium`, `curl -s .../data_status` (ingest_source=ostium_realtime quan actiu).
+
 ---
 
 ## 4) Kill switches
@@ -69,6 +81,8 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=10" | grep -i
 | `ENABLE_LIVE_TRADING=1` | Permet execució real LIVE. |
 | `USE_FAKE_PRICE_FEED=1` | Preus fake (sense xarxa). |
 | `USE_FAKE_PRICE_FEED=0` | Preus reals (cal .env Lighter). |
+| `OSTIUM_ENABLED=1` + `DATA_LAYER_WRITE_MODE=realtime_plus_backfill` | Ostium ingest actiu (profile ostium). |
+| `DATA_LAYER_WRITE_MODE=backfill_only` | Ostium ingest OFF (només backfill Dukascopy). |
 | `ENABLE_READ_THROUGH=1` | Gap repair serve-only (no muta store). |
 
 **On:** `.env` o `docker-compose.yml` environment.

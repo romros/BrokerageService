@@ -46,7 +46,7 @@
 
 **symbol_state:** `ACTIVE` | `DEGRADED`. Si DEGRADED → writer aturat per aquell símbol.
 
-**Perfil Ostium:** `OSTIUM_ENABLED=1` + `DATA_LAYER_WRITE_MODE=backfill_only`. Realtime: OstiumCandleIngestService (polling REST); històric/gaps: DukascopyBackfillProvider. `./scripts/run_smoke.sh ostium`, `./scripts/run_soak.sh 30 ostium`.
+**Perfil Ostium:** `OSTIUM_ENABLED=1` + `DATA_LAYER_WRITE_MODE=realtime_plus_backfill`. Realtime: OstiumCandleIngestService (polling REST); històric/gaps: DukascopyBackfillProvider. `backfill_only` = ingest OFF. `./scripts/run_smoke.sh ostium`, `./scripts/run_soak.sh 30 ostium`.
 
 ---
 
@@ -94,6 +94,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-17 | Data Layer soak | ✅ 2m: missing=0, dup=0 | `./test.sh testing/integration/test_data_layer_soak_metrics.py --minutes 2` |
 | 2026-02-17 | Ostium LAB | 🏃 24h captura en curs | lab/ostium |
 | 2026-02-17 | Docs coherents Ostium | ✅ AGENTS + ESTAT + overrides alineats | graduation path, prod-ish opt-in |
+| 2026-02-17 | Ostium Recorder prod-ish v1 | ✅ ingest real 1m, gates, data_status ingest_source | write_mode realtime_plus_backfill |
 
 **Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 
