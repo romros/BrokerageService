@@ -1,0 +1,30 @@
+FROM python:3.11-slim
+
+WORKDIR /workspace
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy project requirements
+COPY ../../requirements.txt /tmp/project_requirements.txt
+
+# Install Python dependencies needed for analysis
+RUN pip install --no-cache-dir \
+    numpy \
+    pandas \
+    scipy \
+    loguru \
+    python-dotenv \
+    requests
+
+# Install dukascopy-python separately (may have specific deps)
+RUN pip install --no-cache-dir dukascopy-python
+
+# Install project dependencies (selected)
+RUN grep -E "pydantic|web3|eth-account" /tmp/project_requirements.txt > /tmp/minimal_reqs.txt || true
+RUN if [ -s /tmp/minimal_reqs.txt ]; then pip install --no-cache-dir -r /tmp/minimal_reqs.txt; fi
+
+WORKDIR /workspace

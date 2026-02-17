@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  ostium_analysis:
+    build:
+      context: ../..
+      dockerfile: lab/ostium/Dockerfile.analysis
+    container_name: ostium_analysis
+    volumes:
+      - ../..:/workspace
+    working_dir: /workspace
+    environment:
+      - PYTHONPATH=/workspace
+      - TZ=UTC
+    env_file:
+      - .env
+    command: tail -f /dev/null  # Keep alive

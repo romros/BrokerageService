@@ -1,6 +1,6 @@
-# ESTAT DEL PROJECTE — BrokerageService (Archive Snapshot 2026-Q1, fins 2026-02-13)
+# ESTAT DEL PROJECTE — BrokerageService (Archive Snapshot 2026-Q1)
 
-> **Read-only.** Històric complet fins 2026-02-13. Estat actual → [docs/ESTAT.md](../ESTAT.md).
+> **Read-only.** Històric complet (fins 2026-02-13) + contingut mogut 2026-02-17. Estat actual → [docs/ESTAT.md](../ESTAT.md).
 >
 > **Nota:** Aquest arxiu pot mencionar paths/docs legacy (ex. `/api/v1/ft`, `docs/BROKER_API.md`, `/broker/*`). La font canònica actual és `AGENTS_ARQUITECTURA.md` (API `/api/v1/broker/*`).
 
@@ -254,3 +254,124 @@ Smoke runner real (Lighter testnet) — **2026-02-13**:
 ---
 
 **Status global:** ✅ Lighter paper-ready (M1+M2) · ✅ Lighter LIVE-ready hardening (M3 completat; 3x smoke real) · ✅ **M3.6 sanity real fiable** (3× E2E real OK) · ✅ **P1 #4 Freqtrade connector** (REST endpoints + tests) · 🟡 gTrade mainnet hardening · ⛔ backtest pendent
+
+---
+
+## Annex: Comandes detallades (històric 2026-02)
+
+> Comandes llargues mogudes des de SAFETY_RUNBOOK i ESTAT. Referència operativa.
+
+```bash
+# Smoke mock (ràpid)
+docker compose run --rm brokerage python3 -m application.smoke --venue mock --mode PAPER --seconds 5
+
+# Smoke lighter (paper testnet)
+docker compose run --rm brokerage python3 -m application.smoke --venue lighter --mode PAPER --seconds 120
+
+# Smoke 3× (evidència Gate C)
+docker compose run --rm brokerage python3 -m application.smoke --venue lighter --mode PAPER --seconds 120 --repeat 3 --pause-s 5
+
+# Soak 10 min (default) o 15 min
+./scripts/soak_smoke.sh
+./scripts/soak_smoke.sh 900
+
+# WS Preflight (P2.0)
+python3 -m application.tools.ws_preflight --ws-url ws://localhost:8000/api/v1/ws --symbol ETH --minutes 3
+
+# WS Soak (P2.1): 15 min
+./scripts/soak_ws.sh
+./scripts/soak_ws.sh 900
+./scripts/soak_ws_quick.sh  # 60s
+
+# WS Soak MAINNET (P2.2)
+./scripts/soak_ws_mainnet.sh
+./scripts/soak_ws_mainnet.sh 900
+
+# P7c Data Layer soak (opt-in)
+./test.sh testing/run_all.py --include-data-layer-soak
+./test.sh testing/integration/test_data_layer_soak_metrics.py --minutes 2
+
+# Freqtrade runner 15 min (PAPER testnet)
+VENUE=lighter MODE=paper docker compose up -d brokerage
+docker compose run --rm brokerage python3 -m application.tools.freqtrade_runner --venue lighter --mode PAPER --symbol ETH --minutes 15
+
+# Paper soak real (2h+, preus Lighter, zero tx)
+./scripts/soak_freqtrade_paper_real.sh 120
+./scripts/soak_freqtrade_paper_real.sh 360
+
+# Freqtrade LIVE testnet (tx reals)
+./scripts/run_freqtrade_live_testnet.sh 15
+
+# Freqtrade runner venue=paper (zero tx)
+./scripts/run_freqtrade_paper.sh 3
+./scripts/run_freqtrade_paper.sh 15
+
+# E2E 1 run
+docker compose run --rm brokerage python3 -m application.e2e_trade \
+  --venue lighter --mode PAPER --symbol ETH --collateral 100 --leverage 20 \
+  --settle-timeout-s 120 --poll-s 2
+
+# E2E 3× (evidència DONE)
+docker compose run --rm brokerage python3 -m application.e2e_trade \
+  --venue lighter --mode PAPER --symbol ETH --collateral 100 --leverage 20 \
+  --settle-timeout-s 120 --poll-s 2
+```
+
+---
+
+## Contingut mogut des de ESTAT 2026-02-17
+
+> Snapshot del contingut "enciclopèdia" eliminat quan ESTAT passà a panell de comandament.
+
+### PROGRÉS (per àrees, 2026-02-16)
+
+| Àrea | Objectiu | Estat | % |
+|---|---|---:|---:|
+| Broker API | `/api/v1/broker/*`, POST body, errors consistents | ✅ | 100% |
+| Market data | pairs + latest price (adapter) + candles/ohlcv (candle_store) | ✅ | 100% |
+| Candles pipeline | 1m only, ts epoch UTC, TZ NY, store sense venue | ✅ | 95% |
+| Lighter (PAPER) | open/close + SL/TP + balance + idempotència + maker-first close | ✅ | 100% |
+| Lighter (LIVE-hardening) | guards + reconcile + restart safety + smoke runner | ✅ | 90% |
+| gTrade (PAPER) | infra/harness paper estable | ✅ | 80% |
+| gTrade (LIVE) | mainnet hardening | 🟡 | 30% |
+| Backtest mode | lectura dataset + exec engine | ⛔ | 0–10% |
+| Operativa / Runbook | safety runbook, soak, WS soak | ✅ | 50% |
+
+### Evidència 2026-02-16 / 2026-02-15
+
+**2026-02-16:** P3.2 gTrade aïllat, coverage_probe (72h EURUSD+XAU), P3.1 Broker hang diagnostics, P3.0 PAPER bracket, Freqtrade paper 15 min, Fix 429, Paper soak real 120 min.
+
+**2026-02-15:** run_all 44 passed, WS Soak 15 min (fake+mainnet), P1.1 SL/TP idempotència, P1.2 maker-first close, PAPER DONE handshake, GET /positions + PnL, freqtrade_runner position_pnl/closed_pnl, GET /mode market_data_source, Paper preus reals, position_id fallback.
+
+### Paper soak real (comandes)
+
+```bash
+./scripts/soak_freqtrade_paper_real.sh 120   # 2h
+./scripts/soak_freqtrade_paper_real.sh 360   # 6h
+./scripts/soak_freqtrade_paper_real.sh 720   # 12h
+```
+
+**Requisits:** `.env` Lighter. **Health gate:** exit 2/3/4 (positions_after, missing_minutes, market_data_source).
+
+### Backlog complet (P0–P3, Data Layer P4→P8)
+
+**P0 DONE:** P0.1–P0.5 (close idempotent, force_close, 3× E2E, Freqtrade PAPER, soak 10 min).
+
+**P1 DONE:** trade history, coding standards, idempotència SL/TP, maker-first close, PAPER handshake.
+
+**P2 DONE:** Safety runbook, Soak 10 min, P2.0 WS Preflight, P2.0.1 Fake feed, P2.1 WS soak 15 min, P2.2 mainnet, market_data_source, Fix 429. *Pendent:* normalització addresses.
+
+**P3 DONE:** P3.0 bracket, P3.1 hang diagnostics, P3.2 gTrade aïllat.
+
+**Data Layer (P4→P8):** Lab Historical Candles, coverage_probe, time_semantics_probe; P4.0 Durable Recorder v0; P4.1 WS vs Candlestick; P5 headers+coverage; P6 Dukascopy+compat; P7 mixed gated; P8 read-through (futur).
+
+### Comandes extendides (freqtrade, venue=paper, WS)
+
+```bash
+# venue=paper (zero tx)
+MODE=paper VENUE=paper ENABLE_LIVE_TRADING=0 USE_FAKE_PRICE_FEED=1 SYMBOLS=ETH,BTC docker compose up -d brokerage
+docker compose run --rm brokerage python3 -m application.tools.freqtrade_runner --broker-url http://host.docker.internal:8000 --venue paper --symbol ETH --minutes 15
+
+# WS Soak: OHLCV per EURUSD/XAU
+docker compose run --rm brokerage python3 -m application.tools.ws_soak --minutes 1 --topic candle:EURUSD:1m
+```

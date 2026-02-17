@@ -28,6 +28,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
+from foundation.utils.file_permissions import set_host_readable_permissions
+
 try:
     from dotenv import load_dotenv
     load_dotenv(ROOT / "lab" / "lighter" / ".env")
@@ -239,11 +241,13 @@ def write_csv(candles: list[dict], out_root: Path, symbol: str) -> list[Path]:
     for (year, month), rows in sorted(by_month.items()):
         dir_path = out_root / symbol / str(year) / f"{month:02d}"
         dir_path.mkdir(parents=True, exist_ok=True)
+        set_host_readable_permissions(dir_path)
         csv_path = dir_path / f"{month:02d}.csv"
         with open(csv_path, "w", encoding="utf-8") as f:
             f.write("ts,open,high,low,close,volume\n")
             for r in rows:
                 f.write(f"{r['ts']},{r['open']},{r['high']},{r['low']},{r['close']},{r['volume']}\n")
+        set_host_readable_permissions(csv_path)
         written.append(csv_path)
     return written
 
@@ -261,6 +265,7 @@ def main() -> int:
     else:
         out_root = ROOT / "datafiles" / "lab_lighter_history"
     out_root.mkdir(parents=True, exist_ok=True)
+    set_host_readable_permissions(out_root)
 
     print("=" * 70)
     print("LAB — Historical Candles Feasibility (Lighter)")

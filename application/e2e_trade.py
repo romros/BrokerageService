@@ -129,7 +129,7 @@ async def _run_e2e(
     try:
         # Guards: LIVE mode requires ENABLE_LIVE_TRADING
         if str(mode).upper() == "LIVE":
-            from application.services.live_guards import (
+            from application.services.live_guards import (  # lazy: només quan mode LIVE
                 assert_live_trading_enabled,
                 assert_risk_limits_ok,
             )

@@ -33,18 +33,28 @@ testing/
 
 ## Running Tests
 
-### Run all tests
+### Via Docker (recomanat, sense setup local)
 
 ```bash
-python testing/run_all.py
+./test.sh testing/run_all.py
+./test.sh testing/unit/test_p8_read_through_response_only.py
 ```
 
-### Run specific test
+### Local (amb venv, sense Docker)
+
+Cal tenir dependències instal·lades (AGENTS_ARQUITECTURA §6.1):
 
 ```bash
-python testing/unit/test_candle_store.py
-python testing/unit/test_gap_validator.py
-python testing/api/test_rest_smoke.py
+# Una vegada: venv + deps
+python3 -m venv venv
+source venv/bin/activate   # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+
+# Després: executar (des de l'arrel del projecte)
+export PYTHONPATH="$(pwd):$PYTHONPATH"
+python3 testing/run_all.py
+python3 testing/unit/test_candle_store.py
+python3 testing/unit/test_p8_read_through_response_only.py
 ```
 
 ## Test Requirements

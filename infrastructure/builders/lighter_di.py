@@ -140,8 +140,8 @@ def build_lighter_paper_adapter(
     if price_cache is None:
         price_cache = PriceSnapshotCache(ttl_s=get_price_cache_ttl_s())
     if sltp_store is None:
-        from foundation.config.constants import DEFAULT_DATAFILES_ROOT
-        from infrastructure.storage.sltp_store import JsonSltpStore, sltp_store_path
+        from foundation.config.constants import DEFAULT_DATAFILES_ROOT  # lazy: només quan cal sltp_store
+        from infrastructure.storage.sltp_store import JsonSltpStore, sltp_store_path  # lazy: només quan cal sltp_store
         path = sltp_store_path(
             os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT),
             "lighter",

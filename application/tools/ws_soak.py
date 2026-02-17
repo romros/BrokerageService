@@ -99,6 +99,9 @@ def autodetect_symbol(broker_url: str, venue: str = "lighter") -> str:
     return bases[0] if bases else "ETH"
 
 
+from foundation.utils.file_permissions import set_host_readable_permissions
+
+
 def _log(msg: str, log_file: Path | None) -> None:
     """Print and optionally append to log file."""
     print(msg)
@@ -271,6 +274,85 @@ async def run_soak(
     return ok, summary
 
 
+def _candle_ts_epoch(ts_str: str) -> int | None:
+    """Parse timestamp to UTC start-of-minute epoch seconds. Returns None if invalid."""
+    try:
+        ep = parse_ts_to_epoch(ts_str)
+        return int(ep // 60) * 60
+    except (ValueError, TypeError):
+        return None
+
+
+async def collect_ws_candles(
+    ws_url: str,
+    topic: str,
+    minutes: float,
+    allow_reconnects: int = 3,
+) -> tuple[list[dict], dict]:
+    """
+    Connect to WS, subscribe to topic, collect candles for duration.
+    Returns (candles, summary). Candles: list of {ts, open, high, low, close, volume}.
+    ts = UTC start-of-minute epoch seconds.
+    """
+    start = time.monotonic()
+    deadline = start + (minutes * 60)
+    candles: list[dict] = []
+    reconnects = 0
+
+    while time.monotonic() < deadline:
+        try:
+            async with websockets.connect(
+                ws_url,
+                open_timeout=10,
+                close_timeout=5,
+                ping_interval=20,
+                ping_timeout=10,
+            ) as ws:
+                await ws.send(json.dumps({"type": "subscribe", "channel": topic}))
+                msg = await asyncio.wait_for(ws.recv(), timeout=5)
+                data = json.loads(msg)
+                if data.get("type") == "error":
+                    raise RuntimeError(f"Subscribe error: {data.get('error', data)}")
+                if data.get("type") != "subscribed":
+                    raise RuntimeError(f"Subscribe unexpected: {data}")
+
+                recv_timeout = min(60, max(5, (deadline - time.monotonic()) / 2))
+                while time.monotonic() < deadline:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    msg = await asyncio.wait_for(
+                        ws.recv(), timeout=min(recv_timeout, remaining)
+                    )
+                    data = json.loads(msg)
+                    if data.get("type") == "candle" and data.get("channel") == topic:
+                        d = data.get("data") or {}
+                        ts = _candle_ts_epoch(d.get("timestamp") or "")
+                        if ts is not None:
+                            candles.append({
+                                "ts": ts,
+                                "open": float(d.get("open") or 0),
+                                "high": float(d.get("high") or 0),
+                                "low": float(d.get("low") or 0),
+                                "close": float(d.get("close") or 0),
+                                "volume": float(d.get("volume") or 0),
+                            })
+        except (websockets.exceptions.ConnectionClosed, ConnectionError, OSError):
+            if reconnects >= allow_reconnects:
+                break
+            reconnects += 1
+            await asyncio.sleep(2)
+        except RuntimeError:
+            break
+
+    summary = {
+        "candles": len(candles),
+        "minutes": round(minutes, 1),
+        "reconnects": reconnects,
+    }
+    return candles, summary
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="WS Soak: validate candle stream stability"
@@ -344,6 +426,7 @@ def main() -> int:
         suffix = f"{int(args.minutes)}m" if args.minutes == int(args.minutes) else f"{args.minutes}m"
         log_path = Path("datafiles/ws_soak") / f"{ts}_ws_soak_{suffix}.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    set_host_readable_permissions(log_path.parent)
 
     ok, _ = asyncio.run(
         run_soak(
@@ -355,6 +438,7 @@ def main() -> int:
             log_path=log_path,
         )
     )
+    set_host_readable_permissions(log_path)
     return 0 if ok else 1
 
 

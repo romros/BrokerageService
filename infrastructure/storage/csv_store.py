@@ -26,6 +26,7 @@ import fcntl
 from domain.interfaces import ICandleStore
 from domain.models import Candle, CandleRange
 from foundation.logging import get_logger
+from foundation.utils.file_permissions import set_host_readable_permissions
 
 
 logger = get_logger(__name__)
@@ -59,6 +60,7 @@ class CSVCandleStore(ICandleStore):
 
         # Ensure root exists
         self.root_path.mkdir(parents=True, exist_ok=True)
+        set_host_readable_permissions(self.root_path)
 
         logger.info(f"CSVCandleStore initialized: root={root_path}, broker={broker}, tz={canonical_tz}")
 
@@ -142,6 +144,7 @@ class CSVCandleStore(ICandleStore):
         """
         # Ensure parent directory exists
         file_path.parent.mkdir(parents=True, exist_ok=True)
+        set_host_readable_permissions(file_path.parent)
 
         # Write to temporary file
         tmp_fd, tmp_path = tempfile.mkstemp(
@@ -157,6 +160,7 @@ class CSVCandleStore(ICandleStore):
 
             # Atomic rename
             shutil.move(tmp_path, file_path)
+            set_host_readable_permissions(file_path)
 
         except Exception as e:
             # Cleanup tmp file on error
@@ -182,9 +186,11 @@ class CSVCandleStore(ICandleStore):
         """
         lock_path = file_path.parent / f".{file_path.name}.lock"
         lock_path.parent.mkdir(parents=True, exist_ok=True)
+        set_host_readable_permissions(lock_path.parent)
 
         lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        set_host_readable_permissions(lock_path)
 
         return lock_fd
 
@@ -379,6 +385,30 @@ class CSVCandleStore(ICandleStore):
             else:
                 current = current.replace(month=current.month - 1)
 
+        return None
+
+    def get_earliest_timestamp(self, symbol: str) -> Optional[datetime]:
+        """
+        Get timestamp of first stored candle (P5 coverage).
+
+        Args:
+            symbol: Trading pair
+
+        Returns:
+            First timestamp or None
+        """
+        tz_name = str(self.canonical_tz).replace("/", "_")
+        base = self.root_path / self.broker / symbol / tz_name
+        if not base.exists():
+            return None
+        # Iterate years forward from 2020
+        for year_dir in sorted(base.iterdir()):
+            if not year_dir.is_dir() or not year_dir.name.isdigit():
+                continue
+            for month_file in sorted(year_dir.glob("*.csv")):
+                candles = self._read_csv_file(month_file, symbol)
+                if candles:
+                    return candles[0].timestamp
         return None
 
     def get_coverage(

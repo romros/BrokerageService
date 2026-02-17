@@ -32,6 +32,7 @@ from zoneinfo import ZoneInfo
 from domain.interfaces import ICandleStore, IBackfillProvider
 from foundation.logging import get_logger
 from infrastructure.storage.gap_validator import GapValidator
+from application.api.repair_stats import record_repair
 
 
 logger = get_logger(__name__)
@@ -179,6 +180,11 @@ class BackfillService:
         # Find gaps
         gaps = GapValidator.find_gaps(current_range.candles, start, end)
 
+        from application.data.data_layer_metrics import get_data_layer_metrics  # lazy: evita carregar data_layer si no hi ha pipeline
+        metrics = get_data_layer_metrics()
+        if metrics:
+            metrics.inc_gaps_detected(symbol, count=current_range.missing_count)
+
         logger.info(
             f"Found {len(gaps)} gaps in {symbol} "
             f"({current_range.missing_count} missing candles)"
@@ -209,6 +215,10 @@ class BackfillService:
                 continue
 
         logger.info(f"✓ Backfilled {total_filled} candles for {symbol}")
+        if total_filled > 0:
+            record_repair(symbol=symbol, filled=total_filled)
+            if metrics:
+                metrics.inc_gaps_repaired(symbol, count=total_filled)
         return total_filled
 
     async def _run_backfill_for_all_symbols(self) -> None:

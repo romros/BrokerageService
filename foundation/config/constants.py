@@ -84,6 +84,9 @@ MESSAGE_RECEIVE_TIMEOUT_SECONDS = 30.0
 DEFAULT_DATAFILES_ROOT = "/datafiles"
 DEFAULT_LOG_DIR = "logs"
 
+# P7b: Compat registry (compat_probe output)
+COMPAT_REGISTRY_RELATIVE_PATH = "compat_probe/compat_registry.json"
+
 # Storage tuning
 MONTHS_TO_CHECK_BACKWARD = 12  # How many months to scan for files
 
@@ -140,3 +143,10 @@ DOJI_THRESHOLD_PERCENT = 0.1  # 10% body-to-range ratio for doji detection
 # Fee placeholders (for future implementation)
 BORROWING_FEE_PLACEHOLDER = 0.0  # TODO: Implement with OI data in Fase 6
 DYNAMIC_SPREAD_PLACEHOLDER = 0.0  # TODO: Implement dynamic spread calculation
+
+# P8.0 Read-through gap serving (response-only)
+ENABLE_READ_THROUGH_ENV = "ENABLE_READ_THROUGH"
+READ_THROUGH_MAX_MISSING_ENV = "READ_THROUGH_MAX_MISSING_MINUTES"
+READ_THROUGH_TIMEOUT_ENV = "READ_THROUGH_PROVIDER_TIMEOUT_S"
+DEFAULT_READ_THROUGH_MAX_MISSING = 30
+DEFAULT_READ_THROUGH_TIMEOUT_S = 2.0

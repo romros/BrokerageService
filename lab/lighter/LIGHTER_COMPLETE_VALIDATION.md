@@ -1806,3 +1806,86 @@ python3 lab/lighter/scripts/fetch_historical_candles.py --symbol EURUSD --hours 
 **time_semantics_probe (P0.3b):** `lab/lighter/scripts/time_semantics_probe.py` — Demostra si Lighter retorna UTC start-of-minute. Evidència: `is_start_of_minute`, `step_ok`, `latest_lag_seconds`, `includes_partial`. Conclusió: t és UTC start-of-minute; retorna només tancades (latest = now_floor - 60). NO conversió TZ.
 
 ---
+
+## Revisió: Dukascopy (altres projectes / llibreries)
+
+**Objectiu:** Saber com altres projectes obtenen candles EURUSD i XAUUSD de Dukascopy per P6 (fallback històric pre-Lighter).
+
+### dukascopy-python (PyPI)
+
+- **Paquet:** `pip install dukascopy-python` (v4.0.1+)
+- **Repo:** https://github.com/Eghosa-Osayande/dukascopy
+- **Instruments:** Constants tipus `INSTRUMENT_FX_MAJORS_EUR_USD`, `INSTRUMENT_FX_MAJORS_GBP_USD`; metals XAU/USD (XAUUSD) suportat
+- **API:** `fetch(instrument, interval, offer_side, start, end)` → pandas DataFrame
+- **Intervals:** `INTERVAL_HOUR_1`, `INTERVAL_MIN_5` (cal comprovar `INTERVAL_MIN_1` per 1m)
+- **Output:** timestamp (UTC), open, high, low, close, volume
+- **Semàntica:** Timestamp UTC; OHLC per interval agregat
+
+### Com agafen les candles (XAU, EURUSD)
+
+| Projecte/Llibreria | XAU | EURUSD | Format | Notes |
+|--------------------|-----|--------|--------|-------|
+| **dukascopy-python** | `INSTRUMENT_*` (metals) | `INSTRUMENT_FX_MAJORS_EUR_USD` | DataFrame | fetch(start, end, interval); timestamp index UTC |
+| **Jesse** | Via exchange connector | Via exchange connector | NumPy / DB | `import_candles()`, `get_candles()`; Dukascopy connector a verificar |
+| **BrokerageService (P6)** | XAUUSD canònic | EURUSD canònic | CSV / CandleRange | IBackfillProvider; pre-downloaded CSV o API |
+
+### Conclusió revisió
+
+- **dukascopy-python** és la opció més directa per Python: `fetch()` amb instrument + interval.
+- Per 1m: comprovar `INTERVAL_MIN_1` o equivalent.
+- Normalització: Dukascopy XAUUSD→XAUUSD, EURUSD→EURUSD (directe; AGENTS §2.0).
+- BrokerageService P6: provider que llegeix CSV pre-descargats o integra dukascopy-python com a font.
+
+---
+
+## Explorador: Candles via BrokerageService (Docker)
+
+**Objectiu:** Explorar com obtenir dades OHLCV des del broker (pipeline → store → API). Útil per validar el flux complet sense tocar Lighter directament.
+
+**Script:** `lab/lighter/scripts/explore_broker_candles.py`
+
+### Flux de dades
+
+```
+Lighter (CandlestickApi / WS) → pipeline → CSVCandleStore → GET /ohlcv, /candles, /coverage
+```
+
+### Com executar
+
+```bash
+# 1. Pujar broker (amb pipeline Lighter per EURUSD/XAU)
+docker compose up -d brokerage
+
+# 2a. Dins lighter-lab (mateixa xarxa Docker)
+docker compose run --rm lighter-lab python3 lab/lighter/scripts/explore_broker_candles.py
+
+# 2b. Des de host
+BROKER_URL=http://localhost:8000 python3 lab/lighter/scripts/explore_broker_candles.py
+
+# 3. Amb símbols concrets
+python3 lab/lighter/scripts/explore_broker_candles.py --symbol EURUSD --symbol XAUUSD --limit 20
+```
+
+### Què explora
+
+| Endpoint | Descripció |
+|----------|------------|
+| `GET /api/v1/broker/health` | Broker en marxa |
+| `GET /api/v1/broker/ohlcv/{symbol}` | Candles per path; headers X-Data-* (P5) |
+| `GET /api/v1/broker/candles?symbol=...` | Candles per query param |
+| `GET /api/v1/broker/coverage?symbol=...` | Coverage 72h, earliest/latest_ts (P5) |
+
+### Headers X-Data-* (P5 Data Observability)
+
+- `X-Data-Source`: csv_store
+- `X-Data-Coverage-From`, `X-Data-Coverage-To`: epoch s
+- `X-Data-Missing-Minutes`, `X-Data-Max-Gap-S`
+- `X-Data-Repair`, `X-Data-Repair-Filled`
+
+### Requisits
+
+- Broker en marxa (`docker compose up -d brokerage`)
+- Dades al store: pipeline Lighter ha d’haver escrit candles (SYMBOLS=EURUSD,XAUUSD, VENUE=lighter o pipeline actiu)
+- Si el store està buit: `/ohlcv` retorna count=0; `/coverage` retorna earliest_ts=null, latest_ts=null
+
+---

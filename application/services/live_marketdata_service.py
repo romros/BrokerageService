@@ -255,7 +255,13 @@ class LiveMarketDataService(IService):
 
         # Persist to storage
         try:
-            self.candle_store.append(candle)
+            appended = self.candle_store.append(candle)
+            if appended:
+                ts_epoch = int(candle.timestamp.timestamp())
+                from application.data.data_layer_metrics import get_data_layer_metrics  # lazy: evita carregar data_layer si no hi ha pipeline
+                metrics = get_data_layer_metrics()
+                if metrics:
+                    metrics.inc_candles_written(symbol, count=1, last_ts=ts_epoch)
             logger.debug(f"Candle persisted: {symbol} @ {candle.timestamp}")
         except Exception as e:
             logger.error(f"Error persisting candle: {e}")

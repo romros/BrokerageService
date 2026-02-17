@@ -24,6 +24,7 @@ from domain.models import Position
 from loguru import logger as loguru_logger
 
 from application.services.bootstrap_service import run_bootstrap
+from foundation.utils.file_permissions import set_host_readable_permissions
 from application.services.reconcile_service import (
     ReconcileService,
     reconcile_interval_sec_from_env,
@@ -108,8 +109,8 @@ class IPositionTrackerLike:
 def _build_mock_wiring():
     """Build mock adapter + tracker for --venue mock (tests / dry run)."""
     # Lazy: evita carregar infrastructure/domain si --venue mock (només es crida per mock)
-    from infrastructure.reconcile import InMemoryPositionTracker
-    from domain.models import Position
+    from infrastructure.reconcile import InMemoryPositionTracker  # lazy: mock path
+    from domain.models import Position  # lazy: mock path
 
     class FakeAdapter:
         async def get_open_positions(self):
@@ -154,6 +155,7 @@ def main() -> int:
         Path(datafiles).mkdir(parents=True, exist_ok=True)
         runs_dir = Path(datafiles) / "smoke_runs"
         runs_dir.mkdir(parents=True, exist_ok=True)
+        set_host_readable_permissions(runs_dir)
         ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
         log_path = str(runs_dir / f"{ts}_{args.venue}_{repeat}x.log")
 
@@ -166,6 +168,7 @@ def main() -> int:
         with open(log_path, "w", encoding="utf-8") as f:
             f.write(f"Soak smoke started at {datetime.now().isoformat()}\n")
             f.flush()
+        set_host_readable_permissions(log_path)
         log_sink_id = loguru_logger.add(
             log_path,
             format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function} - {message}",
@@ -190,8 +193,8 @@ def _main_impl(args, repeat: int, pause_s: float, log_path: Optional[str]) -> in
     elif args.venue == "lighter":
         try:
             # Lazy: evita carregar lighter/builders si --venue mock
-            from infrastructure.reconcile import InMemoryPositionTracker
-            from infrastructure.builders.lighter_di import build_lighter_paper_adapter
+            from infrastructure.reconcile import InMemoryPositionTracker  # lazy: lighter path
+            from infrastructure.builders.lighter_di import build_lighter_paper_adapter  # lazy: lighter path
             adapter = build_lighter_paper_adapter()
             tracker = InMemoryPositionTracker()
         except Exception as e:

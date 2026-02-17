@@ -1,241 +1,141 @@
 # ESTAT DEL PROJECTE — BrokerageService
 
-**Data:** 2026-02-16  
+**Data:** 2026-02-17  
 **Repo/Path:** `/mnt/volume-SQ/dev/BrokerageService`  
 **Venues:** **Lighter (principal — MVP 100%)** · gTrade (futur)  
 **TZ canònica (config):** `CANONICAL_TZ=America/New_York`  
 **TZ container (runtime/logs):** `TZ=America/New_York`  
 **Doc referència:** [AGENTS_ARQUITECTURA.md](../AGENTS_ARQUITECTURA.md)  
-**Runbook operatiu:** [SAFETY_RUNBOOK.md](SAFETY_RUNBOOK.md)  
+**Runbook operatiu:** [SAFETY_RUNBOOK.md](SAFETY_RUNBOOK.md) (incidents, health checks, kill switches)  
 **Històric complet (read-only):** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 
-**Recorda Docker:** Si has canviat codi, reconstruir abans: `docker compose build brokerage`. Vegeu AGENTS_ARQUITECTURA.md §7.
+**Recorda Docker:** Si has canviat codi, reconstruir abans: `docker compose build brokerage`. Vegeu AGENTS §11.
 
 ---
 
 ## TL;DR
 
-- ✅ **Lighter M1+M2+M3** DONE: marketdata, SL/TP, balance, reconcile, guards, bootstrap, smoke runner, e2e trade
-- ✅ **3× smoke real** + **3× e2e trade real** (paper testnet) — `positions_after=0`
-- ✅ **44 tests MVP Lighter** passa (unit + integration + API smoke); 13 gTrade opt-in amb `--include-gtrade`; inclou freqtrade runner (paper+fake, 0 network), `test_ws_preflight_contract` (P2.0), `test_close_maker_first` (P1.2)
-- ✅ **Broker API canònic** `/api/v1/broker/*` (POST body únic per ordres) — AGENTS §3
-- ✅ **Freqtrade P0** PAPER mainnet-data: `MARKET_DATA_ENV`, `ENABLE_LIVE_TRADING`, wiring Lighter/gTrade, `GET /mode` → `market_data_env`
-- ✅ **venue=paper** (zero tx): `MODE=paper` o `ENABLE_LIVE_TRADING=0` → PaperVenueAdapter, market data mainnet, execució simulada
-- 🟡 **gTrade**: existent (paper OK); no prioritzat MVP; futur
-- ⛔ **Backtest**: pendent
+- ✅ **MVP Lighter** DONE: marketdata, SL/TP, balance, reconcile, guards, smoke, e2e
+- ✅ **Data Layer** (P4–P7c): backfill, gap repair, headers X-Data, /coverage, /data_status, read-through, stitching gated
+- ✅ **Broker API** `/api/v1/broker/*` (POST body únic)
+- 🟡 **gTrade** existent (paper OK); no prioritzat
+- ⛔ **Backtest** pendent
+- 🧪 **Ostium LAB** en curs — [lab/ostium/README.md](../lab/ostium/README.md)
 
-**DONE (sanity):** `run_all` OK + smoke 3× OK + e2e 3× OK (paper testnet) + **soak 10 min** OK + **WS soak 15 min** OK + **WS soak 15 min MAINNET EURUSD** OK (via Lighter feed real) + **Freqtrade paper 15 min** OK (venue=paper, positions_after=0) + **Paper soak real 120 min** OK (preus Lighter, positions_after=0, missing_minutes=0)
-
-**P3.2:** `run_all` default = MVP Lighter (core+Lighter, sense gTrade). gTrade tests opt-in amb `--include-gtrade`.
+> **Focus 48h:** Data Layer en producció (prefetch + gates + observability).
 
 ---
 
-## PROGRÉS (vs objectiu final d'arquitectura)
+## Focus (48h) — Data Layer en producció
 
-> Objectiu final (AGENTS_ARQUITECTURA): servei amb **3 modes (LIVE/PAPER/BACKTEST)**, **API canònica**, pipeline de dades 1m. **MVP 100% Lighter**; altres DEX (gTrade, etc.) s’incorporaran en el futur.
+**Objectiu:** activar Data Layer a prod amb **prefetch** + observability + gates, sense afectar execució.
 
-### Global
-- **Core (PAPER + API + qualitat): 85%**
-- **LIVE hardening (Lighter): 75%** *(paper testnet + guards/reconcile + evidència OK; falta operativa live real contínua)*
-- **BACKTEST: 0–10%** *(contracte previst, pipeline pendent)*
+### Pla
+- **D0:** Prefetch recent + scheduler + gates/alerts mínims.
+- **D1:** Soak 6–12h + cutover policy per símbol + degradació segura.
 
-### Per àrees (checklist)
-| Àrea | Objectiu | Estat | % |
-|---|---|---:|---:|
-| Broker API | `/api/v1/broker/*`, POST body, errors consistents | ✅ | 100% |
-| Market data | pairs + latest price (adapter) + candles/ohlcv (candle_store) | ✅ | 100% |
-| Candles pipeline | 1m only, ts epoch UTC, TZ NY, store sense venue | ✅ | 95% |
-| Lighter (PAPER) | open/close + SL/TP + balance + idempotència close + idempotència SL/TP (P1.1) + maker-first close (P1.2) | ✅ | 100% |
-| Lighter (LIVE-hardening) | guards + reconcile + restart safety + smoke runner + evidència real | ✅ | 90% |
-| gTrade (PAPER) | infra/harness paper estable | ✅ | 80% |
-| gTrade (LIVE) | mainnet hardening (fees/reconcile/monitoring) | 🟡 | 30% |
-| Backtest mode | lectura dataset + exec engine + controls | ⛔ | 0–10% |
-| Operativa / Runbook | safety runbook, soak 10 min, WS soak 15 min, tuning | ✅ | 50% |
-
-> Nota: els % són "de producte" (completitud + evidència), no només "codi escrit".
+### Deliverables
+- Prefetch job (idempotent) per backfill recent (N hores/dies) + persistència
+- Gates automàtics: duplicates/ts_step/missing/max_gap/stale
+- Health endpoints: `/data_status`, `/coverage`, headers X-Data-*
+- Runbook curt (SAFETY_RUNBOOK) validat
 
 ---
 
-## Evidència recent
+## Gates de producció
 
-**2026-02-16**
-
-| Run | Resultat | Log |
-|-----|----------|-----|
-| **P3.2 gTrade aïllat** | ✅ run_all default = MVP Lighter (sense gTrade); --include-gtrade opt-in | testing/run_all.py |
-| **coverage_probe** (QA lab) | ✅ EURUSD+XAU mainnet: 72h missing=0, ts_step_err=0; decisió Lighter recent vs Dukascopy llarg | lab/out/coverage_mainnet_*.json |
-| **P3.1 Broker hang diagnostics** | ✅ Logs subprocess a fitxer; dump últimes 300 línies en fallada; heartbeat TESTING=1; test_freqtrade_runner_short → paper+fake (0 network) | testing/helpers/run_broker_subprocess.py |
-| **P3.0 PAPER bracket + liquidation** | ✅ tests + integration OK | test_paper_risk_engine, test_paper_bracket_orders_integration |
-| **Freqtrade paper 15 min** (venue=paper, fake feed) | ✅ open→position_pnl→close OK positions_after=0 candles=15 | `datafiles/freqtrade_runs/20260215_001044_ETH_15m.log` |
-| **Fix 429 rate-limit** (LIVE testnet) | ✅ close OK malgrat 429; fallback cache/positions_mark | Evidència run_freqtrade_live_testnet.sh 15 min |
-| **Paper soak real 120 min** | ✅ positions_after=0 missing_minutes=0 market_data_source=real candles=219 | `datafiles/freqtrade_runs/20260215_074407_ETH_120m_real.log` — latency_ohlcv_p95=17.8ms, latency_close_p95=6.4ms |
-
-**2026-02-15**
-
-| Run | Resultat | Log |
-|-----|----------|-----|
-| `testing/run_all.py` | ✅ 44 passed, 13 skipped (gTrade) | MVP Lighter default; P3.2 |
-| **WS Soak 15 min** (fake feed) | ✅ candles=15 status=OK | `datafiles/ws_soak/20260214_011714_ws_soak_15m.log` |
-| **WS Soak 15 min MAINNET EURUSD** (Lighter real) | ✅ candles=15 status=OK missing_minutes=0 | `datafiles/ws_soak/20260214_071609_ws_soak_15m_mainnet.log` |
-| **P1.1 SL/TP idempotència** | ✅ test_sltp_idempotency, test_lighter_adapter_sltp (8 tests) | reducció risc duplicació SL/TP en retries/restarts |
-| **P1.2 maker-first close** | ✅ test_close_maker_first (4 unit), test_close_position_maker_fallback_positions_after_zero (integration) | millor control de sortida i menys risc de slippage en closes |
-| **PAPER DONE handshake** | ✅ freqtrade_runner.py, test_freqtrade_runner_short (P3.1: paper+fake, 0 network) | Freqtrade-first: candles + price + open/close via HTTP, positions_after=0; no .env |
-| **GET /positions + PnL** | ✅ mark_price, unrealized_pnl a PositionItem | Veure com va la posició des de l'API sense calcular manualment |
-| **freqtrade_runner position_pnl** | ✅ --position-poll-s 30 (per defecte) | Cada 30s consulta GET /positions i loga mark_price, unrealized_pnl |
-| **freqtrade_runner closed_pnl** | ✅ després del close | GET /trades → close trade → calcula realized_pnl ($ i %) per comparar amb web; fix Lighter market_id→symbol |
-| **GET /mode market_data_source** | ✅ fake\|real\|n/a | Visible al freqtrade_runner per saber si preus són fake (3500 base) o reals (Lighter API). Evita confusió mark_price 3695 vs Lighter 2085. |
-| **Paper amb preus reals** | ✅ USE_FAKE_PRICE_FEED=0 + .env | Preus de Lighter mainnet (~2088$ ETH). Execució segueix sent simulada (zero tx). Evidència: mark_price 2087-2094, positions_after=0. |
-| **position_id fallback** | ✅ freqtrade_runner | Si open no retorna position_id, s'obté de GET /positions per poder tancar. |
-| **Evidència testnet PAPER** | ✅ múltiples runs 15 min | freqtrade_runner ETH 15m: open→position_pnl cada 30s→close→positions_after=0. Trade History web: PnL verificat ($3.80, -$3.26, $2.29) coincideix amb càlcul (open_price, close_price, size). Logs: `datafiles/freqtrade_runs/20260214_*_ETH_15m.log` |
-
-**2026-02-13**
-
-| Run | Resultat | Log |
-|-----|----------|-----|
-| Smoke 3× (lighter, 120s) | ✅ ok=3 failed=0 | `datafiles/smoke_runs/2026-02-13_154710_lighter_3x.log` |
-| E2E trade 3× (ETH, 100 USDC, 20x) | ✅ positions_after=0 | `datafiles/e2e_runs/2026-02-13_*_lighter_ETH.log` |
-| Soak 10 min (lighter, PAPER) | ✅ status=OK failed=0 | `datafiles/smoke_runs/soak_20260213_212644.log` |
-
----
-
-## Paper soak real (preus Lighter)
-
-Soak llarg amb PAPER (zero tx) i preus reals per validar estabilitat abans de Data Layer:
+| Gate | Criteri | Com validar |
+|------|---------|-------------|
+| **Gate 0 (Data Layer core)** | duplicates=0, ts_step_errors=0, missing≤1/24h, max_gap_s≤180, stale=0 | `curl data_status` + soak 2m |
+| **Gate 1 (serving)** | headers X-Data coherents, coverage coherent, read-through funciona | `curl -I ohlcv \| grep X-Data` |
+| **Gate 2 (ops)** | restart safe, data_status 200, logs path, rotació | `docker compose down && up` |
 
 ```bash
-# Soak 2h (mínim), 6h o 12h
-./scripts/soak_freqtrade_paper_real.sh 120   # 2h
-./scripts/soak_freqtrade_paper_real.sh 360   # 6h
-./scripts/soak_freqtrade_paper_real.sh 720   # 12h
+curl -s http://localhost:8000/api/v1/broker/data_status
+curl -s "http://localhost:8000/api/v1/broker/coverage?symbol=ETH&resolution=1m"
+curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-Data
+./test.sh testing/integration/test_data_layer_soak_metrics.py --minutes 2
 ```
 
-**Requisits:** `.env` amb credencials Lighter. **Health gate:** exit 2 (positions_after!=0), 3 (missing_minutes>1), 4 (market_data_source!=real). **Log:** `datafiles/freqtrade_runs/<ts>_ETH_<N>m_real.log`
+---
+
+## Checklist Avui / Demà
+
+**Avui (D0):**
+- [ ] Prefetch recent (N hores/dies) a prod env
+- [ ] Scheduler (cron/loop) + idempotència
+- [ ] Alert mínim: stale>… / missing>… / duplicates>0
+- [ ] Rotació artifacts/logs
+
+**Demà (D1):**
+- [ ] Soak 6–12h amb prefetch actiu
+- [ ] Cutover policy: primary/fallback per símbol (EURUSD especial)
+- [ ] Doc curta "operar data layer" (runbook)
+
+---
+
+## Estat per àrees
+
+| Àrea | Estat | Notes |
+|------|-------|-------|
+| Broker API | ✅ | `/api/v1/broker/*`, POST body |
+| Execution (paper/live) | ✅/🟡 | Lighter paper OK; live hardening 90% |
+| Data Layer | ✅ | P4–P7c; EURUSD REST candlestick no apte (zero_range) |
+| Backtest | ⛔ | Pipeline pendent |
+| Ostium LAB | 🧪 | Validació RWA; [lab/ostium/README.md](../lab/ostium/README.md) |
+
+---
+
+## Evidència recent (5 ítems)
+
+| Run | Resultat |
+|-----|----------|
+| `run_all.py` | ✅ passa (default) |
+| **Ostium compat (388c)** | ✅ PARTIAL — Corr 0.976, Dir 92.7% |
+| **Lab Ostium** | 🏃 24h captura en curs (lab/ostium) |
+| **P7 Mixed gated** | ✅ stitching primary/fallback/mixed |
+| **Data Layer soak** | ✅ 2m testnet: missing=0, dup=0 |
+
+**Detall:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 
 ---
 
 ## Comandes ràpides
 
 ```bash
-# Suite general (MVP Lighter: core+Lighter, sense gTrade)
 ./test.sh testing/run_all.py
-
-# Incloure gTrade (pot fallar sense .env Arbitrum)
-./test.sh testing/run_all.py --include-gtrade
-
-# Lighter SL/TP + Balance (integration mock)
-./test.sh testing/integration/test_lighter_adapter_sltp.py
-
-# P1.2 maker-first close (unit + integration)
-./test.sh testing/unit/test_close_maker_first.py
-./test.sh testing/integration/test_lighter_adapter_close.py
-
-# PAPER DONE handshake (P3.1: paper+fake, 0 network — CI-friendly)
-./test.sh testing/integration/test_freqtrade_runner_short.py
-./test.sh testing/integration/test_freqtrade_runner_short_paper.py
-# Manual freqtrade: broker amb VENUE=paper o VENUE=lighter (docker compose up -d brokerage)
-docker compose run --rm brokerage python3 -m application.tools.freqtrade_runner --venue lighter --mode PAPER --symbol ETH --minutes 15
-
-# venue=paper (zero tx, sense Lighter): VENUE=paper + MODE=paper + ENABLE_LIVE_TRADING=0
-./test.sh testing/integration/test_freqtrade_runner_short_paper.py
-./scripts/run_freqtrade_paper.sh 3   # 3 min (script espera broker + executa runner)
-# Paper amb preus FAKE (sense .env): USE_FAKE_PRICE_FEED=1
-MODE=paper VENUE=paper ENABLE_LIVE_TRADING=0 USE_FAKE_PRICE_FEED=1 SYMBOLS=ETH,BTC docker compose up -d brokerage
-# Paper amb preus REALS (cal .env Lighter): USE_FAKE_PRICE_FEED=0, mark_price ~2088$
-MODE=paper VENUE=paper ENABLE_LIVE_TRADING=0 USE_FAKE_PRICE_FEED=0 SYMBOLS=ETH,BTC LIGHTER_SYMBOLS=ETH,BTC docker compose up -d brokerage
-# Esperar ~10s; després (host.docker.internal evita NameResolutionError):
-docker compose run --rm brokerage python3 -m application.tools.freqtrade_runner \
-  --broker-url http://host.docker.internal:8000 --venue paper --symbol ETH --minutes 15
-
-# LIVE testnet (tx reals, comparar preus/PnL amb web):
-./scripts/run_freqtrade_live_testnet.sh 15   # 15 min
-# Manual: MODE=live VENUE=lighter ENABLE_LIVE_TRADING=1 MARKET_DATA_ENV=testnet docker compose up -d brokerage
-# Després: freqtrade_runner --venue lighter --symbol ETH --minutes 15
-# Comparar: mark_price, unrealized_pnl, realized_pnl del log vs testnet.app.lighter.xyz Trade History
-
-# Smoke (Docker)
-docker compose run --rm brokerage python3 -m application.smoke --venue mock --mode PAPER --seconds 5
-docker compose run --rm brokerage python3 -m application.smoke --venue lighter --mode PAPER --seconds 120 --repeat 3 --pause-s 5
-
-# E2E trade (Docker, paper testnet)
-docker compose run --rm brokerage python3 -m application.e2e_trade \
-  --venue lighter --mode PAPER --symbol ETH --collateral 100 --leverage 20 \
-  --settle-timeout-s 120 --poll-s 2
-
-# Soak smoke (10 min; veure SAFETY_RUNBOOK.md)
-./scripts/soak_smoke.sh
-# o 15 min: ./scripts/soak_smoke.sh 900
-
-# WS Soak (P2.1): 15 min, valida pipeline candles via WS
-# Broker amb pipeline: docker compose -f docker-compose.yml -f docker-compose.soak.yml up -d
-./scripts/soak_ws.sh        # 15 min
-./scripts/soak_ws.sh 900    # 15 min
-./scripts/soak_ws_quick.sh  # test ràpid 60s
-
-# WS Soak MAINNET (P2.2): 15 min, Lighter real feed
-# Requereix: .env amb credencials Lighter
-./scripts/soak_ws_mainnet.sh        # 15 min
-./scripts/soak_ws_mainnet.sh 900    # 15 min
-
-# WS Soak: OHLCV visible al log (O, H, L, C, V per candle)
-# Per EURUSD/XAU (Lighter): docker-compose.mainnet-eurusd.yml + --topic candle:EURUSD:1m
-docker compose run --rm brokerage python3 -m application.tools.ws_soak \
-  --minutes 1 --autodetect-symbols --venue lighter   # Lighter (ETH/BTC)
-docker compose run --rm brokerage python3 -m application.tools.ws_soak \
-  --minutes 1 --topic candle:EURUSD:1m              # EURUSD (si broker té pipeline gTrade)
+curl -s http://localhost:8000/api/v1/broker/data_status
+curl -s "http://localhost:8000/api/v1/broker/coverage?symbol=ETH&resolution=1m"
+curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-Data
+./test.sh testing/integration/test_data_layer_soak_metrics.py --minutes 2
+./test.sh testing/run_all.py --include-data-layer-soak
+docker compose build brokerage
+docker compose down && docker compose up -d brokerage
 ```
 
----
-
-## Backlog (prioritzat)
-
-### P0 — DONE
-
-* P0.1 close_position idempotent contra parcials ✅
-* P0.2 force_close_remaining si timeout ✅
-* P0.3 Evidència 3× E2E consecutius ✅
-* P0.4 Freqtrade PAPER mainnet-data (MARKET_DATA_ENV, wiring, GET /mode) ✅
-* P0.5 Soak smoke 10 min (lighter, PAPER) ✅
-
-### P1
-
-* ~~trade history (IVenueAdapter)~~ ✅ P1 DONE — GET /trades, TradeFill, Lighter account_trades, gTrade stub
-* ~~Coding standards~~ ✅ constants canòniques (foundation/config, error_codes), zero hardcode a broker_routes (AGENTS §2.4)
-* ~~idempotència SL/TP (si cal)~~ ✅ P1.1 DONE — idempotency key, persistència order indices, cancel no-op, logs sltp_*
-* ~~maker-first close (opcional)~~ ✅ P1.2 DONE — limit reduce-only + timeout + fallback market; logs close_path/close_final; millor control de sortida i menys risc de slippage
-* ~~PAPER DONE handshake~~ ✅ freqtrade_runner.py (client HTTP pur) + test_freqtrade_runner_short; AGENTS §2.6
-
-### P2
-
-* ~~Safety runbook~~ ✅ docs/SAFETY_RUNBOOK.md + scripts/soak_smoke.sh
-* ~~Soak 10 min~~ ✅ soak_20260213_212644.log (10 ticks, status=OK)
-* ~~P2.0 WS Soak Preflight~~ ✅ pipeline al lifespan (VENUE=lighter, MODE in paper/live), ws_preflight.py, test_ws_preflight_contract
-* ~~P2.0.1 Fake price feed + WS preflight integració~~ ✅ USE_FAKE_PRICE_FEED=1, test_ws_preflight_integration_real (broker real, fake feed, sense xarxa)
-* ~~Soak WS 15 min / telemetria (P2.1)~~ ✅ ws_soak.py, scripts/soak_ws.sh, docker-compose.soak.yml, evidència 20260214_011714 (15 candles, status=OK)
-* ~~P2.2 WS soak 15 min mainnet (real feed)~~ ✅ scripts/soak_ws_mainnet.sh, autodetect, EURUSD/XAU (docker-compose.mainnet-eurusd.yml), evidència 20260214_071609
-* ~~market_data_source + paper preus reals~~ ✅ GET /mode market_data_source (fake|real), freqtrade_runner ho mostra; paper amb USE_FAKE_PRICE_FEED=0 → preus ~2088$; position_id fallback
-* ~~Fix Lighter 429 rate-limit~~ ✅ PriceSnapshotCache compartit (candle pipeline, GET /price, close); 429 retry amb backoff; fallback cache stale / positions_mark; logs price_source; PRICE_CACHE_TTL_S, PRICE_STALE_MAX_S, PRICE_FETCH_DEADLINE_S
-* Normalització addresses checksum
-
-### P3
-
-* ~~P3.0 PAPER bracket + liquidation~~ ✅ test_paper_risk_engine, test_paper_bracket_orders_integration
-* ~~P3.1 Broker hang diagnostics~~ ✅ Logs subprocess a fitxer; heartbeat TESTING=1; test_freqtrade_runner_short → paper+fake (0 network)
-* ~~P3.2 gTrade aïllat~~ ✅ run_all default = MVP Lighter; --include-gtrade opt-in
-
-### Data Layer (P4→P8)
-
-* **Lab: Historical Candles Feasibility** — `fetch_historical_candles.py` (paginator, normalització 1m, CSV). Conclusió: viable com a primary backfill per EURUSD/XAU mainnet. Doc: [LAB_LIGHTER_HISTORICAL.md](LAB_LIGHTER_HISTORICAL.md)
-* **Lab: coverage_probe** — `coverage_probe.py` (earliest/latest binary search, validació 72h). Evidència: `lab/out/coverage_mainnet_EURUSD.json`, `coverage_mainnet_XAUUSD.json`. **Decisió:** Lighter recent viable (72h OK); Dukascopy per històric pre-Lighter.
-* **Lab: time_semantics_probe (P0.3b)** — `time_semantics_probe.py` (TZ + boundary). Evidència: `lab/out/time_semantics_EURUSD.json`. **Conclusió:** t és UTC start-of-minute; retorna només tancades (latest = now_floor - 60). NO conversió TZ.
-* **P4.0 — Durable Recorder v0** (Lighter primary, 2 symbols, 2h soak gate): MarketDataRecorderService (startup_backfill, append_closed_candle), GapDetector, HistoricalBackfillService (paginator ≤500, sleep 1.05s). Test: gap manual → verifica repair. DONE: soak 2h amb missing_minutes≤1, duplicates_after_dedup==0, ts_step_errors==0, monotonic_ts; log a `datafiles/soak_data_layer/`. `latest_closed_ts = now_floor_utc_ts - 60`.
-* **P4.1 — WS vs Candlestick Consistency** (després P4.0): Mini-probe 60 min; WS-built vs REST per ts; missing_ts==0, close_diff_p95 sota llindar.
-* **P5** — Headers + coverage: `X-Data-Source`, `X-Data-Gaps`, `X-Data-Repair`, `/coverage`
-* **P6** — Dukascopy provider + `compat_probe` (Gate A + Gate B, 72h, strategy-level)
-* **P7** — Mixed gated stitching (per EURUSD/XAUUSD; mixed només si PASS)
-* **P8** (futur) — Read-through gap serving sense contaminar primary
+**Més comandes:** [_archive/ESTAT_2026Q1.md § Annex](_archive/ESTAT_2026Q1.md)
 
 ---
 
-## Arxiu
+## Notes crítiques
 
-**Històric complet (read-only):** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md) — milestones, invariants Lighter, notes gTrade openPrice, historial detallat, definició DONE.
+- **EURUSD Lighter REST candlestick: DATA_QUALITY_FAIL** (zero_range alt) → no apte per backtest; no declarar primary històric.
+- **WS Candle Collector** és el camí per validar candles WS com a alternativa.
+- **XAU PARTIAL** — corr/dir_agree dins llindars; offset acceptable.
+
+---
+
+## Backlog curt (Top 10 — Data Layer prod)
+
+1. Prefetch job (backfill recent + idempotència)
+2. Scheduler (cron/loop) per prefetch
+3. Gates automàtics (Gate 0 + alerting mínim)
+4. Rotació artifacts/logs
+5. Cutover policy per símbol (EURUSD)
+6. Degradació segura (fallback-only si compat FAIL)
+7. Soak 6–12h amb prefetch actiu
+8. Doc "operar data layer" (runbook)
+9. Ostium compat 1440c (PASS esperat)
+10. Backtest pipeline (contracte)
+
+**Backlog complet:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)

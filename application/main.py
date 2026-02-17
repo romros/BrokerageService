@@ -95,16 +95,25 @@ async def lifespan(app: FastAPI):
         canonical_tz=config["canonical_tz"],
     )
 
+    # P7: Fallback provider (Dukascopy) per mixed stitching — opcional
+    fallback_provider = None
+    try:
+        from infrastructure.venues.dukascopy.dukascopy_backfill_provider import DukascopyBackfillProvider  # lazy: evita carregar Dukascopy si no es fa servir P7
+        fallback_provider = DukascopyBackfillProvider(cache_root=config["datafiles_root"])
+    except Exception as e:
+        logger.debug("P7 fallback provider not available: %s", e)
+
     # Set broker API dependencies. Paper = zero tx; Lighter = tx reals.
     adapter = None
     market_data_service = None
+    backfill_service = None
     use_fake_feed = os.getenv(USE_FAKE_PRICE_FEED_ENV, "").strip() == "1"
     enable_live = config["enable_live_trading"]
     mode_lower = (config["mode"] or "").lower()
     # PAPER: zero tx. Kill switch: ENABLE_LIVE_TRADING=0 → paper. No paper si venue=gtrade (backtest).
     use_paper_execution = (mode_lower == "paper" or not enable_live) and venue in ("", "lighter", "paper")
 
-    from infrastructure.builders.lighter_di import build_lighter_paper_market_data
+    from infrastructure.builders.lighter_di import build_lighter_paper_market_data  # lazy: evita carregar lighter si venue=gtrade
     from infrastructure.venues.lighter.config import (
         get_lighter_symbols_from_env,
         get_lighter_tick_interval_ms,
@@ -126,7 +135,7 @@ async def lifespan(app: FastAPI):
         )
 
         async def _get_price(sym: str):
-            from domain.models import PriceData
+            from domain.models import PriceData  # local import dins closure (evita circular)
             from datetime import datetime, timezone
             p = market_data_service.get_latest_price(sym)
             ts = datetime.now(timezone.utc)
@@ -134,7 +143,7 @@ async def lifespan(app: FastAPI):
                 return PriceData(symbol=sym, bid=0, ask=0, mid=0, timestamp=ts)
             return PriceData(symbol=sym, bid=p, ask=p, mid=p, timestamp=ts)
 
-        from infrastructure.venues.paper.paper_venue_adapter import PaperVenueAdapter
+        from infrastructure.venues.paper.paper_venue_adapter import PaperVenueAdapter  # lazy: evita carregar paper si venue=gtrade
         paper_adapter = PaperVenueAdapter(get_price=_get_price, symbols=symbols)
         await paper_adapter.start()
         adapter = paper_adapter
@@ -145,6 +154,7 @@ async def lifespan(app: FastAPI):
             venue="paper",
             market_data_env=config["market_data_env"],
             market_data_source=source,
+            fallback_provider=fallback_provider,
         )
     elif venue == "lighter":
         # Lazy: evita carregar lighter si --venue gtrade
@@ -171,6 +181,7 @@ async def lifespan(app: FastAPI):
                 venue=venue,
                 market_data_env=config["market_data_env"],
                 market_data_source=source,
+                fallback_provider=fallback_provider,
             )
         else:
             adapter_mode = "live" if config["enable_live_trading"] else "paper"
@@ -186,6 +197,7 @@ async def lifespan(app: FastAPI):
                 venue=venue,
                 market_data_env=config["market_data_env"],
                 market_data_source=source,
+                fallback_provider=fallback_provider,
             )
 
         # P2.0: Arrencar pipeline ticks→candles→store→WS quan MODE in (paper, live)
@@ -214,9 +226,42 @@ async def lifespan(app: FastAPI):
             venue=venue,
             market_data_env=config["market_data_env"],
             market_data_source="n/a",
+            fallback_provider=fallback_provider,
         )
 
     logger.info("✓ BrokerageService ready")
+
+    # P7c: DataLayerMetrics (telemetria) quan tenim pipeline
+    if market_data_service is not None:
+        from application.data.data_layer_metrics import DataLayerMetrics, set_data_layer_metrics  # lazy: només quan hi ha pipeline
+        set_data_layer_metrics(DataLayerMetrics())
+
+    # P4.0: BackfillService (gap repair) quan tenim Lighter market data
+    if market_data_service is not None:
+        try:
+            from application.services.backfill_service import BackfillService  # lazy: només quan hi ha pipeline
+            from infrastructure.venues.lighter.lighter_candlestick_backfill_provider import (  # lazy: només quan hi ha pipeline
+                LighterCandlestickBackfillProvider,
+            )
+            backfill_symbols = [
+                s.strip() for s in os.getenv("BACKFILL_SYMBOLS", "EURUSD,XAUUSD").split(",")
+                if s.strip()
+            ]
+            if backfill_symbols:
+                backfill_provider = LighterCandlestickBackfillProvider()
+                backfill_service = BackfillService(
+                    store=candle_store,
+                    provider=backfill_provider,
+                    symbols=backfill_symbols,
+                    corrective_window_minutes=int(os.getenv("CORRECTIVE_WINDOW_MINUTES", "60")),
+                    interval_seconds=int(os.getenv("BACKFILL_INTERVAL_SECONDS", "600")),
+                )
+                await backfill_service.start()
+                logger.info("P4.0 BackfillService started symbols=%s", backfill_symbols)
+                # P8.0: Exposar primary provider per read-through (response-only)
+                set_broker_deps(primary_backfill_provider=backfill_provider)
+        except Exception as e:
+            logger.warning("P4.0 BackfillService not started: %s", e)
 
     # P3.1: Heartbeat per diagnostics (TESTING=1 o BROKER_DIAG=1)
     heartbeat_task = None
@@ -242,6 +287,12 @@ async def lifespan(app: FastAPI):
 
     logger.info("🛑 Shutting down BrokerageService...")
     effective_venue = "paper" if use_paper_execution else venue
+    if backfill_service:
+        try:
+            await backfill_service.stop()
+            logger.info("P4.0 BackfillService stopped")
+        except Exception as e:
+            logger.error("BackfillService stop error: %s", e)
     if market_data_service:
         try:
             await market_data_service.stop()

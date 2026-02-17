@@ -1,0 +1,2 @@
+{"ts": 1771289880, "resolution": "1m", "o": 6122.58, "h": 6123.77, "l": 6122.58, "c": 6123.77, "v": 120.0, "source": "lighter_ws", "topic": "candle:ETH:1m", "recv_ts": 1771289940}
+{"ts": 1771289940, "resolution": "1m", "o": 6123.780000000001, "h": 6124.97, "l": 6123.780000000001, "c": 6124.97, "v": 120.0, "source": "lighter_ws", "topic": "candle:ETH:1m", "recv_ts": 1771290000}

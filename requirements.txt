@@ -25,6 +25,9 @@ web3>=7.0.0
 # Lighter DEX SDK (for LIVE mode - Lighter venue)
 lighter-sdk>=1.0.0
 
+# Dukascopy (P6 fallback històric - EURUSD, XAUUSD)
+dukascopy-python>=4.0.0
+
 # Testing (optional - we use simple scripts, not pytest)
 # pytest==8.0.0
 # pytest-asyncio==0.23.3

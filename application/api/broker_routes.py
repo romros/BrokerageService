@@ -42,6 +42,11 @@ from domain.errors import PositionNotFoundError, MarketNotFoundError
 from foundation.config.constants import (
     CANONICAL_TIMEZONE,
     CANONICAL_TIMEZONE_NAME,
+    DEFAULT_READ_THROUGH_MAX_MISSING,
+    DEFAULT_READ_THROUGH_TIMEOUT_S,
+    ENABLE_READ_THROUGH_ENV,
+    READ_THROUGH_MAX_MISSING_ENV,
+    READ_THROUGH_TIMEOUT_ENV,
     SUPPORTED_TIMEFRAME,
     DEFAULT_CANDLES_LIMIT,
     DEFAULT_OHLCV_LIMIT,
@@ -68,6 +73,7 @@ _venue: str = "gtrade"
 _market_data_env: str = "mainnet"
 _market_data_source: str = "n/a"  # fake|real|n/a — visible a GET /mode i freqtrade_runner
 _fallback_provider: Optional[Any] = None  # P7: DukascopyBackfillProvider (read-only)
+_primary_backfill_provider: Optional[Any] = None  # P8: LighterCandlestickBackfillProvider (read-through)
 
 
 def set_broker_deps(
@@ -78,15 +84,18 @@ def set_broker_deps(
     market_data_env: str = _UNSET,
     market_data_source: str = _UNSET,
     fallback_provider: Any = _UNSET,
+    primary_backfill_provider: Any = _UNSET,
 ) -> None:
     """Inject dependencies for broker routes."""
-    global _candle_store, _adapter_factory, _mode, _venue, _market_data_env, _market_data_source, _fallback_provider
+    global _candle_store, _adapter_factory, _mode, _venue, _market_data_env, _market_data_source, _fallback_provider, _primary_backfill_provider
     if candle_store is not _UNSET:
         _candle_store = candle_store
     if adapter_factory is not _UNSET:
         _adapter_factory = adapter_factory
     if fallback_provider is not _UNSET:
         _fallback_provider = fallback_provider
+    if primary_backfill_provider is not _UNSET:
+        _primary_backfill_provider = primary_backfill_provider
     if mode is not _UNSET:
         _mode = mode
     if venue is not _UNSET:
@@ -288,8 +297,9 @@ def _build_p5_headers(
     symbol: str,
     source: str = "primary",
     cutover_ts: Optional[int] = None,
+    read_through_stats: Optional[Any] = None,
 ) -> dict[str, str]:
-    """P5/P7: Headers d'observabilitat OHLCV (coverage, gaps, repair)."""
+    """P5/P7/P8: Headers d'observabilitat OHLCV (coverage, gaps, repair)."""
     report = GapValidator.validate(
         candle_range.candles, start, end, symbol=symbol
     )
@@ -298,8 +308,14 @@ def _build_p5_headers(
         if report.gaps
         else 0
     )
-    repair_at, repair_filled, repair_symbol = get_last_repair()
-    repair_status = "applied" if repair_filled > 0 and repair_symbol == symbol else "none"
+    if read_through_stats is not None:
+        repair_status = read_through_stats.repair_status
+        repair_filled = read_through_stats.filled
+        repair_requested = read_through_stats.requested
+    else:
+        repair_at, repair_filled, repair_symbol = get_last_repair()
+        repair_status = "applied" if repair_filled > 0 and repair_symbol == symbol else "none"
+        repair_requested = repair_filled
 
     headers: dict[str, str] = {
         "X-Data-Source": source,
@@ -308,7 +324,8 @@ def _build_p5_headers(
         "X-Data-Missing-Minutes": str(report.missing_count),
         "X-Data-Max-Gap-S": str(max_gap_s),
         "X-Data-Repair": repair_status,
-        "X-Data-Repair-Filled": str(repair_filled if repair_status == "applied" else 0),
+        "X-Data-Repair-Filled": str(repair_filled),
+        "X-Data-Repair-Requested": str(repair_requested),
     }
     if source == "mixed" and cutover_ts is not None:
         headers["X-Data-Cutover-Ts"] = str(cutover_ts)
@@ -376,8 +393,26 @@ async def _read_candles_response(
             _http_error(503, CANDLE_STORE_NOT_AVAILABLE, "Fallback provider not available")
 
     r = read_candles(store, symbol=symbol, start=start, end=end, validate_gaps=validate_gaps)
+    read_through_stats = None
+    if _primary_backfill_provider is not None:
+        enabled = os.getenv(ENABLE_READ_THROUGH_ENV, "").strip() == "1"
+        if enabled:
+            from application.data.compat_registry import get_compat_status
+            from application.services.read_through_service import maybe_fill_gaps_response_only
+            max_missing = int(os.getenv(READ_THROUGH_MAX_MISSING_ENV, str(DEFAULT_READ_THROUGH_MAX_MISSING)))
+            timeout_s = float(os.getenv(READ_THROUGH_TIMEOUT_ENV, str(DEFAULT_READ_THROUGH_TIMEOUT_S)))
+            r, read_through_stats = await maybe_fill_gaps_response_only(
+                symbol=symbol,
+                candle_range=r,
+                primary_provider=_primary_backfill_provider,
+                fallback_provider=_fallback_provider,
+                get_compat_status_fn=get_compat_status,
+                enabled=True,
+                max_missing=max_missing,
+                timeout_s=timeout_s,
+            )
     resp = _map_ohlcv_response(r, symbol, start, end)
-    headers = _build_p5_headers(r, start, end, symbol, source="primary")
+    headers = _build_p5_headers(r, start, end, symbol, source="primary", read_through_stats=read_through_stats)
     return JSONResponse(content=resp.model_dump(mode="json"), headers=headers)
 
 

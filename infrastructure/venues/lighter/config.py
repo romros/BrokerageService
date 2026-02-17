@@ -104,7 +104,7 @@ def get_lighter_tick_interval_ms() -> int:
 
 def get_price_cache_ttl_s() -> float:
     """Price cache TTL (seconds). Testnet uses 5s to reduce 429s."""
-    from foundation.config.constants import (
+    from foundation.config.constants import (  # lazy: evita circular config ↔ constants
         PRICE_CACHE_TTL_S_ENV,
         DEFAULT_PRICE_CACHE_TTL_S,
         DEFAULT_PRICE_CACHE_TTL_S_TESTNET,
@@ -122,7 +122,7 @@ def get_price_cache_ttl_s() -> float:
 
 def get_price_stale_max_s() -> float:
     """Max staleness for cache fallback when 429 (seconds)."""
-    from foundation.config.constants import PRICE_STALE_MAX_S_ENV, DEFAULT_PRICE_STALE_MAX_S
+    from foundation.config.constants import PRICE_STALE_MAX_S_ENV, DEFAULT_PRICE_STALE_MAX_S  # lazy: evita circular config ↔ constants
     try:
         return float(os.getenv(PRICE_STALE_MAX_S_ENV, str(DEFAULT_PRICE_STALE_MAX_S)))
     except ValueError:
@@ -131,7 +131,7 @@ def get_price_stale_max_s() -> float:
 
 def get_price_fetch_deadline_s() -> float:
     """Max total wait for price fetch retries on 429 (seconds)."""
-    from foundation.config.constants import PRICE_FETCH_DEADLINE_S_ENV, DEFAULT_PRICE_FETCH_DEADLINE_S
+    from foundation.config.constants import PRICE_FETCH_DEADLINE_S_ENV, DEFAULT_PRICE_FETCH_DEADLINE_S  # lazy: evita circular config ↔ constants
     try:
         return float(os.getenv(PRICE_FETCH_DEADLINE_S_ENV, str(DEFAULT_PRICE_FETCH_DEADLINE_S)))
     except ValueError:
