@@ -285,7 +285,7 @@ async def lifespan(app: FastAPI):
     # Ostium realtime writer (OSTIUM_ENABLED=1 + write_mode permet ingest)
     ostium_ingest_service = None
     ostium_symbols = [s.strip() for s in os.getenv("OSTIUM_SYMBOLS", os.getenv("SYMBOLS", "EURUSD,XAUUSD")).split(",") if s.strip()]
-    _write_mode = (cfg.get("write_mode", os.getenv("DATA_LAYER_WRITE_MODE", "realtime_plus_backfill")) if ostium_enabled else "realtime"
+    _write_mode = (cfg.get("write_mode", os.getenv("DATA_LAYER_WRITE_MODE", "realtime_plus_backfill")) if ostium_enabled else "realtime")
     _write_mode = str(_write_mode).lower()
     ostium_ingest_allowed = _write_mode in ("realtime_only", "realtime_plus_backfill")
     if ostium_enabled and ostium_symbols and ostium_ingest_allowed:
