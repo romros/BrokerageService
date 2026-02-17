@@ -7,7 +7,7 @@
 **TZ container (runtime/logs):** `TZ=America/New_York`  
 **Doc referència:** [AGENTS_ARQUITECTURA.md](../AGENTS_ARQUITECTURA.md)  
 **Runbook operatiu:** [SAFETY_RUNBOOK.md](SAFETY_RUNBOOK.md) (incidents, health checks, kill switches)  
-**Històric complet (read-only):** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
+**Històric (read-only):** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 
 **Recorda Docker:** Si has canviat codi, reconstruir abans: `docker compose build brokerage`. Vegeu AGENTS §11.
 
@@ -26,29 +26,23 @@
 
 ---
 
-## Focus (48h) — Data Layer en producció
+## Data Layer readiness gates (prod)
 
-**Objectiu:** activar Data Layer a prod amb **prefetch** + observability + gates, sense afectar execució.
+**Gate 0 (core):**
+- duplicates=0
+- ts_step_errors=0
+- missing ≤ 1/24h
+- max_gap_s ≤ 180
+- stale=0
 
-### Pla
-- **D0:** Prefetch recent + scheduler + gates/alerts mínims.
-- **D1:** Soak 6–12h + cutover policy per símbol + degradació segura.
-
-### Deliverables
-- Prefetch job (idempotent) per backfill recent (N hores/dies) + persistència
-- Gates automàtics: duplicates/ts_step/missing/max_gap/stale
-- Health endpoints: `/data_status`, `/coverage`, headers X-Data-*
-- Runbook curt (SAFETY_RUNBOOK) validat
-
----
-
-## Gates de producció
+**Gate 1 (serving):** headers X-Data coherents, coverage coherent, read-through funciona.  
+**Gate 2 (ops):** restart safe, data_status 200, logs path, rotació.
 
 | Gate | Criteri | Com validar |
 |------|---------|-------------|
-| **Gate 0 (Data Layer core)** | duplicates=0, ts_step_errors=0, missing≤1/24h, max_gap_s≤180, stale=0 | `curl data_status` + soak 2m |
-| **Gate 1 (serving)** | headers X-Data coherents, coverage coherent, read-through funciona | `curl -I ohlcv \| grep X-Data` |
-| **Gate 2 (ops)** | restart safe, data_status 200, logs path, rotació | `docker compose down && up` |
+| Gate 0 | Data Layer core | `curl data_status` + soak 2m |
+| Gate 1 | serving | `curl -I ohlcv \| grep X-Data` |
+| Gate 2 | ops | `docker compose down && up` |
 
 ```bash
 curl -s http://localhost:8000/api/v1/broker/data_status
@@ -59,44 +53,38 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 
 ---
 
-## Checklist Avui / Demà
+## Evidència recent
 
-**Avui (D0):**
+| Data | Run | Resultat | Artifact/Log |
+|------|-----|----------|--------------|
+| 2026-02-17 | `run_all.py` | ✅ passa | testing/run_all.py |
+| 2026-02-17 | Ostium compat (388c) | ✅ PARTIAL — Corr 0.976, Dir 92.7% | lab/out/ostium_compat_EURUSD_388c.json |
+| 2026-02-17 | Lab Ostium | 🏃 24h captura en curs | lab/ostium |
+| 2026-02-17 | P7 Mixed gated | ✅ stitching primary/fallback/mixed | — |
+| 2026-02-17 | Data Layer soak | ✅ 2m: missing=0, dup=0 | test_data_layer_soak_metrics |
+
+**Detall:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
+
+---
+
+## Backlog (properes 48h)
+
+**Objectiu:** activar Data Layer a prod amb prefetch + observability + gates.
+
+**D0:**
 - [ ] Prefetch recent (N hores/dies) a prod env
 - [ ] Scheduler (cron/loop) + idempotència
 - [ ] Alert mínim: stale>… / missing>… / duplicates>0
 - [ ] Rotació artifacts/logs
 
-**Demà (D1):**
+**D1:**
 - [ ] Soak 6–12h amb prefetch actiu
 - [ ] Cutover policy: primary/fallback per símbol (EURUSD especial)
-- [ ] Doc curta "operar data layer" (runbook)
+- [ ] Doc "operar data layer" (runbook)
 
----
+**Top 10:** Prefetch job, Scheduler, Gates automàtics, Rotació, Cutover policy, Degradació segura, Soak 6–12h, Doc runbook, Ostium compat 1440c, Backtest pipeline.
 
-## Estat per àrees
-
-| Àrea | Estat | Notes |
-|------|-------|-------|
-| Broker API | ✅ | `/api/v1/broker/*`, POST body |
-| Execution (paper/live) | ✅/🟡 | Lighter paper OK; live hardening 90% |
-| Data Layer | ✅ | P4–P7c; EURUSD REST candlestick no apte (zero_range) |
-| Backtest | ⛔ | Pipeline pendent |
-| Ostium LAB | 🧪 | Validació RWA; [lab/ostium/README.md](../lab/ostium/README.md) |
-
----
-
-## Evidència recent (5 ítems)
-
-| Run | Resultat |
-|-----|----------|
-| `run_all.py` | ✅ passa (default) |
-| **Ostium compat (388c)** | ✅ PARTIAL — Corr 0.976, Dir 92.7% |
-| **Lab Ostium** | 🏃 24h captura en curs (lab/ostium) |
-| **P7 Mixed gated** | ✅ stitching primary/fallback/mixed |
-| **Data Layer soak** | ✅ 2m testnet: missing=0, dup=0 |
-
-**Detall:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
+**Backlog complet:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 
 ---
 
@@ -125,17 +113,13 @@ docker compose down && docker compose up -d brokerage
 
 ---
 
-## Backlog curt (Top 10 — Data Layer prod)
+## Estat per àrees
 
-1. Prefetch job (backfill recent + idempotència)
-2. Scheduler (cron/loop) per prefetch
-3. Gates automàtics (Gate 0 + alerting mínim)
-4. Rotació artifacts/logs
-5. Cutover policy per símbol (EURUSD)
-6. Degradació segura (fallback-only si compat FAIL)
-7. Soak 6–12h amb prefetch actiu
-8. Doc "operar data layer" (runbook)
-9. Ostium compat 1440c (PASS esperat)
-10. Backtest pipeline (contracte)
+| Àrea | Estat | Notes |
+|------|-------|-------|
+| Broker API | ✅ | `/api/v1/broker/*`, POST body |
+| Execution (paper/live) | ✅/🟡 | Lighter paper OK; live hardening 90% |
+| Data Layer | ✅ | P4–P7c; EURUSD REST candlestick no apte (zero_range) |
+| Backtest | ⛔ | Pipeline pendent |
+| Ostium LAB | 🧪 | Validació RWA; [lab/ostium/README.md](../lab/ostium/README.md) |
 
-**Backlog complet:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)

@@ -16,7 +16,7 @@
 
 - **Multi-venue per disseny:** un venue pot aportar **execució**, **market data**, o totes dues coses.
 - **Data Layer és canònic:** candles 1m es serveixen **sense venue** via `candle_store` + policy (primary/fallback/mixed).
-- **Primary data (target RWA/FX):** **Ostium polling recorder** (candles 1m construïdes i gravades pel servei).
+- **Primary data (target):** Ostium polling recorder (planned; avui Lighter exec MVP + data-layer en curs).
 - **Fallback històric:** **Dukascopy** (read-only) amb stitching **gated** per compat.
 - **Exec venue (actual):** Lighter està implementat i "execution-ready". El canvi d'execució (p.ex. Ostium) ve després.
 - ✅ **Normes de codi:** imports a capçalera + zero hardcode.

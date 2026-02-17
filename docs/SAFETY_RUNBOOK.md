@@ -115,3 +115,4 @@ docker compose down && docker compose up -d brokerage
 **Exec sanity (annex):** smoke 3×, e2e 3× positions_after=0, soak 10 min.
 
 **Referència:** [docs/ESTAT.md](ESTAT.md)
+
