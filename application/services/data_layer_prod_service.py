@@ -25,6 +25,7 @@ from application.data.data_layer_metrics import (
 )
 from foundation.config.constants import (
     DATA_LAYER_ENABLED_ENV,
+    DATA_LAYER_WRITE_MODE_ENV,
     DATA_LAYER_GATES_MAX_GAP_S_ENV,
     DATA_LAYER_GATES_MAX_MISSING_PER_24H_ENV,
     DATA_LAYER_PREFETCH_MINUTES_ENV,
@@ -43,10 +44,14 @@ def _get_config() -> dict:
     """Llegeix config des d'env."""
     symbols_raw = os.getenv(DATA_LAYER_WRITE_SYMBOLS_ENV) or os.getenv("SYMBOLS", "XAUUSD,EURUSD")
     symbols = [s.strip() for s in symbols_raw.split(",") if s.strip()]
+    write_mode = os.getenv(DATA_LAYER_WRITE_MODE_ENV, "realtime").lower()
+    if write_mode not in ("realtime", "backfill_only"):
+        write_mode = "realtime"
     return {
         "enabled": os.getenv(DATA_LAYER_ENABLED_ENV, "0") == "1",
         "prefetch_minutes": int(os.getenv(DATA_LAYER_PREFETCH_MINUTES_ENV, str(DEFAULT_DATA_LAYER_PREFETCH_MINUTES))),
         "symbols": symbols,
+        "write_mode": write_mode,
         "max_gap_s": int(os.getenv(DATA_LAYER_GATES_MAX_GAP_S_ENV, str(DEFAULT_DATA_LAYER_GATES_MAX_GAP_S))),
         "max_missing_per_24h": int(
             os.getenv(DATA_LAYER_GATES_MAX_MISSING_PER_24H_ENV, str(DEFAULT_DATA_LAYER_GATES_MAX_MISSING_PER_24H))
@@ -70,6 +75,7 @@ class DataLayerProdService:
         max_missing_per_24h: int = 1,
         stale_seconds: int = 180,
         writer_interval_seconds: int = 60,
+        write_mode: str = "realtime",
     ):
         self.store = store
         self.provider = provider
@@ -79,6 +85,7 @@ class DataLayerProdService:
         self.max_missing_per_24h = max_missing_per_24h
         self.stale_seconds = stale_seconds
         self.writer_interval_seconds = writer_interval_seconds
+        self.write_mode = write_mode  # realtime | backfill_only
 
         self._running = False
         self._task: Optional[asyncio.Task] = None
@@ -108,9 +115,13 @@ class DataLayerProdService:
         if self.prefetch_minutes > 0:
             await self._run_prefetch()
 
-        # Writer loop
-        self._task = asyncio.create_task(self._writer_loop())
-        logger.info("DataLayerProdService started")
+        # Writer loop (només si realtime; backfill_only = Ostium escriu realtime)
+        if self.write_mode == "realtime":
+            self._task = asyncio.create_task(self._writer_loop())
+        else:
+            # backfill_only: només gate metrics loop
+            self._task = asyncio.create_task(self._gate_metrics_loop())
+        logger.info("DataLayerProdService started write_mode=%s", self.write_mode)
 
     async def stop(self) -> None:
         """Atura el servei."""
@@ -185,6 +196,19 @@ class DataLayerProdService:
                 break
             except Exception as e:
                 logger.error("DataLayerProdService writer_loop error: %s", e)
+                await asyncio.sleep(10)
+
+    async def _gate_metrics_loop(self) -> None:
+        """Loop només per actualitzar gate metrics (backfill_only mode)."""
+        while self._running:
+            try:
+                await asyncio.sleep(self.writer_interval_seconds)
+                if self._running:
+                    self._update_gate_metrics()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("DataLayerProdService gate_metrics_loop error: %s", e)
                 await asyncio.sleep(10)
 
     async def _write_next_if_missing(self, symbol: str, target_ts: datetime) -> None:

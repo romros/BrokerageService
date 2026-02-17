@@ -276,6 +276,7 @@ def main():
         testing_dir / "unit" / "test_broker_api_trades.py",  # P1 GET /trades
         testing_dir / "unit" / "test_p5_ohlcv_headers_coverage.py",  # P5 Data Observability v0
         testing_dir / "unit" / "test_data_layer_prod_service.py",  # Data Layer prod v0 (prefetch, writer, gates)
+        testing_dir / "unit" / "test_ostium_ingest.py",  # Ostium ingest (0-network)
         testing_dir / "unit" / "test_data_layer_startup_gate.py",  # Startup gate (0 network)
         testing_dir / "unit" / "test_data_layer_run_eval.py",  # run eval exit codes (0 network)
         testing_dir / "unit" / "test_compose_profiles.py",  # profiles resolen paths, compose config (0 network)

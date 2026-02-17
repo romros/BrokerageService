@@ -80,7 +80,6 @@ case "$PROFILE" in
       --venue lighter --mode PAPER --seconds "$DURATION" --log-path "$LOG_PATH"
     ;;
   ostium)
-    echo "Ostium: placeholder (usar data-layer per ara)"
     python3 -m application.tools.data_layer_smoke
     ;;
   *)

@@ -28,6 +28,17 @@ def test_profile_files_exist():
 def test_compose_config_valid():
     """docker compose config amb override data-layer valida (skip si docker no disponible)."""
     override = OVERRIDES_DIR / "data-layer.yml"
+    _run_compose_config(override)
+
+
+def test_compose_config_ostium_valid():
+    """docker compose config amb override ostium valida (skip si docker no disponible)."""
+    override = OVERRIDES_DIR / "ostium.yml"
+    _run_compose_config(override)
+
+
+def _run_compose_config(override):
+    """Compose config amb override (skip si docker no disponible)."""
     try:
         result = subprocess.run(
             [
@@ -52,6 +63,7 @@ def test_compose_config_valid():
 def run_tests():
     test_profile_files_exist()
     test_compose_config_valid()
+    test_compose_config_ostium_valid()
     print("test_compose_profiles: all passed")
 
 

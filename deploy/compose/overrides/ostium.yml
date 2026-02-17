@@ -1,12 +1,24 @@
-# Placeholder per Ostium (market data live collector, sense històric)
-# Històric vindrà de Dukascopy. Ostium en LAB; activar quan provider integrat.
+# Override per Ostium Data Layer prod v0
+# Realtime: Ostium (polling) → candles 1m
+# Històric/gaps: Dukascopy (prefetch + repair)
 #
-# Ús (quan estigui integrat):
+# Ús:
 #   docker compose -f docker-compose.yml -f deploy/compose/overrides/ostium.yml up -d brokerage
+#   ./scripts/run_smoke.sh ostium
+#   ./scripts/run_soak.sh 30 ostium
 
 services:
   brokerage:
     environment:
-      # Placeholder: variables per Ostium provider (no activat)
-      - OSTIUM_PROVIDER_ENABLED=${OSTIUM_PROVIDER_ENABLED:-0}
-      - OSTIUM_RPC_URL=${OSTIUM_RPC_URL:-}
+      - DATA_LAYER_ENABLED=1
+      - DATA_LAYER_WRITE_MODE=backfill_only
+      - DATA_LAYER_PREFETCH_MINUTES=${DATA_LAYER_PREFETCH_MINUTES:-120}
+      - DATA_LAYER_WRITE_SYMBOLS=${DATA_LAYER_WRITE_SYMBOLS:-EURUSD,XAUUSD}
+      - DATA_LAYER_STALE_SECONDS=180
+      - DATA_LAYER_GATES_MAX_GAP_S=180
+      - DATA_LAYER_GATES_MAX_MISSING_PER_24H=1
+      - DATA_LAYER_STARTUP_GATE=${DATA_LAYER_STARTUP_GATE:-0}
+      - OSTIUM_ENABLED=1
+      - OSTIUM_SYMBOLS=${OSTIUM_SYMBOLS:-EURUSD,XAUUSD}
+      - OSTIUM_POLL_S=${OSTIUM_POLL_S:-2}
+      - OSTIUM_PRICE_API_BASE=${OSTIUM_PRICE_API_BASE:-https://metadata-backend.ostium.io}

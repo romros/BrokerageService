@@ -26,6 +26,7 @@ from foundation.config.constants import (
     DATA_LAYER_ENABLED_ENV,
     DATA_LAYER_STARTUP_GATE_ENV,
     HEARTBEAT_INTERVAL_S,
+    OSTIUM_ENABLED_ENV,
     TESTING_ENV,
     USE_FAKE_PRICE_FEED_ENV,
 )
@@ -240,13 +241,22 @@ async def lifespan(app: FastAPI):
         set_data_layer_metrics(DataLayerMetrics())
 
     # Data Layer prod v0: prefetch + writer loop (DATA_LAYER_ENABLED=1)
+    # Ostium mode: backfill_only + Dukascopy prefetch; OstiumCandleIngestService escriu realtime
+    ostium_enabled = os.getenv(OSTIUM_ENABLED_ENV, "0") == "1"
     if os.getenv(DATA_LAYER_ENABLED_ENV, "0") == "1":
         try:
             from application.services.data_layer_prod_service import DataLayerProdService, _get_config  # lazy
-            from infrastructure.venues.lighter.lighter_candlestick_backfill_provider import LighterCandlestickBackfillProvider  # lazy
             cfg = _get_config()
-            if cfg["symbols"]:
+            if ostium_enabled:
+                cfg["write_mode"] = "backfill_only"
+                ostium_symbols = os.getenv("OSTIUM_SYMBOLS", os.getenv("SYMBOLS", "EURUSD,XAUUSD")).split(",")
+                cfg["symbols"] = [s.strip() for s in ostium_symbols if s.strip()]
+                from infrastructure.venues.dukascopy.dukascopy_backfill_provider import DukascopyBackfillProvider  # lazy
+                provider = DukascopyBackfillProvider(cache_root=config["datafiles_root"])
+            else:
+                from infrastructure.venues.lighter.lighter_candlestick_backfill_provider import LighterCandlestickBackfillProvider  # lazy
                 provider = LighterCandlestickBackfillProvider()
+            if cfg["symbols"]:
                 data_layer_prod_service = DataLayerProdService(
                     store=candle_store,
                     provider=provider,
@@ -255,6 +265,7 @@ async def lifespan(app: FastAPI):
                     max_gap_s=cfg["max_gap_s"],
                     max_missing_per_24h=cfg["max_missing_per_24h"],
                     stale_seconds=cfg["stale_seconds"],
+                    write_mode=cfg.get("write_mode", "realtime"),
                 )
                 await data_layer_prod_service.start()
                 logger.info("Data Layer prod v0 started symbols=%s prefetch_min=%s", cfg["symbols"], cfg["prefetch_minutes"])
@@ -266,6 +277,35 @@ async def lifespan(app: FastAPI):
                     logger.info("Data Layer startup gate passed")
         except Exception as e:
             logger.warning("Data Layer prod v0 not started: %s", e)
+
+    # Ostium realtime writer (OSTIUM_ENABLED=1)
+    ostium_ingest_service = None
+    ostium_symbols = [s.strip() for s in os.getenv("OSTIUM_SYMBOLS", os.getenv("SYMBOLS", "EURUSD,XAUUSD")).split(",") if s.strip()]
+    if ostium_enabled and ostium_symbols:
+        try:
+            from application.services.ostium_candle_ingest_service import OstiumCandleIngestService  # lazy
+            from foundation.config.constants import (
+                OSTIUM_POLL_S_ENV,
+                DEFAULT_OSTIUM_POLL_S,
+                DATA_LAYER_GATES_MAX_GAP_S_ENV,
+                DATA_LAYER_GATES_MAX_MISSING_PER_24H_ENV,
+                DATA_LAYER_STALE_SECONDS_ENV,
+                DEFAULT_DATA_LAYER_GATES_MAX_GAP_S,
+                DEFAULT_DATA_LAYER_GATES_MAX_MISSING_PER_24H,
+                DEFAULT_DATA_LAYER_STALE_SECONDS,
+            )
+            ostium_ingest_service = OstiumCandleIngestService(
+                store=candle_store,
+                symbols=ostium_symbols,
+                poll_interval_s=int(os.getenv(OSTIUM_POLL_S_ENV, str(DEFAULT_OSTIUM_POLL_S))),
+                max_gap_s=int(os.getenv(DATA_LAYER_GATES_MAX_GAP_S_ENV, str(DEFAULT_DATA_LAYER_GATES_MAX_GAP_S))),
+                max_missing_per_24h=int(os.getenv(DATA_LAYER_GATES_MAX_MISSING_PER_24H_ENV, str(DEFAULT_DATA_LAYER_GATES_MAX_MISSING_PER_24H))),
+                stale_seconds=int(os.getenv(DATA_LAYER_STALE_SECONDS_ENV, str(DEFAULT_DATA_LAYER_STALE_SECONDS))),
+            )
+            await ostium_ingest_service.start()
+            logger.info("OstiumCandleIngestService started symbols=%s", ostium_symbols)
+        except Exception as e:
+            logger.warning("OstiumCandleIngestService not started: %s", e)
 
     # P4.0: BackfillService (gap repair) quan tenim Lighter market data
     if market_data_service is not None:
@@ -324,6 +364,12 @@ async def lifespan(app: FastAPI):
             logger.info("Data Layer prod v0 stopped")
         except Exception as e:
             logger.error("DataLayerProdService stop error: %s", e)
+    if ostium_ingest_service:
+        try:
+            await ostium_ingest_service.stop()
+            logger.info("OstiumCandleIngestService stopped")
+        except Exception as e:
+            logger.error("OstiumCandleIngestService stop error: %s", e)
     if backfill_service:
         try:
             await backfill_service.stop()
