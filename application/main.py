@@ -321,6 +321,10 @@ async def lifespan(app: FastAPI):
     elif ostium_enabled and not ostium_ingest_allowed:
         set_broker_deps(data_layer_write_mode=_write_mode, ostium_ingest_enabled=False)
 
+    # Test-only: simular ostium_ingest_enabled sense arrencar OstiumCandleIngestService (0-network)
+    if ostium_enabled and os.getenv("OSTIUM_INGEST_ENABLED_OVERRIDE", "") == "1":
+        set_broker_deps(ostium_ingest_enabled=True)
+
     # P4.0: BackfillService (gap repair) quan tenim Lighter market data
     if market_data_service is not None:
         try:

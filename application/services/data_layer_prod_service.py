@@ -23,6 +23,8 @@ from application.data.data_layer_metrics import (
     SYMBOL_STATE_DEGRADED,
     get_data_layer_metrics,
 )
+from application.market_hours import is_market_open
+from application.market_hours.fx_24_5 import count_closed_minutes_between
 from foundation.config.constants import (
     DATA_LAYER_ENABLED_ENV,
     DATA_LAYER_WRITE_MODE_ENV,
@@ -266,10 +268,13 @@ class DataLayerProdService:
         logger.warning("DATA_LAYER_DEGRADED symbol=%s reason=%s", symbol, reason)
 
     def _update_gate_metrics(self) -> None:
-        """Actualitza stale_seconds, missing_minutes_24h, max_gap_s des del store."""
+        """Actualitza stale_seconds, missing_minutes_24h, max_gap_s des del store.
+        Market-hours aware: si mercat tancat, stale no degrada; missing exclou minuts tancats.
+        """
         now_utc = datetime.now(timezone.utc)
         now_ts = int(now_utc.timestamp())
         window_24h_start = now_utc - timedelta(hours=24)
+        window_24h_start_ts = int(window_24h_start.timestamp())
 
         metrics = get_data_layer_metrics()
         if not metrics:
@@ -281,17 +286,26 @@ class DataLayerProdService:
                 continue
 
             last_ts_int = int(last_ts.timestamp())
-            stale_s = now_ts - last_ts_int - 60 if last_ts_int > 0 else 0
-            stale_s = max(0, stale_s)
+            market_open_now = is_market_open(symbol, now_ts)
+            market_state_reason = "open" if market_open_now else "closed"
 
-            # missing_minutes_24h: llegir rang 24h i comptar gaps
+            # stale_s: si mercat tancat ara, no penalitzar (stale_s=0 per gates)
+            if market_open_now:
+                stale_s = now_ts - last_ts_int - 60 if last_ts_int > 0 else 0
+                stale_s = max(0, stale_s)
+            else:
+                stale_s = 0
+
+            # missing_minutes_24h: restar minuts en intervals tancats
             try:
                 r = self.store.read_range(symbol, window_24h_start, now_utc, validate_gaps=True)
-                missing_24h = getattr(r, "missing_count", 0) or 0
+                missing_24h_raw = getattr(r, "missing_count", 0) or 0
+                closed_mins = count_closed_minutes_between(symbol, window_24h_start_ts, now_ts)
+                missing_24h = max(0, missing_24h_raw - closed_mins)
             except Exception:
                 missing_24h = 0
 
-            # max_gap_s: simplificat — si missing>0, max_gap pot ser 60*missing
+            # max_gap_s: simplificat (v1 no ajusta per closed; conservador)
             max_gap_s = min(self.max_gap_s, 60 * max(0, missing_24h)) if missing_24h > 0 else 0
 
             metrics.update_gate_metrics(
@@ -300,9 +314,12 @@ class DataLayerProdService:
                 stale_seconds=stale_s,
                 missing_minutes_24h=missing_24h,
                 max_gap_s=max_gap_s,
+                market_open=market_open_now,
+                market_state_reason=market_state_reason,
             )
 
             # Gate: si stale > threshold o missing > llindar → DEGRADED
+            # (stale només quan market_open; si closed, stale_s=0)
             if symbol not in self._degraded_symbols:
                 if stale_s > self.stale_seconds:
                     self._mark_degraded(symbol, f"stale_seconds={stale_s} > {self.stale_seconds}")
@@ -313,6 +330,7 @@ class DataLayerProdService:
         """
         Comprova gates després del prefetch. Per DATA_LAYER_STARTUP_GATE=1.
         Retorna (True, "") si ready, (False, reason) si no.
+        Market-hours aware: stale no aplica si market_open=false.
         """
         self._update_gate_metrics()
         metrics = get_data_layer_metrics()
@@ -328,9 +346,11 @@ class DataLayerProdService:
             ts_err = sym_data.get("ts_step_errors", 0)
             if dup > 0 or ts_err > 0:
                 return False, f"symbol {symbol} duplicates={dup} ts_step_errors={ts_err}"
-            stale = sym_data.get("stale_seconds", 0)
-            if stale > self.stale_seconds:
-                return False, f"symbol {symbol} stale_seconds={stale} > {self.stale_seconds}"
+            market_open = sym_data.get("market_open", True)
+            if market_open:
+                stale = sym_data.get("stale_seconds", 0)
+                if stale > self.stale_seconds:
+                    return False, f"symbol {symbol} stale_seconds={stale} > {self.stale_seconds}"
             missing = sym_data.get("missing_minutes_24h", 0)
             if missing > self.max_missing_per_24h:
                 return False, f"symbol {symbol} missing_minutes_24h={missing} > {self.max_missing_per_24h}"

@@ -71,6 +71,15 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=10" | grep -i
 
 **Comandes Ostium:** `./scripts/run_smoke.sh ostium`, `./scripts/run_soak.sh 30 ostium`, `curl -s .../data_status` (ingest_source=ostium_realtime quan actiu).
 
+**Market hours:** Si `market_open=false` (cap de setmana, fora d'horari FX), `stale_seconds` no aplica; no degradar per "no ticks" quan és normal. `data_status` mostra `market_open` i `market_state_reason` per símbol.
+
+### Ostium primary serving
+
+| Incident | Diagnòstic | Acció |
+|----------|------------|-------|
+| **Primary Ostium però gaps** | X-Data-Missing-Minutes > 0, coverage window_72h missing | Activar read-through (`ENABLE_READ_THROUGH=1`); Dukascopy omple gaps; comprovar que compat PASS per mixed |
+| **Registry desalineat** | data_status primary_allowed_by_symbol=true però compat no s'ha executat recent | Executar `./scripts/run_compat.sh ostium <symbol>`; si verdict FAIL → registry es sobrescriu; revisar artifact JSON |
+
 ---
 
 ## 4) Kill switches

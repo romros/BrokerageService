@@ -88,14 +88,17 @@ def eval_data_status(
                 symbol=symbol,
             )
 
-        stale = m.get("stale_seconds", 0)
-        if stale > max_stale_seconds:
-            return EvalResult(
-                exit_code=EXIT_STALE,
-                verdict="stale",
-                reason=f"symbol {symbol} stale_seconds={stale} > {max_stale_seconds}",
-                symbol=symbol,
-            )
+        # Stale: no aplicar si market_open=false (mercat tancat)
+        market_open = m.get("market_open", True)
+        if market_open:
+            stale = m.get("stale_seconds", 0)
+            if stale > max_stale_seconds:
+                return EvalResult(
+                    exit_code=EXIT_STALE,
+                    verdict="stale",
+                    reason=f"symbol {symbol} stale_seconds={stale} > {max_stale_seconds}",
+                    symbol=symbol,
+                )
 
         missing = m.get("missing_minutes_24h", 0)
         if missing > max_missing_per_24h:

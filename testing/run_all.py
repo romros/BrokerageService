@@ -311,6 +311,13 @@ def main():
         testing_dir / "unit" / "test_compat_report_service.py",  # P8 Compat report (0 network)
         testing_dir / "unit" / "test_ostium_compat_report_service.py",  # Ostium compat (0 network)
         testing_dir / "unit" / "test_compat_registry_ostium_gate.py",  # Ostium graduation gate (0 network)
+        testing_dir / "unit" / "test_ostium_primary_policy_selection.py",  # Ostium primary policy (0 network)
+        testing_dir / "unit" / "test_headers_reflect_primary_ostium.py",  # Headers ostium_recorded (0 network)
+        testing_dir / "unit" / "test_mixed_denied_when_not_pass.py",  # Mixed denied sense PASS (0 network)
+        testing_dir / "unit" / "test_market_hours_fx_closed_weekend.py",  # Market hours FX 24/5 (0 network)
+        testing_dir / "unit" / "test_stale_ignored_when_market_closed.py",  # Stale ignorat si closed (0 network)
+        testing_dir / "unit" / "test_missing_ignores_closed_minutes.py",  # Missing exclou closed (0 network)
+        testing_dir / "unit" / "test_data_status_includes_market_open.py",  # data_status market_open (0 network)
         testing_dir / "unit" / "test_p8_provenance_rest_only.py",  # P8.2 Provenance REST-only (0 network)
         testing_dir / "unit" / "test_ws_collector_persistence.py",  # P8.4 WS Candle Collector persistence (0 network)
         testing_dir / "unit" / "test_trade_history_models.py",  # P1 TradeFill mapping
@@ -353,6 +360,7 @@ def main():
         # API smoke tests
         testing_dir / "api" / "test_rest_smoke.py",
         testing_dir / "api" / "test_p7_mixed_headers_http.py",  # P7b headers via HTTP (0 network)
+        testing_dir / "api" / "test_ohlcv_headers_primary_ostium.py",  # OHLCV headers Ostium primary (0 network)
         testing_dir / "api" / "test_p8_read_through_ohlcv_api.py",  # P8.0b Read-through wired to OHLCV (0 network)
         testing_dir / "api" / "test_ws_smoke.py",
     ]

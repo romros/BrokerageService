@@ -46,7 +46,7 @@
 
 **symbol_state:** `ACTIVE` | `DEGRADED`. Si DEGRADED → writer aturat per aquell símbol.
 
-**Perfil Ostium:** `OSTIUM_ENABLED=1` + `DATA_LAYER_WRITE_MODE=realtime_plus_backfill`. Realtime: OstiumCandleIngestService (polling REST); històric/gaps: DukascopyBackfillProvider. `backfill_only` = ingest OFF. `./scripts/run_smoke.sh ostium`, `./scripts/run_soak.sh 30 ostium`.
+**Perfil Ostium:** `OSTIUM_ENABLED=1` + `DATA_LAYER_WRITE_MODE=realtime_plus_backfill`. Realtime: OstiumCandleIngestService (polling REST); històric/gaps: DukascopyBackfillProvider. `backfill_only` = ingest OFF. Gates market-hours aware: soak en cap de setmana no DEGRADED per stale. `./scripts/run_smoke.sh ostium`, `./scripts/run_soak.sh 30 ostium`.
 
 ---
 
@@ -59,13 +59,29 @@
 ./scripts/run_compat.sh ostium [symbol]   # default symbol=EURUSD
 ```
 
-**Artifact path:** `datafiles/compat_reports/<timestamp>_compat_<symbol>_<Nm>.json`
+**Artifact path:** `datafiles/compat_reports/<ts>_compat_<symbol>_<Nm>m.json` (ex: `20260217_143022_compat_EURUSD_650m.json`)
 
 **Registry:** `datafiles/compat_reports/ostium_compat_registry.json` — font de veritat per `get_ostium_primary_allowed(symbol)`.
 
 **Verdict:** PASS | PARTIAL | FAIL (llindars via `compat_report_service` + constants). PASS → primary allowed; PARTIAL/FAIL → opt-in experimental sense declarar primary.
 
-**Com afecta serving:** El gate formal impedeix declarar Ostium primary per símbol fins que compat PASS. Si no PASS, el servei continua en mode "opt-in experimental".
+**PASS ⇒ primary (detall explícit):** Quan `ostium_primary_allowed(symbol)=true` → `primary_source=ostium_recorded`, `mixed_allowed=true`. Headers OHLCV: `X-Data-Source=ostium_recorded` (o `mixed` si rang travessa cutover), `X-Data-Primary-Source=ostium_recorded`. Coverage retorna `source=ostium_recorded`. data_status inclou `primary_allowed_by_symbol[symbol]=true`.
+
+**Què canvia quan PASS → primary (mini-taula):**
+
+| Aspecte | Sense PASS (opt-in) | Amb PASS (primary) |
+|---------|---------------------|--------------------|
+| X-Data-Source | `primary` genèric | `ostium_recorded` |
+| X-Data-Primary-Source | — | `ostium_recorded` |
+| Mixed (rang travessa cutover) | 422 MIXED_SOURCE_NOT_ALLOWED | Stitch fallback + primary |
+| coverage source | `primary` | `ostium_recorded` |
+| data_status primary_allowed_by_symbol | `false` | `true` |
+
+**Com afecta serving:**
+- **Headers:** `X-Data-Source` pot ser `ostium_recorded`, `primary`, `fallback` o `mixed`. `X-Data-Primary-Source: ostium_recorded` quan primary és Ostium.
+- **Selecció de font:** Si el rang travessa `cutover_ts`: amb PASS → **mixed** (stitch Dukascopy + Ostium); sense PASS → 422.
+- **Read-through:** Fill de gaps requereix compat PASS.
+- **Sense PASS:** Mode "opt-in experimental" — es graven dades Ostium però no es declara primary; només primary o fallback per rang.
 
 **Tests:** Unit 0-network: `test_ostium_compat_report_service.py`, `test_compat_registry_ostium_gate.py`. Opt-in real: `./test.sh testing/run_all.py --include-ostium-compat`.
 
@@ -80,6 +96,8 @@ Llindars via env: `DATA_LAYER_GATES_MAX_GAP_S`, `DATA_LAYER_GATES_MAX_MISSING_PE
 - missing ≤ 1/24h (`DATA_LAYER_GATES_MAX_MISSING_PER_24H`)
 - max_gap_s ≤ 180 (`DATA_LAYER_GATES_MAX_GAP_S`)
 - stale=0 (`DATA_LAYER_STALE_SECONDS`)
+
+**Market-hours aware (Ostium/profile FX):** Si mercat tancat (cap de setmana, fora d'horari), stale no degrada; missing exclou minuts en intervals tancats. `data_status` inclou `market_open` i `market_state_reason` per símbol.
 
 **Gate 1 (serving):** headers X-Data coherents, coverage coherent, read-through funciona.  
 **Gate 2 (ops):** restart safe, data_status 200, logs path, rotació.
@@ -117,6 +135,8 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-17 | Docs coherents Ostium | ✅ AGENTS + ESTAT + overrides alineats | graduation path, prod-ish opt-in |
 | 2026-02-17 | Ostium Recorder prod-ish v1 | ✅ ingest real 1m, gates, data_status ingest_source | write_mode realtime_plus_backfill |
 | 2026-02-17 | Ostium compat + graduation gate | ✅ compat report Ostium↔Dukascopy, registry, run_compat.sh | PASS → ostium_primary_allowed |
+| 2026-02-17 | Ostium primary serving v1 | ✅ policy per símbol, X-Data-Source=ostium_recorded, data_status primary_allowed_by_symbol | headers + coverage + tests |
+| 2026-02-17 | Market-hours aware gates | ✅ is_market_open, closed_intervals; stale/missing ajustats; data_status market_open | soak cap de setmana no DEGRADED |
 
 **Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 

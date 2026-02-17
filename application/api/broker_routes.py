@@ -315,6 +315,20 @@ async def get_price_latest(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _resolve_policy(symbol: str) -> Any:
+    """Resol DataPolicy per símbol (lazy import)."""
+    from application.data.data_source_policy import resolve_data_policy
+    from application.data.ostium_compat_registry import get_ostium_primary_allowed
+    from application.data.compat_registry import get_compat_status
+
+    return resolve_data_policy(
+        symbol=symbol,
+        ostium_ingest_enabled=_ostium_ingest_enabled,
+        get_ostium_primary_allowed_fn=get_ostium_primary_allowed,
+        get_compat_status_fn=get_compat_status,
+    )
+
+
 def _build_p5_headers(
     candle_range: Any,
     start: datetime,
@@ -323,8 +337,11 @@ def _build_p5_headers(
     source: str = "primary",
     cutover_ts: Optional[int] = None,
     read_through_stats: Optional[Any] = None,
+    policy: Optional[Any] = None,
 ) -> dict[str, str]:
     """P5/P7/P8: Headers d'observabilitat OHLCV (coverage, gaps, repair)."""
+    from application.data.data_source_policy import source_for_header
+
     report = GapValidator.validate(
         candle_range.candles, start, end, symbol=symbol
     )
@@ -342,8 +359,9 @@ def _build_p5_headers(
         repair_status = "applied" if repair_filled > 0 and repair_symbol == symbol else "none"
         repair_requested = repair_filled
 
+    display_source = source_for_header(source, policy) if policy else source
     headers: dict[str, str] = {
-        "X-Data-Source": source,
+        "X-Data-Source": display_source,
         "X-Data-Coverage-From": str(int(start.timestamp())),
         "X-Data-Coverage-To": str(int(end.timestamp())),
         "X-Data-Missing-Minutes": str(report.missing_count),
@@ -354,6 +372,8 @@ def _build_p5_headers(
     }
     if source == "mixed" and cutover_ts is not None:
         headers["X-Data-Cutover-Ts"] = str(cutover_ts)
+    if policy and policy.primary_source == "ostium_recorded":
+        headers["X-Data-Primary-Source"] = "ostium_recorded"
     return headers
 
 
@@ -367,6 +387,7 @@ async def _read_candles_response(
     """Lògica compartida per candles/ohlcv. P7: rang explícit (since/to) → stitching."""
     store = _require_candle_store()
     symbol = _normalize_symbol(symbol)
+    policy = _resolve_policy(symbol)
     end = datetime.now(CANONICAL_TIMEZONE)
     start, end = resolve_candle_range(end=end, limit=limit, since_epoch=since, to_epoch=to, tz=CANONICAL_TIMEZONE)
     since_ts = int(start.timestamp())
@@ -377,11 +398,7 @@ async def _read_candles_response(
         from application.services.candle_stitching_service import get_candles_with_source  # lazy: evita carregar P7 si no es demana rang
 
         def _compat_fn(s: str) -> str:
-            if _ostium_ingest_enabled:
-                from application.data.ostium_compat_registry import get_ostium_primary_allowed
-                return "PASS" if get_ostium_primary_allowed(s) else "FAIL"
-            from application.data.compat_registry import get_compat_status
-            return get_compat_status(s)
+            return "PASS" if policy.mixed_allowed else "FAIL"
 
         try:
             r, source, cutover_ts = await get_candles_with_source(
@@ -394,7 +411,7 @@ async def _read_candles_response(
                 get_compat_status_fn=_compat_fn,
             )
             resp = _map_ohlcv_response(r, symbol, start, end)
-            headers = _build_p5_headers(r, start, end, symbol, source=source, cutover_ts=cutover_ts)
+            headers = _build_p5_headers(r, start, end, symbol, source=source, cutover_ts=cutover_ts, policy=policy)
             return JSONResponse(content=resp.model_dump(mode="json"), headers=headers)
         except ValueError as e:
             if "MIXED_SOURCE_NOT_ALLOWED" in str(e):
@@ -413,14 +430,8 @@ async def _read_candles_response(
         cutover_ts = int(cutover_dt.timestamp()) if cutover_dt else None
         from application.services.candle_stitching_service import resolve_source  # lazy: evita carregar P7 si no es demana rang
 
-        def _compat_fn(s: str) -> str:
-            if _ostium_ingest_enabled:
-                from application.data.ostium_compat_registry import get_ostium_primary_allowed
-                return "PASS" if get_ostium_primary_allowed(s) else "FAIL"
-            from application.data.compat_registry import get_compat_status
-            return get_compat_status(s)
-
-        source = resolve_source(since_ts, to_ts, cutover_ts, _compat_fn(symbol))
+        compat_status = "PASS" if policy.mixed_allowed else "FAIL"
+        source = resolve_source(since_ts, to_ts, cutover_ts, compat_status)
         if source == "deny":
             _http_error(
                 422,
@@ -438,11 +449,8 @@ async def _read_candles_response(
             from application.services.read_through_service import maybe_fill_gaps_response_only
 
             def _compat_fn(s: str) -> str:
-                if _ostium_ingest_enabled:
-                    from application.data.ostium_compat_registry import get_ostium_primary_allowed
-                    return "PASS" if get_ostium_primary_allowed(s) else "FAIL"
-                from application.data.compat_registry import get_compat_status
-                return get_compat_status(s)
+                p = _resolve_policy(s)
+                return "PASS" if p.mixed_allowed else "FAIL"
 
             max_missing = int(os.getenv(READ_THROUGH_MAX_MISSING_ENV, str(DEFAULT_READ_THROUGH_MAX_MISSING)))
             timeout_s = float(os.getenv(READ_THROUGH_TIMEOUT_ENV, str(DEFAULT_READ_THROUGH_TIMEOUT_S)))
@@ -457,7 +465,7 @@ async def _read_candles_response(
                 timeout_s=timeout_s,
             )
     resp = _map_ohlcv_response(r, symbol, start, end)
-    headers = _build_p5_headers(r, start, end, symbol, source="primary", read_through_stats=read_through_stats)
+    headers = _build_p5_headers(r, start, end, symbol, source="primary", read_through_stats=read_through_stats, policy=policy)
     return JSONResponse(content=resp.model_dump(mode="json"), headers=headers)
 
 
@@ -493,6 +501,7 @@ async def get_coverage(
         _http_error(422, TIMEFRAME_NOT_SUPPORTED, f"Only 1m resolution supported")
     store = _require_candle_store()
     symbol = _normalize_symbol(symbol)
+    policy = _resolve_policy(symbol)
 
     earliest_ts = None
     latest_ts = None
@@ -521,7 +530,7 @@ async def get_coverage(
             "missing_minutes": report.missing_count,
             "max_gap_s": max_gap_s,
         },
-        "source": "primary",
+        "source": policy.primary_source,
         "notes": "UTC start-of-minute, closed only",
     }
 
@@ -552,6 +561,11 @@ async def get_data_status():
     }
     if _ostium_ingest_enabled:
         result["ingest_source"] = "ostium_realtime"
+        from application.data.ostium_compat_registry import get_ostium_primary_allowed
+        primary_by_symbol = {
+            sym: get_ostium_primary_allowed(sym) for sym in snapshot["symbols"]
+        }
+        result["primary_allowed_by_symbol"] = primary_by_symbol
     return result
 
 
