@@ -22,7 +22,7 @@ docker compose run --rm brokerage python3 -c "import time,datetime; print(dateti
 ## 2) Health checks
 
 ```bash
-curl -s http://localhost:8000/health
+curl -s http://localhost:8000/api/v1/broker/health
 curl -s http://localhost:8000/api/v1/broker/data_status
 curl -s "http://localhost:8000/api/v1/broker/coverage?symbol=ETH&resolution=1m"
 curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=10" | grep -i x-data

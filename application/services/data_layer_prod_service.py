@@ -284,3 +284,33 @@ class DataLayerProdService:
                     self._mark_degraded(symbol, f"stale_seconds={stale_s} > {self.stale_seconds}")
                 elif missing_24h > self.max_missing_per_24h:
                     self._mark_degraded(symbol, f"missing_minutes_24h={missing_24h} > {self.max_missing_per_24h}")
+
+    def run_startup_gate_check(self) -> tuple[bool, str]:
+        """
+        Comprova gates després del prefetch. Per DATA_LAYER_STARTUP_GATE=1.
+        Retorna (True, "") si ready, (False, reason) si no.
+        """
+        self._update_gate_metrics()
+        metrics = get_data_layer_metrics()
+        if not metrics:
+            return True, ""  # No metrics → no gate
+        snapshot = metrics.snapshot()
+        for symbol in self.symbols:
+            sym_data = snapshot.get("symbols", {}).get(symbol, {})
+            state = sym_data.get("symbol_state", SYMBOL_STATE_ACTIVE)
+            if state == SYMBOL_STATE_DEGRADED:
+                return False, sym_data.get("degrade_reason") or f"symbol {symbol} DEGRADED"
+            dup = sym_data.get("duplicates", 0)
+            ts_err = sym_data.get("ts_step_errors", 0)
+            if dup > 0 or ts_err > 0:
+                return False, f"symbol {symbol} duplicates={dup} ts_step_errors={ts_err}"
+            stale = sym_data.get("stale_seconds", 0)
+            if stale > self.stale_seconds:
+                return False, f"symbol {symbol} stale_seconds={stale} > {self.stale_seconds}"
+            missing = sym_data.get("missing_minutes_24h", 0)
+            if missing > self.max_missing_per_24h:
+                return False, f"symbol {symbol} missing_minutes_24h={missing} > {self.max_missing_per_24h}"
+            max_gap = sym_data.get("max_gap_s", 0)
+            if max_gap > self.max_gap_s:
+                return False, f"symbol {symbol} max_gap_s={max_gap} > {self.max_gap_s}"
+        return True, ""

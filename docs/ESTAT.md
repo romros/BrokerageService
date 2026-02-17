@@ -31,6 +31,12 @@
 
 **Activar:** `DATA_LAYER_ENABLED=1` (default 0). Prefetch + writer loop + gates.
 
+**Docker prod-ish:** `docker compose -f docker-compose.yml -f docker-compose.data-layer.yml up -d brokerage`
+
+**Scripts:** `./scripts/run_data_layer_smoke.sh` (3 min), `./scripts/run_data_layer_soak.sh 30` (30 min). Artifacts a `datafiles/data_layer_prod_runs/`.
+
+**Startup gate:** `DATA_LAYER_STARTUP_GATE=1` → health=degraded si Data Layer DEGRADED; startup falla si gate ON i prefetch degradat.
+
 **Provider actual:** LighterCandlestickBackfillProvider (fins recorder Ostium).
 
 **Observabilitat:** `GET /api/v1/broker/data_status` → `symbol_state` + `degrade_reason`.
@@ -61,6 +67,14 @@ Llindars via env: `DATA_LAYER_GATES_MAX_GAP_S`, `DATA_LAYER_GATES_MAX_MISSING_PE
 | Gate 2 | ops | `docker compose down && up` |
 
 ```bash
+# Docker prod-ish
+docker compose -f docker-compose.yml -f docker-compose.data-layer.yml up -d brokerage
+
+# Scripts operatius (smoke 3 min, soak N min)
+./scripts/run_data_layer_smoke.sh
+./scripts/run_data_layer_soak.sh 30
+
+# Manual
 curl -s http://localhost:8000/api/v1/broker/data_status
 curl -s "http://localhost:8000/api/v1/broker/coverage?symbol=ETH&resolution=1m"
 curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-Data

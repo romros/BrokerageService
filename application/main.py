@@ -24,6 +24,7 @@ from application.api.ws_routes import router as ws_router
 from foundation.config.constants import (
     BROKER_DIAG_ENV,
     DATA_LAYER_ENABLED_ENV,
+    DATA_LAYER_STARTUP_GATE_ENV,
     HEARTBEAT_INTERVAL_S,
     TESTING_ENV,
     USE_FAKE_PRICE_FEED_ENV,
@@ -257,6 +258,12 @@ async def lifespan(app: FastAPI):
                 )
                 await data_layer_prod_service.start()
                 logger.info("Data Layer prod v0 started symbols=%s prefetch_min=%s", cfg["symbols"], cfg["prefetch_minutes"])
+                # Startup gate: si activat i Data Layer DEGRADED → fallar startup
+                if os.getenv(DATA_LAYER_STARTUP_GATE_ENV, "0") == "1":
+                    ok, reason = data_layer_prod_service.run_startup_gate_check()
+                    if not ok:
+                        raise RuntimeError(f"DATA_LAYER_STARTUP_GATE failed: {reason}")
+                    logger.info("Data Layer startup gate passed")
         except Exception as e:
             logger.warning("Data Layer prod v0 not started: %s", e)
 

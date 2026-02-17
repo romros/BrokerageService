@@ -42,6 +42,8 @@ from domain.errors import PositionNotFoundError, MarketNotFoundError
 from foundation.config.constants import (
     CANONICAL_TIMEZONE,
     CANONICAL_TIMEZONE_NAME,
+    DATA_LAYER_ENABLED_ENV,
+    DATA_LAYER_STARTUP_GATE_ENV,
     DEFAULT_READ_THROUGH_MAX_MISSING,
     DEFAULT_READ_THROUGH_TIMEOUT_S,
     ENABLE_READ_THROUGH_ENV,
@@ -208,9 +210,19 @@ class OrderCloseResponse(BaseModel):
 
 @router.get("/health", response_model=HealthResponse)
 async def get_health():
-    """Health check."""
+    """Health check. status=degraded si DATA_LAYER_STARTUP_GATE=1 i Data Layer té símbol DEGRADED."""
+    status = "ok"
+    if os.getenv(DATA_LAYER_STARTUP_GATE_ENV, "0") == "1" and os.getenv(DATA_LAYER_ENABLED_ENV, "0") == "1":
+        from application.data.data_layer_metrics import get_data_layer_metrics, SYMBOL_STATE_DEGRADED
+        metrics = get_data_layer_metrics()
+        if metrics:
+            snapshot = metrics.snapshot()
+            for sym_data in snapshot.get("symbols", {}).values():
+                if sym_data.get("symbol_state") == SYMBOL_STATE_DEGRADED:
+                    status = "degraded"
+                    break
     return HealthResponse(
-        status="ok",
+        status=status,
         mode=_mode,
         venue=_venue,
         timestamp=datetime.now(),
