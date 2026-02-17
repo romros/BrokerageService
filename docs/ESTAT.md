@@ -18,10 +18,11 @@
 - ✅ **MVP Lighter** DONE: marketdata, SL/TP, balance, reconcile, guards, smoke, e2e
 - ✅ **Data Layer** (P4–P7c): backfill, gap repair, headers X-Data, /coverage, /data_status, read-through, stitching gated
 - ✅ **Data Layer prod v0** (opt-in): prefetch + writer loop + gates; `DATA_LAYER_ENABLED=1`
+- ✅ **Ostium Data Layer prod v0** (opt-in): realtime Ostium (polling) + backfill Dukascopy; `OSTIUM_ENABLED=1`
 - ✅ **Broker API** `/api/v1/broker/*` (POST body únic)
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - ⛔ **Backtest** pendent
-- 🧪 **Ostium LAB** en curs — [lab/ostium/README.md](../lab/ostium/README.md)
+- 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md)
 
 > **Focus 48h:** Data Layer en producció (prefetch + gates + observability).
 
@@ -37,13 +38,15 @@
 
 **Startup gate:** `DATA_LAYER_STARTUP_GATE=1` → health=degraded si Data Layer DEGRADED; startup falla si gate ON i prefetch degradat.
 
-**Provider actual:** LighterCandlestickBackfillProvider (fins recorder Ostium).
+**Providers:** LighterCandlestickBackfillProvider (data-layer) | Ostium + DukascopyBackfillProvider (ostium).
 
 **Observabilitat:** `GET /api/v1/broker/data_status` → `symbol_state` + `degrade_reason`.
 
 **Config:** `DATA_LAYER_PREFETCH_MINUTES`, `DATA_LAYER_WRITE_SYMBOLS`, `DATA_LAYER_GATES_MAX_GAP_S`, `DATA_LAYER_GATES_MAX_MISSING_PER_24H`, `DATA_LAYER_STALE_SECONDS`.
 
 **symbol_state:** `ACTIVE` | `DEGRADED`. Si DEGRADED → writer aturat per aquell símbol.
+
+**Perfil Ostium:** `OSTIUM_ENABLED=1` + `DATA_LAYER_WRITE_MODE=backfill_only`. Realtime: OstiumCandleIngestService (polling REST); històric/gaps: DukascopyBackfillProvider. `./scripts/run_smoke.sh ostium`, `./scripts/run_soak.sh 30 ostium`.
 
 ---
 
@@ -122,7 +125,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 |---------|------------------|-------|------|
 | data-layer | deploy/compose/overrides/data-layer.yml | `run_smoke.sh data-layer` | `run_soak.sh 30 data-layer` |
 | ws | deploy/compose/overrides/soak.yml | — | `run_soak.sh 15 ws` |
-| ostium | deploy/compose/overrides/ostium.yml | placeholder | — |
+| ostium | deploy/compose/overrides/ostium.yml | `run_smoke.sh ostium` | `run_soak.sh 30 ostium` |
 
 **Regla:** No crear scripts nous ad-hoc. Lògica a `application/tools/*.py`; wrappers a `scripts/*.sh`.
 
@@ -133,11 +136,14 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 ```bash
 ./test.sh testing/run_all.py
 ./scripts/run_smoke.sh data-layer
+./scripts/run_smoke.sh ostium   # Ostium realtime + Dukascopy backfill
 ./scripts/run_soak.sh 30 data-layer
+./scripts/run_soak.sh 30 ostium
 curl -s http://localhost:8000/api/v1/broker/data_status
 curl -s "http://localhost:8000/api/v1/broker/coverage?symbol=ETH&resolution=1m"
 curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-Data
 docker compose -f docker-compose.yml -f deploy/compose/overrides/data-layer.yml config  # validar
+docker compose -f docker-compose.yml -f deploy/compose/overrides/ostium.yml config     # Ostium
 docker compose build brokerage
 docker compose down && docker compose up -d brokerage
 ```
@@ -161,6 +167,7 @@ docker compose down && docker compose up -d brokerage
 | Broker API | ✅ | `/api/v1/broker/*`, POST body |
 | Execution (paper/live) | ✅/🟡 | Lighter paper OK; live hardening 90% |
 | Data Layer | ✅ | P4–P7c; EURUSD REST candlestick no apte (zero_range) |
+| Ostium Data Layer | ✅ | prod v0: Ostium realtime + Dukascopy backfill; `run_smoke.sh ostium` |
 | Backtest | ⛔ | Pipeline pendent |
 | Ostium LAB | 🧪 | Validació RWA; [lab/ostium/README.md](../lab/ostium/README.md) |
 
