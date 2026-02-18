@@ -91,6 +91,7 @@ services:
       - DATAFILES_ROOT=/datafiles
       - CANONICAL_TZ=America/New_York
       - BROKER_URL=http://realtime_datalayer:8001
+      - REALTIME_DATALAYER_BASE_URL=http://realtime_datalayer:8001
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LIGHTER_BASE_URL=${LIGHTER_BASE_URL:-}
       - LIGHTER_L1_ADDRESS=${LIGHTER_L1_ADDRESS:-}
@@ -104,4 +105,6 @@ services:
       - ./logs:/app/logs
     networks:
       - trading
+    depends_on:
+      - realtime_datalayer
     command: ["python3", "-m", "uvicorn", "apps.trading_service.app:app", "--host", "0.0.0.0", "--port", "8010"]

@@ -192,6 +192,10 @@ SERVICE_ROLE_ENV = "SERVICE_ROLE"
 VALID_SERVICE_ROLES = ("realtime_datalayer", "historical_datalayer", "trading_service")
 DEFAULT_SERVICE_ROLE = None  # None = monolithic (legacy)
 
+# Split vNext Phase 2: trading_service consumeix realtime_datalayer via HTTP
+REALTIME_DATALAYER_BASE_URL_ENV = "REALTIME_DATALAYER_BASE_URL"
+DEFAULT_REALTIME_DATALAYER_TIMEOUT_S = 5.0
+
 
 # Ostium tick recorder (forense, lab)
 OSTIUM_TICK_RECORDER_ENABLED_ENV = "OSTIUM_TICK_RECORDER_ENABLED"

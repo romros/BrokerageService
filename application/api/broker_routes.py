@@ -101,6 +101,7 @@ _primary_backfill_provider: Optional[Any] = None  # P8: LighterCandlestickBackfi
 _data_layer_write_mode: str = "realtime"
 _ostium_ingest_enabled: bool = False
 _ostium_ingest_poll_s: int = 2
+_data_layer_reader: Optional[Any] = None  # Split vNext Phase 2: IDataLayerReader (HTTP o local)
 
 
 def set_broker_deps(
@@ -115,10 +116,12 @@ def set_broker_deps(
     data_layer_write_mode: str = _UNSET,
     ostium_ingest_enabled: bool = _UNSET,
     ostium_ingest_poll_s: int = _UNSET,
+    data_layer_reader: Any = _UNSET,
 ) -> None:
     """Inject dependencies for broker routes."""
     global _candle_store, _adapter_factory, _mode, _venue, _market_data_env, _market_data_source
     global _fallback_provider, _primary_backfill_provider, _data_layer_write_mode, _ostium_ingest_enabled, _ostium_ingest_poll_s
+    global _data_layer_reader
     if candle_store is not _UNSET:
         _candle_store = candle_store
     if adapter_factory is not _UNSET:
@@ -141,6 +144,8 @@ def set_broker_deps(
         _ostium_ingest_enabled = ostium_ingest_enabled
     if ostium_ingest_poll_s is not _UNSET:
         _ostium_ingest_poll_s = ostium_ingest_poll_s
+    if data_layer_reader is not _UNSET:
+        _data_layer_reader = data_layer_reader
     logger.info(
         f"Broker API deps: mode={_mode}, venue={_venue}, market_data_env={_market_data_env}, "
         f"market_data_source={_market_data_source}, adapter_factory={'set' if _adapter_factory else 'None'}"
@@ -399,14 +404,14 @@ def _build_p5_headers(
     return headers
 
 
-async def _read_candles_response(
+async def _compute_ohlcv_content(
     symbol: str,
     limit: int,
     since: Optional[int],
     to: Optional[int],
     validate_gaps: bool = True,
-) -> JSONResponse:
-    """Lògica compartida per candles/ohlcv. P7: rang explícit (since/to) → stitching."""
+) -> tuple[dict, dict[str, str]]:
+    """Lògica compartida per candles/ohlcv. Retorna (content_dict, headers_dict)."""
     store = _require_candle_store()
     symbol = _normalize_symbol(symbol)
     policy = _resolve_policy(symbol)
@@ -434,7 +439,7 @@ async def _read_candles_response(
             )
             resp = _map_ohlcv_response(r, symbol, start, end)
             headers = _build_p5_headers(r, start, end, symbol, source=source, cutover_ts=cutover_ts, policy=policy)
-            return JSONResponse(content=resp.model_dump(mode="json"), headers=headers)
+            return resp.model_dump(mode="json"), headers
         except ValueError as e:
             if "MIXED_SOURCE_NOT_ALLOWED" in str(e):
                 _http_error(
@@ -488,7 +493,30 @@ async def _read_candles_response(
             )
     resp = _map_ohlcv_response(r, symbol, start, end)
     headers = _build_p5_headers(r, start, end, symbol, source="primary", read_through_stats=read_through_stats, policy=policy)
-    return JSONResponse(content=resp.model_dump(mode="json"), headers=headers)
+    return resp.model_dump(mode="json"), headers
+
+
+async def _read_candles_response(
+    symbol: str,
+    limit: int,
+    since: Optional[int],
+    to: Optional[int],
+    validate_gaps: bool = True,
+) -> JSONResponse:
+    """Wrapper que retorna JSONResponse (per rutes)."""
+    content, headers = await _compute_ohlcv_content(symbol, limit, since, to, validate_gaps)
+    return JSONResponse(content=content, headers=headers)
+
+
+async def _local_compute_ohlcv(
+    symbol: str,
+    tf: str,
+    limit: int,
+    since: Optional[int],
+    to: Optional[int],
+) -> tuple[dict, dict[str, str]]:
+    """Per LocalDataLayerReader. tf validat per la ruta."""
+    return await _compute_ohlcv_content(symbol, limit, since, to, validate_gaps=True)
 
 
 @data_router.get("/ohlcv/{symbol}")
@@ -502,6 +530,18 @@ async def get_ohlcv(
     """Candles OHLCV per símbol (path). Compatible amb test_rest_smoke."""
     if tf != SUPPORTED_TIMEFRAME:
         _http_error(422, TIMEFRAME_NOT_SUPPORTED, f"Only {SUPPORTED_TIMEFRAME} timeframe supported")
+    if _data_layer_reader is not None:
+        try:
+            body, headers = await _data_layer_reader.get_ohlcv(
+                symbol=symbol, tf=tf, limit=limit, since=since, to=to
+            )
+            return JSONResponse(content=body, headers=headers)
+        except Exception as e:
+            from packages.shared.realtime_datalayer_client import RealtimeDataLayerError
+            if isinstance(e, RealtimeDataLayerError):
+                logger.warning("data_layer_reader (HTTP) failed: %s", e)
+                _http_error(503, DATA_STATUS_NOT_AVAILABLE, f"Realtime Data Layer unavailable: {e}")
+            raise
     try:
         return await _read_candles_response(symbol, limit, since, to, validate_gaps=True)
     except HTTPException:
@@ -511,16 +551,8 @@ async def get_ohlcv(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@data_router.get("/coverage")
-async def get_coverage(
-    symbol: str = Query(..., description="Symbol (e.g. EURUSD)"),
-    resolution: str = Query(default="1m", description="Resolution (only 1m supported)"),
-):
-    """
-    P5: Data coverage per symbol — earliest/latest ts del store, window_72h stats.
-    """
-    if resolution != "1m":
-        _http_error(422, TIMEFRAME_NOT_SUPPORTED, f"Only 1m resolution supported")
+def _local_compute_coverage(symbol: str, resolution: str) -> dict:
+    """P5: Data coverage per symbol. Per LocalDataLayerReader."""
     store = _require_candle_store()
     symbol = _normalize_symbol(symbol)
     policy = _resolve_policy(symbol)
@@ -534,7 +566,6 @@ async def get_coverage(
     if latest_dt:
         latest_ts = int(latest_dt.timestamp())
 
-    # window_72h: computed from store read_range
     end = datetime.now(CANONICAL_TIMEZONE)
     start_72h = end - timedelta(hours=72)
     r = read_candles(store, symbol=symbol, start=start_72h, end=end, validate_gaps=True)
@@ -557,13 +588,30 @@ async def get_coverage(
     }
 
 
-@data_router.get("/data_status")
-async def get_data_status():
+@data_router.get("/coverage")
+async def get_coverage(
+    symbol: str = Query(..., description="Symbol (e.g. EURUSD)"),
+    resolution: str = Query(default="1m", description="Resolution (only 1m supported)"),
+):
     """
-    P7c: Data Layer telemetria (counters, last_ts per símbol).
-    200 sempre que el servei estigui viu; data_layer_status=initializing durant arrencada.
-    503 només quan Data Layer mai s'ha habilitat (no pipeline).
+    P5: Data coverage per symbol — earliest/latest ts del store, window_72h stats.
     """
+    if resolution != "1m":
+        _http_error(422, TIMEFRAME_NOT_SUPPORTED, f"Only 1m resolution supported")
+    if _data_layer_reader is not None:
+        try:
+            return _data_layer_reader.get_coverage(symbol=symbol, resolution=resolution)
+        except Exception as e:
+            from packages.shared.realtime_datalayer_client import RealtimeDataLayerError
+            if isinstance(e, RealtimeDataLayerError):
+                logger.warning("data_layer_reader (HTTP) failed: %s", e)
+                _http_error(503, DATA_STATUS_NOT_AVAILABLE, f"Realtime Data Layer unavailable: {e}")
+            raise
+    return _local_compute_coverage(symbol=symbol, resolution=resolution)
+
+
+def _local_compute_data_status() -> dict:
+    """P7c: Data Layer telemetria. Per LocalDataLayerReader."""
     from application.data.data_layer_lifecycle import get_data_layer_status as get_lifecycle
     from application.data.data_layer_metrics import get_data_layer_metrics  # lazy: evita carregar data_layer si no hi ha pipeline
 
@@ -661,6 +709,25 @@ async def get_data_status():
     return result
 
 
+@data_router.get("/data_status")
+async def get_data_status():
+    """
+    P7c: Data Layer telemetria (counters, last_ts per símbol).
+    200 sempre que el servei estigui viu; data_layer_status=initializing durant arrencada.
+    503 només quan Data Layer mai s'ha habilitat (no pipeline).
+    """
+    if _data_layer_reader is not None:
+        try:
+            return _data_layer_reader.get_data_status()
+        except Exception as e:
+            from packages.shared.realtime_datalayer_client import RealtimeDataLayerError
+            if isinstance(e, RealtimeDataLayerError):
+                logger.warning("data_layer_reader (HTTP) failed: %s", e)
+                _http_error(503, DATA_STATUS_NOT_AVAILABLE, f"Realtime Data Layer unavailable: {e}")
+            raise
+    return _local_compute_data_status()
+
+
 @data_router.get("/candles")
 async def get_candles(
     symbol: str = Query(...),
@@ -672,6 +739,18 @@ async def get_candles(
     """Candles OHLCV (query param symbol). Sense venue (candle_store)."""
     if timeframe != SUPPORTED_TIMEFRAME:
         _http_error(422, TIMEFRAME_NOT_SUPPORTED, f"Only {SUPPORTED_TIMEFRAME} timeframe supported")
+    if _data_layer_reader is not None:
+        try:
+            body, headers = await _data_layer_reader.get_ohlcv(
+                symbol=symbol, tf=timeframe, limit=limit, since=since, to=to
+            )
+            return JSONResponse(content=body, headers=headers)
+        except Exception as e:
+            from packages.shared.realtime_datalayer_client import RealtimeDataLayerError
+            if isinstance(e, RealtimeDataLayerError):
+                logger.warning("data_layer_reader (HTTP) failed: %s", e)
+                _http_error(503, DATA_STATUS_NOT_AVAILABLE, f"Realtime Data Layer unavailable: {e}")
+            raise
     try:
         return await _read_candles_response(symbol, limit, since, to, validate_gaps=True)
     except HTTPException:
@@ -939,7 +1018,7 @@ def _map_positions_response(
                 liquidation_price=liq_price,
             )
         )
-        return PositionsResponse(positions=items)
+    return PositionsResponse(positions=items)
 
 
 # Registrar rutes (després que els decorators @data_router / @trading_router hagin executat)

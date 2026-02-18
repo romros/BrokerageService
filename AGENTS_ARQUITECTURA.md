@@ -466,6 +466,7 @@ Decisió de "venue principal" sempre és en 2 eixos:
 
 ## 15) Changelog
 
+- **2026-02-18** — Split vNext Phase 2: trading_service consumeix realtime_datalayer via HTTP (RealtimeDataLayerClient, IDataLayerReader, REALTIME_DATALAYER_BASE_URL). OHLCV/coverage/data_status forward quan env set.
 - **2026-02-18** — Split vNext Phase 1: SERVICE_ROLE, entrypoints per servei (apps/*/app.py), create_app(role), role boundaries, compose amb entrypoints reals.
 - **2026-02-18** — Split vNext: scaffold monorepo (apps/, packages/), compose 3 serveis, plantilla_tasca.md, mapping actual→vNext.
 - **2026-02-17** — Ostium prod-ish opt-in: graduation path (§8.4); Ostium integrat com a recorder opt-in (no primary fins gates). Data Layer canònic; fallback Dukascopy; exec desacoblat. Normes (§6), Testing sense pytest (§7), LAB (§8), Docker (§11).

@@ -22,6 +22,7 @@ from foundation.config.constants import (
     DATA_LAYER_STARTUP_GATE_ENV,
     HEARTBEAT_INTERVAL_S,
     OSTIUM_ENABLED_ENV,
+    REALTIME_DATALAYER_BASE_URL_ENV,
     TESTING_ENV,
     USE_FAKE_PRICE_FEED_ENV,
 )
@@ -215,6 +216,15 @@ def create_app(role: str | None = None) -> FastAPI:
                 market_data_source="n/a",
                 fallback_provider=fallback_provider,
             )
+
+        # Split vNext Phase 2: trading_service consumeix realtime_datalayer via HTTP
+        if role == "trading_service" and os.getenv(REALTIME_DATALAYER_BASE_URL_ENV, "").strip():
+            from packages.shared.realtime_datalayer_client import get_realtime_datalayer_client_from_env
+            from application.data.data_layer_reader import HttpDataLayerReader
+            client = get_realtime_datalayer_client_from_env()
+            if client is not None:
+                set_broker_deps(data_layer_reader=HttpDataLayerReader(client))
+                logger.info("Data Layer reader: HTTP (realtime_datalayer)")
 
         logger.info("✓ BrokerageService ready (role=%s)", role or "monolithic")
 

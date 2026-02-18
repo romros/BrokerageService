@@ -48,9 +48,16 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 
 # Aixecar els 3 serveis (entrypoints: apps.realtime_datalayer.app, etc.)
 docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml up -d realtime_datalayer historical_datalayer trading_service
+
+# Phase 2: trading_service consumeix realtime via HTTP (REALTIME_DATALAYER_BASE_URL)
+# Smoke split (2 min): realtime + trading; curl a trading per ohlcv/coverage/data_status
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml up -d realtime_datalayer trading_service
+curl -s http://localhost:8010/api/v1/broker/data_status
+curl -s "http://localhost:8010/api/v1/broker/coverage?symbol=EURUSD&resolution=1m"
+curl -s "http://localhost:8010/api/v1/broker/ohlcv/EURUSD?tf=1m&limit=5"
 ```
 
-**Estructura:** `apps/<servei>/app.py` (entrypoint), `application/app_factory.py` (create_app role-aware), `packages/shared/` (placeholder).
+**Estructura:** `apps/<servei>/app.py` (entrypoint), `application/app_factory.py` (create_app role-aware), `packages/shared/realtime_datalayer_client.py` (Phase 2).
 
 ---
 
@@ -229,6 +236,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-18 | Warmup basat en cobertura recent 24h | ✅ observed_open_minutes_24h (no span històric); prefetch no falsa warmup; startup gate ignora missing en warmup; warming_up→exit 0 | data_status expected/observed_open_minutes_24h |
 | 2026-02-18 | Split vNext scaffold | ✅ apps/, packages/, plantilla_tasca.md, docker-compose.split.yml; AGENTS+ESTAT actualitzats | `docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml config` |
 | 2026-02-18 | Split vNext Phase 1 | ✅ SERVICE_ROLE, entrypoints reals, create_app(role), role boundaries; test_service_role_wiring | `./test.sh testing/unit/test_service_role_wiring.py` |
+| 2026-02-18 | Split vNext Phase 2 | ✅ trading_service consumeix realtime_datalayer via HTTP (contracte mínim); RealtimeDataLayerClient (packages/shared); IDataLayerReader; REALTIME_DATALAYER_BASE_URL | `./scripts/run_tests.sh trading_service`; `docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml up -d realtime_datalayer trading_service`; `curl -s http://localhost:8010/api/v1/broker/data_status` |
 
 **Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 
