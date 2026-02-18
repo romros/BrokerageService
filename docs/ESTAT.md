@@ -28,6 +28,25 @@
 
 ---
 
+## Arquitectura split vNext — estat de migració
+
+**Estat:** scaffold. Encara no s'ha migrat codi; és estructura + docs + compose.
+
+**Serveis:** `realtime_datalayer`, `historical_datalayer`, `trading_service`. Veure `AGENTS_ARQUITECTURA.md` § Split vNext.
+
+**Comandes canòniques (placeholders):**
+```bash
+# Validar compose split
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml config
+
+# Aixecar els 3 serveis (reutilitzen mateixa imatge; ports diferents)
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml up -d realtime_datalayer historical_datalayer trading_service
+```
+
+**Estructura:** `apps/realtime_datalayer/`, `apps/historical_datalayer/`, `apps/trading_service/`, `packages/shared/`. README curt per servei.
+
+---
+
 ## Data Layer prod v0
 
 **Activar:** `DATA_LAYER_ENABLED=1` (default 0). Prefetch + writer loop + gates.
@@ -47,6 +66,8 @@
 **symbol_state:** `ACTIVE` | `DEGRADED`. Si DEGRADED → writer aturat per aquell símbol.
 
 **Perfil Ostium:** `OSTIUM_ENABLED=1` + `DATA_LAYER_WRITE_MODE=realtime_plus_backfill`. Realtime: OstiumCandleIngestService (polling REST); històric/gaps: DukascopyBackfillProvider. `backfill_only` = ingest OFF. Gates market-hours aware: soak en cap de setmana no DEGRADED per stale. `./scripts/run_smoke.sh ostium`, `./scripts/run_soak.sh 30 ostium`.
+
+**Tick recorder (forense):** Opt-in `OSTIUM_TICK_RECORDER_ENABLED=1`. Escriu ticks/snapshots a JSONL (`lab/out/ostium_forensics/daily/YYYYMMDD/<symbol>.jsonl`). Rotació diària + retenció (`OSTIUM_TICK_RETENTION_DAYS`, default 7). Best-effort: no bloqueja candles si el tick write falla. `data_status` inclou `tick_recorder` (enabled, outdir, last_tick_ts, lines_written, dupes_detected per símbol).
 
 **Allowlist + Quarantine (Ostium prod-ish v1):**
 - `OSTIUM_SYMBOLS` (default: EURUSD,GBPUSD): allowlist canònica — símbols que Ostium pot ingerir.
@@ -180,6 +201,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-18 | EURUSD graduation (permisos + run canònic) | ✅ user UID:GID a compose; save_ostium_registry atomic; run_compat/run_soak post-compat escriuen registry | `./scripts/run_soak.sh 2 ostium post-compat` |
 | 2026-02-18 | Cold-start readiness + permisos | ✅ warmup window (DATA_LAYER_WARMUP_MINUTES); warming_up no DEGRADED; --user a docker run; ESTAT+SAFETY_RUNBOOK | soak cold start reporta warming_up; no root-owned files |
 | 2026-02-18 | Warmup basat en cobertura recent 24h | ✅ observed_open_minutes_24h (no span històric); prefetch no falsa warmup; startup gate ignora missing en warmup; warming_up→exit 0 | data_status expected/observed_open_minutes_24h |
+| 2026-02-18 | Split vNext scaffold | ✅ apps/, packages/, plantilla_tasca.md, docker-compose.split.yml; AGENTS+ESTAT actualitzats | `docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml config` |
 
 **Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 

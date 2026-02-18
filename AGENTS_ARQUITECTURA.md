@@ -12,6 +12,49 @@
 
 ---
 
+## Split vNext (3 serveis)
+
+**Propòsit:** Desacoblament arquitectònic per operar en producció amb menys acoblament. Pivot cap a Ostium com a font realtime (recording 24/7) i Dukascopy com a històric.
+
+### Què fa cada servei
+
+| Servei | Funció |
+|--------|--------|
+| **realtime_datalayer** | Ostium recorder 24/7; serve candles/ticks recents; font primària per trading |
+| **historical_datalayer** | Dukascopy/backfill/compat/export; consumeix dades del realtime; stitching gated |
+| **trading_service** | Broker/execució (orders, balance, positions); consumeix Data Layer |
+
+### Contractes mínims
+
+- **realtime → trading:** `GET /candles`, `GET /ohlcv/{symbol}`, `GET /data_status`, `GET /coverage`
+- **historical → trading:** candles històrics, stitching (rang travessa cutover)
+- **historical → realtime:** consumeix candles recents per compat/gaps (opcional)
+
+### Graduation path
+
+- **LAB:** validació, probes, compat. Artifacts a `lab/out/`.
+- **prod-ish:** integrat, activable via env; compose override. Encara no primary.
+- **primary:** declarat authoritative quan passi gates (soak + compat).
+
+### Regla de docs
+
+- **ESTAT** és operatiu (comandes, evidència, runs).
+- **AGENTS** és graduation/design (arquitectura, contractes, invariants).
+
+### Mapping de l'estat actual → vNext
+
+| Actual | vNext (quan migrem) |
+|--------|---------------------|
+| `application/` (monolític) | `apps/realtime_datalayer/`, `apps/historical_datalayer/`, `apps/trading_service/` |
+| OstiumCandleIngestService, tick recorder | realtime_datalayer |
+| DukascopyBackfillProvider, compat | historical_datalayer |
+| broker_routes, IVenueAdapter | trading_service |
+| `foundation/`, `domain/` | `packages/shared/` (compartit) |
+
+**Nota:** Encara no s'ha migrat codi; és scaffold. Estructura a `apps/`, `packages/`, compose split a `deploy/compose/docker-compose.split.yml`.
+
+---
+
 ## 0) TL;DR
 
 - **Multi-venue per disseny:** un venue pot aportar **execució**, **market data**, o totes dues coses.
@@ -290,6 +333,8 @@ Per fonts de dades (ex. Ostium):
 
 **Regla (LAB monitors):** Els monitors LAB s'executen via `scripts/run_lab.sh <monitor> start|stop|status|logs` i viuen sota `deploy/compose/lab/`. No tmux manual per defecte.
 
+**Regla (Tick store forense):** El tick recorder Ostium (`OSTIUM_TICK_RECORDER_ENABLED`) és **forense** — per investigar desajustos (spot/perp, offsets, dupes) sense contaminar el camí canònic. No bloqueja prod-ish: si el tick write falla, el recorder de candles continua.
+
 ---
 
 ## 9) Wiring i DI (minimalista)
@@ -392,6 +437,7 @@ Decisió de "venue principal" sempre és en 2 eixos:
 
 ## 15) Changelog
 
+- **2026-02-18** — Split vNext: scaffold monorepo (apps/, packages/), compose 3 serveis, plantilla_tasca.md, mapping actual→vNext.
 - **2026-02-17** — Ostium prod-ish opt-in: graduation path (§8.4); Ostium integrat com a recorder opt-in (no primary fins gates). Data Layer canònic; fallback Dukascopy; exec desacoblat. Normes (§6), Testing sense pytest (§7), LAB (§8), Docker (§11).
 - **2026-02-14** — API canònica `/api/v1/broker/*`, candles sense venue, semàntica 1m (UTC start-of-minute).
 - **2026-02-13** — Lighter execution MVP (smoke/e2e) i quality gates base.

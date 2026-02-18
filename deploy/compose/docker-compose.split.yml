@@ -1,0 +1,104 @@
+# Compose scaffold — Split vNext (3 serveis)
+# Reutilitza mateixa imatge/codi; ports i env diferenciats.
+# Operativa visible; no migració de codi encara.
+#
+# Ús:
+#   docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml config  # validar
+#   docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml up -d realtime_datalayer historical_datalayer trading_service
+#
+# Veure deploy/compose/overrides/README.md i docs/ESTAT.md § Arquitectura split vNext.
+
+services:
+  realtime_datalayer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: realtime-datalayer
+    working_dir: /app
+    ports:
+      - "8001:8001"
+    environment:
+      - TZ=America/New_York
+      - PYTHONPATH=/app
+      - PORT=8001
+      - HOST=0.0.0.0
+      - MODE=${MODE:-backtest}
+      - DATAFILES_ROOT=/datafiles
+      - CANONICAL_TZ=America/New_York
+      - SYMBOLS=${SYMBOLS:-XAUUSD,EURUSD}
+      - DATA_LAYER_ENABLED=1
+      - DATA_LAYER_WRITE_MODE=realtime_plus_backfill
+      - OSTIUM_ENABLED=1
+      - OSTIUM_SYMBOLS=${OSTIUM_SYMBOLS:-EURUSD,GBPUSD}
+      - OSTIUM_QUARANTINE_SYMBOLS=${OSTIUM_QUARANTINE_SYMBOLS:-XAUUSD,XAU}
+      - BROKER_URL=http://realtime_datalayer:8001
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./datafiles:/datafiles
+      - ./logs:/app/logs
+      - ./lab/out:/app/lab/out
+    networks:
+      - trading
+    command: ["python3", "-m", "uvicorn", "application.main:app", "--host", "0.0.0.0", "--port", "8001"]
+
+  historical_datalayer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: historical-datalayer
+    working_dir: /app
+    ports:
+      - "8002:8002"
+    environment:
+      - TZ=America/New_York
+      - PYTHONPATH=/app
+      - PORT=8002
+      - HOST=0.0.0.0
+      - MODE=${MODE:-backtest}
+      - DATAFILES_ROOT=/datafiles
+      - CANONICAL_TZ=America/New_York
+      - SYMBOLS=${SYMBOLS:-XAUUSD,EURUSD}
+      - DATA_LAYER_ENABLED=1
+      - DATA_LAYER_WRITE_MODE=backfill_only
+      - OSTIUM_ENABLED=0
+      - BROKER_URL=http://historical_datalayer:8002
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./datafiles:/datafiles
+      - ./logs:/app/logs
+      - ./lab/out:/app/lab/out
+    networks:
+      - trading
+    command: ["python3", "-m", "uvicorn", "application.main:app", "--host", "0.0.0.0", "--port", "8002"]
+
+  trading_service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trading-service-split
+    working_dir: /app
+    ports:
+      - "8010:8010"
+    environment:
+      - TZ=America/New_York
+      - PYTHONPATH=/app
+      - PORT=8010
+      - HOST=0.0.0.0
+      - MODE=${MODE:-backtest}
+      - VENUE=${VENUE:-gtrade}
+      - DATAFILES_ROOT=/datafiles
+      - CANONICAL_TZ=America/New_York
+      - BROKER_URL=http://realtime_datalayer:8001
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LIGHTER_BASE_URL=${LIGHTER_BASE_URL:-}
+      - LIGHTER_L1_ADDRESS=${LIGHTER_L1_ADDRESS:-}
+      - LIGHTER_L1_PRIVATE_KEY=${LIGHTER_L1_PRIVATE_KEY:-}
+      - LIGHTER_ACCOUNT_INDEX=${LIGHTER_ACCOUNT_INDEX:-}
+      - LIGHTER_API_KEY_INDEX=${LIGHTER_API_KEY_INDEX:-}
+      - LIGHTER_API_PRIVATE_KEY=${LIGHTER_API_PRIVATE_KEY:-}
+    volumes:
+      - ./datafiles:/datafiles
+      - ./logs:/app/logs
+    networks:
+      - trading
+    command: ["python3", "-m", "uvicorn", "application.main:app", "--host", "0.0.0.0", "--port", "8010"]

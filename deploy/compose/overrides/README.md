@@ -2,13 +2,15 @@
 
 Tots els docker-compose overrides operatius. Convenció: un fitxer per perfil.
 
+**Scaffold split vNext:** `deploy/compose/docker-compose.split.yml` — 3 serveis (realtime_datalayer, historical_datalayer, trading_service). Reutilitza mateixa imatge; és scaffold operatiu, encara no migració de codi. Veure `docs/ESTAT.md` § Arquitectura split vNext.
+
 | Fitxer | Perfil | Descripció |
 |--------|--------|-------------|
 | data-layer.yml | data-layer | Data Layer prod v0 (prefetch + writer + gates) |
 | soak.yml | ws | WS soak (fake feed, ETH/BTC) |
 | ostium.yml | ostium | Ostium Data Layer prod v0 (realtime Ostium + backfill Dukascopy). DATA_LAYER_WRITE_MODE=realtime_plus_backfill. Opt-in experimental. |
 
-**Gotcha permisos (resolt):** data-layer i ostium usen `user: ${UID}:${GID}` perquè `datafiles/compat_reports/` sigui writable des del host (run_compat.sh, run_soak post-compat). Els scripts run_smoke.sh i run_soak.sh exporten UID/GID automàticament. Si arranques compose manualment, fes `export UID=$(id -u) GID=$(id -g)` abans.
+**Gotcha permisos (resolt):** data-layer i ostium usen `user: ${DOCKER_UID}:${DOCKER_GID}` perquè `datafiles/compat_reports/` sigui writable des del host (run_compat.sh, run_soak post-compat). Els scripts exporten DOCKER_UID/DOCKER_GID i comproven que datafiles/logs siguin writable. **Si el broker falla (Permission denied):** executa `sudo chown -R $(id -u):$(id -g) datafiles logs` una vegada.
 
 **Ús:**
 ```bash
