@@ -29,8 +29,7 @@ from application.data.data_layer_metrics import (
     SYMBOL_STATE_DEGRADED,
     get_data_layer_metrics,
 )
-from application.market_hours import is_market_open
-from application.market_hours.fx_24_5 import count_closed_minutes_between
+from application.market_hours.fx_24_5 import count_closed_minutes_between, get_market_state
 from foundation.config.constants import (
     DATA_LAYER_ENABLED_ENV,
     DATA_LAYER_WRITE_MODE_ENV,
@@ -304,8 +303,7 @@ class DataLayerProdService:
                 continue
 
             last_ts_int = int(last_ts.timestamp())
-            market_open_now = is_market_open(symbol, now_ts)
-            market_state_reason = "open" if market_open_now else "closed"
+            market_open_now, market_state_reason = get_market_state(symbol, now_ts)
 
             # stale_s: si mercat tancat ara, no penalitzar (stale_s=0 per gates)
             if market_open_now:

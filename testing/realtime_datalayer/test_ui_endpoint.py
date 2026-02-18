@@ -31,6 +31,8 @@ def test_ui_returns_html():
     assert "/docs" in text
     assert "put" in text or "apply_mode" in text
     assert "realtime" in text or "datalayer" in text
+    assert "auto-refresh" in text
+    assert "diff" in text and "replace" in text
     print("✓ test_ui_returns_html passed")
 
 

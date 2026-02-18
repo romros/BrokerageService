@@ -252,7 +252,12 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-18 | Split vNext Phase 2 | ✅ trading_service consumeix realtime_datalayer via HTTP (contracte mínim); RealtimeDataLayerClient (packages/shared); IDataLayerReader; REALTIME_DATALAYER_BASE_URL | `./scripts/run_tests.sh trading_service`; `curl -s http://localhost:8010/api/v1/broker/data_status` |
 | 2026-02-18 | Realtime DataLayer v1 | ✅ servei autònom; GET /health, /status; storage datafiles/realtime_datalayer/; tests curts run_realtime.py | `./test.sh testing/run_realtime.py`; `curl -s http://localhost:8081/status` |
 | 2026-02-18 | Realtime hot-reload | ✅ GET/PUT /symbols; config persistent symbols.json; instrument resolution (spot/perp); add/remove símbols sense restart | `curl -X PUT http://localhost:8081/symbols -d '{"symbols":["EURUSD","XAUUSD"],"apply_mode":"replace"}'` |
-| 2026-02-18 | Realtime UI + smoke | ✅ /docs, /openapi.json, /ui (dashboard); smoke canònic `./scripts/run_smoke.sh realtime_datalayer`; artifact runs/ | http://localhost:8081/ui ; http://localhost:8081/docs |
+| 2026-02-18 | Realtime UI + smoke | ✅ /, /ui, /info, /docs, /openapi.json; auto-refresh 5s/10s/30s; cards per símbol; PUT diff/replace; smoke `./scripts/run_smoke.sh realtime_datalayer` | http://localhost:8081/ ; http://localhost:8081/ui ; http://localhost:8081/docs |
+| 2026-02-18 | Realtime market-hours aware | ✅ market_closed no degrada; ingest pausat per símbol; /symbols market_open, market_state_reason, state; dashboard badges+taula; tests test_market_closed_not_degraded, test_pause_resume, test_dashboard_renders_states | `./test.sh testing/run_realtime.py`; XAU closed cap de setmana = OK |
+| 2026-02-18 | Realtime Dashboard v2 | ✅ last_price, market_state (open|closed|unknown), state (running|closed|warning|degraded); /status effective_tz, now_utc, now_local; filtres, ordenació, presets FX; test_status_includes_timezone_fields | http://localhost:8081/ui |
+| 2026-02-18 | Imports AGENTS compliance | ✅ app_factory: stdlib (datetime, zoneinfo, subprocess, time) a capçalera; lazy imports documentats; tests realtime_datalayer imports a capçalera | AGENTS_ARQUITECTURA.md §6.1 |
+
+**DEGRADED vs CLOSED vs WARNING:** `closed` = mercat tancat (cap de setmana FX/XAU); no és incident. `warning` = market_state=unknown sense dades; no és degraded. `DEGRADED` = errors reals (duplicates, ts_step_errors, stale quan market_open).
 
 **Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 

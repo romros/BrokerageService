@@ -38,11 +38,14 @@
 - `retention`: candles_max_hours, ticks_max_hours
 - `uptime`: segons des d'arrencada
 - `ingest_state`: running | stopped | initializing
+- `effective_tz`: CANONICAL_TZ (ex. America/New_York)
+- `now_utc`: timestamp UTC actual
+- `now_local`: timestamp a effective_tz
 
 ### GET /symbols
 - `desired`: llista desitjada (config)
 - `active`: símbols actualment en ingest (no stopped)
-- `by_symbol`: per cada símbol: ostium_asset, kind (perp|spot|unknown), resolution_source (auto|override), ticks_seen, ticks_last_ts, candles_written, candle_last_ts, errors_count, last_error, state (running|stopped|degraded)
+- `by_symbol`: per cada símbol: ostium_asset, kind (perp|spot|unknown), resolution_source (auto|override), **market_state** (open|closed|unknown), market_open, market_state_reason, **last_price**, ticks_seen, ticks_last_ts, candles_written, candle_last_ts, errors_count, last_error, **state** (running|closed|warming|warning|degraded|stopped)
 
 ### PUT /symbols
 - Body: `{"symbols": ["EURUSD","USDJPY",...], "apply_mode": "diff"|"replace"}`
@@ -89,13 +92,21 @@
 
 ## Operativa web: /docs i /ui
 
+- **GET /** — Redirigeix a /ui (realtime_datalayer).
 - **GET /docs** — Swagger UI (OpenAPI). Permet provar GET/PUT /symbols, GET /status, GET /health des del navegador.
 - **GET /openapi.json** — Especificació OpenAPI.
-- **GET /ui** — Mini dashboard HTML: health, status, symbols (desired/active/by_symbol) + formulari PUT /symbols (diff/replace). Preset d’assets, refresh, copy curl.
+- **GET /info** — Servei info: version, build, port, utc_now (per capçalera UI).
+- **GET /ui** — Dashboard v2: badges open/closed/unknown/warning/degraded, taula ordenable amb last_price, filtres (show degraded/warning only, hide closed), clock UTC + CANONICAL_TZ, presets 8 assets / FX-only, PUT /symbols amb banner de resposta.
 
 Via túnel SSH: `ssh -L 8081:localhost:8081 user@host` → obrir http://localhost:8081/ui i http://localhost:8081/docs.
 
 ---
+
+## Market hours
+
+- **FX/XAU 24/5:** Diumenge 22:00 UTC – Divendres 22:00 UTC. Fora d'horari → `market_closed`, ingest pausat.
+- **Indices/equities (GOOGUSD, NVDAUSD, DAXEUR, SPXUSD):** `market_state_reason=unknown`; no degradar per stale (només per errors reals).
+- Quan `market_closed` → open: ingest es repren automàticament.
 
 ## Boundaries
 

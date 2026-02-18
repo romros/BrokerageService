@@ -15,6 +15,7 @@
 | Instrument resolution | ✅ | spot/perp, override a config |
 | Ostium ingest 24/7 | ✅ | OstiumCandleIngestService |
 | Sense Dukascopy | ✅ | NullBackfillProvider; independent (AGENTS_ARQUITECTURA) |
+| Market-hours aware | ✅ | market_closed no degrada; ingest pausat per símbol quan closed |
 | Tick recorder | ✅ | OstiumTickRecorder (opt-in) |
 | Storage candles | ✅ | datafiles/realtime_datalayer/candles (configurable) |
 | Storage ticks | ✅ | lab/out/ostium_forensics o REALTIME_DATALAYER_ROOT/ticks |
@@ -36,7 +37,8 @@ curl -s http://localhost:8081/symbols
 curl -s http://localhost:8081/api/v1/broker/data_status
 
 # UI i docs (túnel: ssh -L 8081:localhost:8081 user@host)
-# Obrir al navegador: http://localhost:8081/ui  i  http://localhost:8081/docs
+# Obrir al navegador: http://localhost:8081/  o  http://localhost:8081/ui  i  http://localhost:8081/docs
+# Dashboard: auto-refresh 5s/10s/30s, cards per símbol, PUT /symbols diff/replace
 
 # Canviar símbols sense restart (hot-reload)
 curl -X PUT http://localhost:8081/symbols -H "Content-Type: application/json" \
@@ -60,6 +62,12 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 2. Editar el textarea (JSON array de símbols)
 3. Triar apply_mode: replace o diff
 4. Clic "PUT /symbols"
+
+## Per què pots veure closed / warning i és OK
+
+- **market_state=closed:** Mercat tancat (cap de setmana FX/XAU). `state=closed`; no és incident. Ingest pausat; es repren quan obre.
+- **market_state=unknown:** Calendari no fiable (indices/equities). `state=warning` si no hi ha dades; no és degraded.
+- **DEGRADED** només per errors reals (duplicates, ts_step_errors, stale quan market_open).
 
 ## Llista d'assets (exemple)
 

@@ -10,6 +10,9 @@ from typing import List, Tuple
 # Símbols amb horari 24/5 (FX/XAU)
 FX_24_5_SYMBOLS = frozenset({"EURUSD", "GBPUSD", "XAUUSD", "XAU", "USDJPY", "AUDUSD"})
 
+# Indices/equities: calendari no fiable encara → market_hours=unknown (no degradar per stale)
+MARKET_HOURS_UNKNOWN_SYMBOLS = frozenset({"GOOGUSD", "NVDAUSD", "DAXEUR", "SPXUSD"})
+
 # Diumenge 22:00 UTC = open; Divendres 22:00 UTC = close
 # weekday: 0=Mon, 5=Sat, 6=Sun
 # Open: Sun 22:00 - Fri 22:00 UTC
@@ -23,15 +26,18 @@ def _normalize_symbol(symbol: str) -> str:
     return s
 
 
-def is_market_open(symbol: str, ts_utc: int | datetime) -> bool:
+def get_market_state(symbol: str, ts_utc: int | datetime) -> tuple[bool, str]:
     """
-    Retorna True si el mercat està obert al ts_utc.
-
-    FX/XAU 24/5: obert Diumenge 22:00 UTC - Divendres 22:00 UTC.
+    Retorna (market_open, reason).
+    - FX/XAU 24/5: open/closed segons horari.
+    - Indices/equities: unknown (no calendari fiable).
+    - Altres: open (assumir obert).
     """
     s = _normalize_symbol(symbol)
+    if s in MARKET_HOURS_UNKNOWN_SYMBOLS:
+        return True, "unknown"  # No degradar per stale
     if s not in FX_24_5_SYMBOLS:
-        return True  # Desconegut → assumir obert
+        return True, "open"
 
     if isinstance(ts_utc, datetime):
         ts = int(ts_utc.timestamp())
@@ -47,15 +53,26 @@ def is_market_open(symbol: str, ts_utc: int | datetime) -> bool:
 
     # Dissabte: tancat
     if wd == 5:
-        return False
+        return False, "closed"
     # Diumenge: obert des de les 22:00 (1320 minuts)
     if wd == 6:
-        return mins >= 22 * 60
+        return (mins >= 22 * 60, "open" if mins >= 22 * 60 else "closed")
     # Divendres: tancat des de les 22:00
     if wd == 4:
-        return mins < 22 * 60
+        return (mins < 22 * 60, "open" if mins < 22 * 60 else "closed")
     # Dilluns-Dijous: obert
-    return True
+    return True, "open"
+
+
+def is_market_open(symbol: str, ts_utc: int | datetime) -> bool:
+    """Retorna True si el mercat està obert. Wrapper de get_market_state."""
+    return get_market_state(symbol, ts_utc)[0]
+
+
+def stale_degradation_applies(symbol: str, ts_utc: int | datetime) -> bool:
+    """True només quan cal aplicar degradació per stale (market open, no closed/unknown)."""
+    open_, reason = get_market_state(symbol, ts_utc)
+    return open_ and reason == "open"
 
 
 def closed_intervals_between(

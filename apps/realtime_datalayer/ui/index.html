@@ -3,64 +3,144 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Realtime DataLayer — Dashboard</title>
+  <title>Realtime DataLayer — Dashboard v2</title>
   <style>
     * { box-sizing: border-box; }
-    body { font-family: system-ui, sans-serif; margin: 1rem; max-width: 900px; }
-    h1 { font-size: 1.2rem; }
-    section { margin: 1rem 0; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; }
-    .ok { color: green; }
-    .warn { color: orange; }
-    .err { color: red; }
-    pre { overflow-x: auto; font-size: 0.85rem; background: #f5f5f5; padding: 0.5rem; }
-    button { padding: 0.4rem 0.8rem; cursor: pointer; margin-right: 0.5rem; }
-    input, select { padding: 0.3rem; margin: 0.2rem; }
-    textarea { width: 100%; min-height: 60px; font-family: monospace; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; }
-    .sym-card { padding: 0.4rem; border: 1px solid #ddd; border-radius: 3px; font-size: 0.9rem; }
-    .sym-card.running { border-left: 3px solid green; }
-    .sym-card.stopped { border-left: 3px solid #999; }
-    .sym-card.degraded { border-left: 3px solid red; }
+    body { font-family: system-ui, -apple-system, sans-serif; margin: 1rem; max-width: 1200px; line-height: 1.4; background: #0f172a; color: #e2e8f0; }
+    .banner { background: #1e293b; color: #cbd5e1; padding: 0.5rem 1rem; border-radius: 4px; margin-bottom: 1rem; font-size: 0.9rem; border: 1px solid #334155; }
+    .banner strong { color: #7dd3fc; }
+    h1 { font-size: 1.3rem; margin: 0.5rem 0; color: #f1f5f9; }
+    .header-meta { font-size: 0.85rem; color: #94a3b8; margin-bottom: 1rem; }
+    .clock { font-family: monospace; font-size: 0.9rem; background: #0f172a; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; border: 1px solid #334155; }
+    section { margin: 1rem 0; padding: 0.75rem; border: 1px solid #334155; border-radius: 6px; background: #1e293b; }
+    section h2 { font-size: 1rem; margin: 0 0 0.5rem 0; color: #f1f5f9; }
+    .ok { color: #4ade80; }
+    .warn, .initializing { color: #fb923c; }
+    .err { color: #f87171; }
+    .error-box { background: #450a0a; border: 1px solid #7f1d1d; color: #fca5a5; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; font-size: 0.9rem; }
+    .put-banner { padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; font-size: 0.9rem; }
+    .put-banner.ok { background: #166534; color: #fff; }
+    .put-banner.err { background: #7f1d1d; color: #fca5a5; }
+    pre { overflow-x: auto; font-size: 0.8rem; background: #0f172a; color: #cbd5e1; padding: 0.5rem; border-radius: 4px; border: 1px solid #334155; }
+    button { padding: 0.4rem 0.8rem; cursor: pointer; margin-right: 0.5rem; margin-bottom: 0.3rem; border: 1px solid #475569; border-radius: 4px; background: #334155; color: #e2e8f0; }
+    button:hover { background: #475569; }
+    button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+    button.primary:hover { background: #3b82f6; }
+    input, select { padding: 0.3rem; margin: 0.2rem; border: 1px solid #475569; border-radius: 4px; background: #1e293b; color: #e2e8f0; }
+    textarea { width: 100%; min-height: 70px; font-family: inherit; font-size: 0.9rem; padding: 0.5rem; border: 1px solid #475569; border-radius: 4px; background: #1e293b; color: #e2e8f0; }
+    .badge { display: inline-block; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.75rem; font-weight: 500; }
+    .badge.ok { background: #166534; color: #fff; }
+    .badge.closed { background: #475569; color: #e2e8f0; }
+    .badge.unknown { background: #854d0e; color: #fef08a; }
+    .badge.degraded { background: #7f1d1d; color: #fca5a5; }
+    .badge.warming { background: #9a3412; color: #fed7aa; }
+    .badge.warning { background: #854d0e; color: #fef08a; }
+    .badge.stopped { background: #334155; color: #94a3b8; }
+    table.symbol-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    table.symbol-table th, table.symbol-table td { padding: 0.4rem; border: 1px solid #334155; text-align: left; }
+    table.symbol-table th { background: #0f172a; color: #94a3b8; cursor: pointer; user-select: none; }
+    table.symbol-table th:hover { background: #1e293b; }
+    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .help { font-size: 0.85rem; color: #94a3b8; margin: 0.3rem 0; }
+    a { color: #7dd3fc; }
+    a:hover { color: #bae6fd; }
   </style>
 </head>
 <body>
-  <h1>Realtime DataLayer v1 — Dashboard</h1>
-  <p><a href="/docs">OpenAPI /docs</a> · <a href="/openapi.json">openapi.json</a></p>
+  <div class="banner"><strong>Realtime DataLayer</strong> — Ostium recorder 24/7; no broker /api/v1/broker/health</div>
+
+  <h1>Dashboard v2</h1>
+  <p class="header-meta" id="headerMeta">—</p>
+  <div class="clock" id="clock">—</div>
 
   <section>
     <h2>Accions</h2>
-    <button id="btnRefresh">Refresh</button>
-    <button id="btnCopyCurl">Copy curl /symbols</button>
+    <div class="actions">
+      <button id="btnRefresh">Refresh</button>
+      <label><input type="checkbox" id="autoRefresh" checked> Auto-refresh</label>
+      <label>Interval: <select id="refreshInterval"><option value="5">5s</option><option value="10" selected>10s</option><option value="30">30s</option></select></label>
+      <button id="btnCopyGet">Copy curl GET /symbols</button>
+      <button id="btnCopyPut">Copy curl PUT /symbols</button>
+    </div>
   </section>
 
   <section>
     <h2>Health</h2>
     <div id="health">—</div>
+    <div id="healthError" class="error-box" style="display:none"></div>
   </section>
 
   <section>
     <h2>Status</h2>
     <div id="status">—</div>
+    <div id="statusError" class="error-box" style="display:none"></div>
   </section>
 
   <section>
     <h2>Symbols (desired / active)</h2>
+    <p class="help" id="symbolsSummary">—</p>
+    <div class="actions">
+      <label><input type="checkbox" id="filterDegraded"> Show degraded/warning only</label>
+      <label><input type="checkbox" id="filterHideClosed"> Hide closed</label>
+      <label>Sort: <select id="sortBy"><option value="state">state</option><option value="last_tick_age_s">last_tick_age_s</option><option value="ticks">ticks</option><option value="candles">candles</option><option value="symbol">symbol</option></select></label>
+    </div>
     <div id="symbols">—</div>
+    <div id="symbolsError" class="error-box" style="display:none"></div>
+    <p class="help" style="margin-top:0.5rem">Last update: <span id="lastUpdate">—</span></p>
+    <details><summary>Raw JSON</summary><pre id="symbolsRaw">—</pre></details>
   </section>
 
   <section>
     <h2>PUT /symbols (hot-reload)</h2>
+    <p class="help"><b>diff:</b> afegeix símbols a la llista actual (no treu). <b>replace:</b> reemplaça la llista total (atura ingest per símbols trets, però no esborra dades).</p>
+    <div id="putBanner" class="put-banner" style="display:none"></div>
     <p>
-      <label>Apply mode: <select id="applyMode"><option value="replace">replace</option><option value="diff">diff</option></select></label>
-      <button id="btnPreset">Preset (8 assets)</button>
+      <label>Apply mode: <select id="applyMode"><option value="replace">replace</option><option value="diff">diff</option></label>
+      <button id="btnPreset8">Preset 8 assets</button>
+      <button id="btnPresetFx">Preset FX-only</button>
     </p>
     <textarea id="symbolsInput" placeholder='["EURUSD","USDJPY","XAUUSD",...]'>["EURUSD","USDJPY","XAUUSD","GBPUSD","GOOGUSD","NVDAUSD","DAXEUR","SPXUSD"]</textarea>
-    <p><button id="btnPut">PUT /symbols</button> <span id="putResult"></span></p>
+    <p><button id="btnPut" class="primary">PUT /symbols</button></p>
   </section>
+
+  <p><a href="/docs">OpenAPI /docs</a> · <a href="/openapi.json">openapi.json</a></p>
 
   <script>
     const BASE = '';
-    const preset = ["EURUSD","USDJPY","XAUUSD","GBPUSD","GOOGUSD","NVDAUSD","DAXEUR","SPXUSD"];
+    const preset8 = ["EURUSD","USDJPY","XAUUSD","GBPUSD","GOOGUSD","NVDAUSD","DAXEUR","SPXUSD"];
+    const presetFx = ["EURUSD","USDJPY","XAUUSD","GBPUSD"];
+    let refreshTimer = null;
+    let lastStatus = null;
+    let lastSymbolsData = null;
+
+    function showError(id, msg) {
+      const box = document.getElementById(id + 'Error');
+      if (box) { box.textContent = msg || ''; box.style.display = msg ? 'block' : 'none'; }
+    }
+
+    function ago(ts) {
+      if (!ts) return '—';
+      const t = typeof ts === 'number' ? ts : (Date.parse(ts) || 0);
+      if (!t) return '—';
+      const s = Math.floor((Date.now() - t) / 1000);
+      if (s < 60) return `fa ${s}s`;
+      if (s < 3600) return `fa ${Math.floor(s/60)}m`;
+      return `fa ${Math.floor(s/3600)}h`;
+    }
+
+    function ageSeconds(ts) {
+      if (!ts) return null;
+      const t = typeof ts === 'number' ? ts : (Date.parse(ts) || 0);
+      if (!t) return null;
+      return Math.floor((Date.now() - t) / 1000);
+    }
+
+    function fmtPrice(p) {
+      if (p == null || p === undefined) return '—';
+      const n = Number(p);
+      if (isNaN(n)) return '—';
+      return n.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 6 });
+    }
 
     async function fetchJson(path) {
       const r = await fetch(BASE + path);
@@ -68,86 +148,243 @@
       return r.json();
     }
 
+    async function fetchSafe(path) {
+      try {
+        const data = await fetchJson(path);
+        return { ok: true, data };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    }
+
     function renderHealth(data) {
       const el = document.getElementById('health');
-      const c = data.status === 'ok' ? 'ok' : (data.status === 'degraded' ? 'warn' : 'err');
-      el.innerHTML = `<span class="${c}">${data.status}</span>`;
+      const status = data?.status || '—';
+      const c = status === 'ok' ? 'ok' : (status === 'initializing' ? 'initializing' : (status === 'degraded' ? 'warn' : 'err'));
+      el.innerHTML = `<span class="${c}"><b>${status}</b></span>`;
+      if (data?.reason) el.innerHTML += ` <span class="help">(${data.reason})</span>`;
     }
 
     function renderStatus(data) {
+      lastStatus = data;
       const el = document.getElementById('status');
       el.innerHTML = `
-        <p><b>ingest_state:</b> ${data.ingest_state || '—'} · <b>uptime_s:</b> ${data.uptime_s ?? '—'}</p>
-        <p><b>retention:</b> candles_max_hours=${data.retention?.candles_max_hours ?? '—'}, ticks_max_hours=${data.retention?.ticks_max_hours ?? '—'}</p>
-        <p><b>tick_recorder_enabled:</b> ${data.tick_recorder_enabled ?? '—'}</p>
-        <details><summary>Raw</summary><pre>${JSON.stringify(data, null, 2)}</pre></details>
+        <p><b>ingest_state:</b> ${data?.ingest_state || '—'} · <b>uptime_s:</b> ${data?.uptime_s ?? '—'}</p>
+        <p><b>retention:</b> candles_max_hours=${data?.retention?.candles_max_hours ?? '—'}, ticks_max_hours=${data?.retention?.ticks_max_hours ?? '—'}</p>
+        <p><b>tick_recorder_enabled:</b> ${data?.tick_recorder_enabled ?? '—'}</p>
+        <details><summary>Raw</summary><pre>${JSON.stringify(data || {}, null, 2)}</pre></details>
       `;
+    }
+
+    function updateClock() {
+      const el = document.getElementById('clock');
+      if (lastStatus) {
+        el.innerHTML = `<b>UTC:</b> ${lastStatus.now_utc || '—'} · <b>${lastStatus.effective_tz || 'TZ'}:</b> ${lastStatus.now_local || '—'}`;
+      } else {
+        el.textContent = 'UTC: ' + new Date().toISOString() + ' (loading status...)';
+      }
+    }
+
+    function badgeClass(state) {
+      if (state === 'running') return 'ok';
+      if (state === 'closed') return 'closed';
+      if (state === 'degraded') return 'degraded';
+      if (state === 'warming') return 'warming';
+      if (state === 'warning') return 'warning';
+      return 'stopped';
     }
 
     function renderSymbols(data) {
       const el = document.getElementById('symbols');
-      const by = data.by_symbol || {};
-      const cards = Object.entries(by).map(([sym, info]) => `
-        <div class="sym-card ${info.state || ''}">
-          <b>${sym}</b> → ${info.ostium_asset} (${info.kind}, ${info.resolution_source})<br>
-          ticks: ${info.ticks_seen ?? 0} · candles: ${info.candles_written ?? 0} · state: ${info.state || '—'}
-          ${info.errors_count > 0 ? `<br><span class="err">errors: ${info.errors_count}</span>` : ''}
-        </div>
-      `).join('');
+      const rawEl = document.getElementById('symbolsRaw');
+      const summaryEl = document.getElementById('symbolsSummary');
+      const lastUpdateEl = document.getElementById('lastUpdate');
+      const by = data?.by_symbol || {};
+      const active = new Set(data?.active || []);
+      const desired = data?.desired || [];
+      const filterDegraded = document.getElementById('filterDegraded')?.checked;
+      const filterHideClosed = document.getElementById('filterHideClosed')?.checked;
+      const sortBy = document.getElementById('sortBy')?.value || 'state';
+
+      let entries = Object.entries(by);
+      if (filterDegraded) entries = entries.filter(([, i]) => i.state === 'degraded' || i.state === 'warning');
+      if (filterHideClosed) entries = entries.filter(([, i]) => i.state !== 'closed');
+
+      const order = { running: 0, warming: 1, closed: 2, warning: 3, degraded: 4, stopped: 5 };
+      entries.sort((a, b) => {
+        if (sortBy === 'state') {
+          const ao = order[a[1].state] ?? 6;
+          const bo = order[b[1].state] ?? 6;
+          if (ao !== bo) return ao - bo;
+        } else if (sortBy === 'last_tick_age_s') {
+          const aa = ageSeconds(a[1].ticks_last_ts ?? a[1].last_tick_ts) ?? 999999;
+          const ab = ageSeconds(b[1].ticks_last_ts ?? b[1].last_tick_ts) ?? 999999;
+          return aa - ab;
+        } else if (sortBy === 'ticks') return (b[1].ticks_seen ?? 0) - (a[1].ticks_seen ?? 0);
+        else if (sortBy === 'candles') return (b[1].candles_written ?? 0) - (a[1].candles_written ?? 0);
+        else if (sortBy === 'symbol') return (a[0] || '').localeCompare(b[0] || '');
+        return (desired.indexOf(a[0]) >= 0 ? 0 : 1) - (desired.indexOf(b[0]) >= 0 ? 0 : 1);
+      });
+
+      let openCount = 0, closedCount = 0, unknownCount = 0, degradedCount = 0, warningCount = 0;
+      Object.values(by).forEach(info => {
+        if (info.state === 'degraded') degradedCount++;
+        else if (info.state === 'warning') warningCount++;
+        else if (info.state === 'closed') closedCount++;
+        else if (info.market_state === 'unknown') unknownCount++;
+        else if (info.state === 'running' || info.state === 'warming') openCount++;
+      });
+      if (summaryEl) summaryEl.innerHTML = `<span class="badge ok">open: ${openCount}</span> <span class="badge closed">closed: ${closedCount}</span> <span class="badge unknown">unknown: ${unknownCount}</span> <span class="badge warning">warning: ${warningCount}</span> <span class="badge degraded">degraded: ${degradedCount}</span>`;
+
+      const rows = entries.map(([sym, info]) => {
+        const ticks = info.ticks_seen ?? 0;
+        const candles = info.candles_written ?? 0;
+        const warming = ticks > 0 && candles === 0;
+        const state = warming ? 'warming' : (info.state || '—');
+        const lastTick = info.ticks_last_ts || info.last_tick_ts;
+        const lastCandle = info.candle_last_ts || info.last_candle_ts;
+        const tickAge = ageSeconds(lastTick);
+        const candleAge = ageSeconds(lastCandle);
+        const marketState = info.market_state || (info.market_open ? 'open' : 'closed');
+        return `<tr>
+          <td><b>${sym}</b></td>
+          <td>${info.ostium_asset}</td>
+          <td>${info.kind}</td>
+          <td><span class="badge ${marketState === 'open' ? 'ok' : (marketState === 'closed' ? 'closed' : 'unknown')}">${marketState}</span></td>
+          <td><span class="badge ${badgeClass(state)}">${state}</span></td>
+          <td>${fmtPrice(info.last_price)}</td>
+          <td>${ticks}</td>
+          <td>${candles}</td>
+          <td>${tickAge != null ? tickAge + 's' : '—'}</td>
+          <td>${candleAge != null ? candleAge + 's' : '—'}</td>
+          <td>${info.errors_count > 0 ? '<span class="err">' + info.errors_count + '</span>' : '0'}</td>
+          <td class="help">${info.last_error ? info.last_error.substring(0, 30) + (info.last_error.length > 30 ? '…' : '') : '—'}</td>
+        </tr>`;
+      }).join('');
       el.innerHTML = `
-        <p><b>desired:</b> ${(data.desired || []).join(', ')}</p>
-        <p><b>active:</b> ${(data.active || []).join(', ')}</p>
-        <div class="grid">${cards}</div>
+        <p><b>desired:</b> ${(data?.desired || []).join(', ')}</p>
+        <p><b>active:</b> ${(data?.active || []).join(', ')}</p>
+        <table class="symbol-table">
+          <thead><tr><th>symbol</th><th>ostium_asset</th><th>kind</th><th>market_state</th><th>state</th><th>last_price</th><th>ticks</th><th>candles</th><th>last_tick_age_s</th><th>last_candle_age_s</th><th>errors</th><th>last_error</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
       `;
+      if (rawEl) rawEl.textContent = JSON.stringify(data || {}, null, 2);
+      if (lastUpdateEl) lastUpdateEl.textContent = new Date().toISOString();
+      lastSymbolsData = data;
     }
 
     async function refresh() {
-      try {
-        const [health, status, symbols] = await Promise.all([
-          fetchJson('/health'),
-          fetchJson('/status'),
-          fetchJson('/symbols')
-        ]);
-        renderHealth(health);
-        renderStatus(status);
-        renderSymbols(symbols);
-      } catch (e) {
-        document.getElementById('health').innerHTML = `<span class="err">${e.message}</span>`;
+      const [healthRes, statusRes, symbolsRes] = await Promise.all([
+        fetchSafe('/health'),
+        fetchSafe('/status'),
+        fetchSafe('/symbols')
+      ]);
+
+      if (healthRes.ok) {
+        showError('health', '');
+        renderHealth(healthRes.data);
+      } else {
+        showError('health', healthRes.error);
+      }
+
+      if (statusRes.ok) {
+        showError('status', '');
+        renderStatus(statusRes.data);
+        updateClock();
+      } else {
+        showError('status', statusRes.error);
+      }
+
+      if (symbolsRes.ok) {
+        showError('symbols', '');
+        renderSymbols(symbolsRes.data);
+      } else {
+        showError('symbols', symbolsRes.error);
       }
     }
 
-    document.getElementById('btnRefresh').onclick = refresh;
-    document.getElementById('btnPreset').onclick = () => {
-      document.getElementById('symbolsInput').value = JSON.stringify(preset, null, 2);
+    async function updateHeader() {
+      try {
+        const info = await fetchJson('/info');
+        document.getElementById('headerMeta').textContent =
+          `${info.service || 'Realtime DataLayer'} v${info.version || '?'} · build ${info.build || '?'} · port ${info.port || '?'}`;
+      } catch {
+        document.getElementById('headerMeta').textContent = 'Realtime DataLayer · info no disponible';
+      }
+    }
+
+    function scheduleRefresh() {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      if (!document.getElementById('autoRefresh').checked) return;
+      const ms = parseInt(document.getElementById('refreshInterval').value, 10) * 1000;
+      refreshTimer = setTimeout(() => { refresh(); scheduleRefresh(); }, ms);
+    }
+
+    document.getElementById('btnRefresh').onclick = () => { refresh(); scheduleRefresh(); };
+    document.getElementById('autoRefresh').onchange = scheduleRefresh;
+    document.getElementById('refreshInterval').onchange = scheduleRefresh;
+    document.getElementById('filterDegraded').onchange = () => { if (lastSymbolsData) renderSymbols(lastSymbolsData); };
+    document.getElementById('filterHideClosed').onchange = () => { if (lastSymbolsData) renderSymbols(lastSymbolsData); };
+    document.getElementById('sortBy').onchange = () => { if (lastSymbolsData) renderSymbols(lastSymbolsData); };
+
+    document.getElementById('btnPreset8').onclick = () => {
+      document.getElementById('symbolsInput').value = JSON.stringify(preset8, null, 2);
+    };
+    document.getElementById('btnPresetFx').onclick = () => {
+      document.getElementById('symbolsInput').value = JSON.stringify(presetFx, null, 2);
     };
 
     document.getElementById('btnPut').onclick = async () => {
-      const result = document.getElementById('putResult');
+      const banner = document.getElementById('putBanner');
+      banner.style.display = 'block';
       try {
-        const raw = document.getElementById('symbolsInput').value;
-        const symbols = JSON.parse(raw);
+        const raw = document.getElementById('symbolsInput').value.trim();
+        let symbols;
+        try {
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) throw new Error('Ha de ser un array');
+          symbols = parsed.map(s => String(s).trim().toUpperCase()).filter(Boolean);
+          if (!symbols.length) throw new Error('Array buit');
+        } catch (e) {
+          banner.className = 'put-banner err';
+          banner.textContent = 'JSON invàlid: ' + e.message;
+          return;
+        }
         const applyMode = document.getElementById('applyMode').value;
         const r = await fetch(BASE + '/symbols', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ symbols, apply_mode: applyMode })
         });
-        const data = await r.json();
-        result.innerHTML = r.ok ? `<span class="ok">OK: ${data.active?.length ?? 0} active</span>` : `<span class="err">${r.status}: ${JSON.stringify(data)}</span>`;
-        refresh();
+        const data = await r.json().catch(() => ({}));
+        if (r.ok) {
+          banner.className = 'put-banner ok';
+          banner.textContent = `OK ${r.status}: ${data.active?.length ?? 0} active. apply_mode=${applyMode}`;
+          refresh();
+          scheduleRefresh();
+        } else {
+          banner.className = 'put-banner err';
+          banner.textContent = 'Error ' + r.status + ': ' + JSON.stringify(data.detail || data);
+        }
       } catch (e) {
-        result.innerHTML = `<span class="err">${e.message}</span>`;
+        banner.className = 'put-banner err';
+        banner.textContent = e.message;
       }
     };
 
-    document.getElementById('btnCopyCurl').onclick = () => {
+    document.getElementById('btnCopyGet').onclick = () => {
+      navigator.clipboard.writeText(`curl -s ${location.origin}/symbols`).then(() => alert('Copiat!'));
+    };
+    document.getElementById('btnCopyPut').onclick = () => {
       const symbols = document.getElementById('symbolsInput').value;
       const applyMode = document.getElementById('applyMode').value;
-      const curl = `curl -X PUT ${location.origin}/symbols -H "Content-Type: application/json" -d '{"symbols":${symbols},"apply_mode":"${applyMode}"}'`;
-      navigator.clipboard.writeText(curl).then(() => alert('Copiat!'));
+      navigator.clipboard.writeText(`curl -X PUT ${location.origin}/symbols -H "Content-Type: application/json" -d '{"symbols":${symbols},"apply_mode":"${applyMode}"}'`).then(() => alert('Copiat!'));
     };
 
+    updateHeader();
     refresh();
+    scheduleRefresh();
   </script>
 </body>
 </html>

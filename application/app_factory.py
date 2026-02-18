@@ -8,13 +8,16 @@ Cada rol wireja només els components que li toquen.
 import asyncio
 from contextlib import asynccontextmanager
 import os
+import subprocess
 import threading
-
+import time
+import zoneinfo
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from application.api.broker_routes import get_routers_for_role, set_broker_deps
 from application.api.ws_routes import router as ws_router
@@ -456,6 +459,8 @@ def create_app(role: str | None = None) -> FastAPI:
 
     @app.get("/")
     async def root():
+        if role == "realtime_datalayer":
+            return RedirectResponse(url="/ui", status_code=302)
         return {
             "service": "BrokerageService",
             "role": role or "monolithic",
@@ -465,13 +470,12 @@ def create_app(role: str | None = None) -> FastAPI:
 
     # Realtime DataLayer v1: /health i /status (root)
     if role == "realtime_datalayer":
-        import time
         _realtime_start = time.time()
 
         @app.get("/health")
         async def _realtime_health():
-            from application.data.data_layer_lifecycle import get_data_layer_status
-            from application.data.data_layer_metrics import get_data_layer_metrics, SYMBOL_STATE_DEGRADED
+            from application.data.data_layer_lifecycle import get_data_layer_status  # lazy import to reduce startup cost
+            from application.data.data_layer_metrics import get_data_layer_metrics, SYMBOL_STATE_DEGRADED  # lazy import to reduce startup cost
             status, _ = get_data_layer_status()
             if status == "initializing":
                 return {"status": "initializing"}
@@ -487,8 +491,8 @@ def create_app(role: str | None = None) -> FastAPI:
 
         @app.get("/status")
         async def _realtime_status():
-            from application.data.data_layer_metrics import get_data_layer_metrics
-            from application.services.ostium_tick_recorder import get_ostium_tick_recorder
+            from application.data.data_layer_metrics import get_data_layer_metrics  # lazy import to reduce startup cost
+            from application.services.ostium_tick_recorder import get_ostium_tick_recorder  # lazy import to reduce startup cost
             metrics = get_data_layer_metrics()
             tick_rec = get_ostium_tick_recorder()
             symbols_data = {}
@@ -505,6 +509,8 @@ def create_app(role: str | None = None) -> FastAPI:
                         "duplicates": m.get("duplicates", 0),
                         "gaps_detected": m.get("gaps_detected", 0),
                         "symbol_state": m.get("symbol_state", "ACTIVE"),
+                        "market_open": m.get("market_open", True),
+                        "market_state_reason": m.get("market_state_reason", "open"),
                         "lines_written_ticks": tick_info.get("lines_written", 0),
                         "dupes_detected_ticks": tick_info.get("dupes_detected", 0),
                     }
@@ -512,19 +518,30 @@ def create_app(role: str | None = None) -> FastAPI:
                 "candles_max_hours": int(os.getenv("REALTIME_CANDLES_MAX_HOURS", "168")),
                 "ticks_max_hours": int(os.getenv("REALTIME_TICKS_MAX_HOURS", "72")),
             }
+            canonical_tz = os.getenv("CANONICAL_TZ", "America/New_York")
+            now_utc = datetime.now(timezone.utc)
+            try:
+                tz_obj = zoneinfo.ZoneInfo(canonical_tz)
+                now_local = now_utc.astimezone(tz_obj)
+                now_local_str = now_local.strftime("%Y-%m-%d %H:%M:%S %Z")
+            except Exception:
+                now_local_str = "—"
             return {
                 "symbols": symbols_data,
                 "retention": retention,
                 "uptime_s": int(time.time() - _realtime_start),
                 "ingest_state": "running" if metrics else "initializing",
                 "tick_recorder_enabled": tick_rec is not None,
+                "effective_tz": canonical_tz,
+                "now_utc": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "now_local": now_local_str,
             }
 
         @app.get("/symbols")
         async def _realtime_symbols_get():
             """Llista desired + active + mapping resolved (spot/perp) + per-symbol stats."""
-            from apps.realtime_datalayer.symbol_config import load_symbols_config, get_desired_symbols
-            from apps.realtime_datalayer.instrument_resolver import resolve_all
+            from apps.realtime_datalayer.symbol_config import load_symbols_config, get_desired_symbols  # lazy import to reduce startup cost
+            from apps.realtime_datalayer.instrument_resolver import resolve_all  # lazy import to reduce startup cost
             ingest = getattr(app.state, "ostium_ingest_service", None)
             desired = get_desired_symbols()
             active = (
@@ -544,6 +561,10 @@ def create_app(role: str | None = None) -> FastAPI:
                     "ostium_asset": r.get("ostium_asset", sym),
                     "kind": r.get("kind", "unknown"),
                     "resolution_source": r.get("resolution_source", "auto"),
+                    "market_state": stats.get("market_state", "open"),
+                    "market_open": stats.get("market_open", True),
+                    "market_state_reason": stats.get("market_state_reason", "open"),
+                    "last_price": stats.get("last_price"),
                     "ticks_seen": stats.get("ticks_seen", 0),
                     "ticks_last_ts": stats.get("ticks_last_ts"),
                     "candles_written": stats.get("candles_written", 0),
@@ -566,6 +587,27 @@ def create_app(role: str | None = None) -> FastAPI:
                 return HTMLResponse(content=ui_path.read_text(encoding="utf-8"))
             return HTMLResponse(content="<h1>UI not found</h1>", status_code=404)
 
+        @app.get("/info")
+        async def _realtime_info():
+            """Servei info per UI: version, build, utc_now."""
+            build = "dev"
+            try:
+                r = subprocess.run(
+                    ["git", "rev-parse", "--short", "HEAD"],
+                    capture_output=True, text=True, timeout=2, cwd=Path(__file__).resolve().parent.parent
+                )
+                if r.returncode == 0 and r.stdout.strip():
+                    build = r.stdout.strip()
+            except Exception:
+                pass
+            return {
+                "service": "Realtime DataLayer",
+                "version": "0.1.0",
+                "build": build,
+                "port": int(os.getenv("PORT", "8081")),
+                "utc_now": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+
         @app.put("/symbols")
         async def _realtime_symbols_put(body: dict = Body(default={})):
             """Hot-reload: actualitza símbols. Body: {symbols: [...], apply_mode: diff|replace}."""
@@ -573,17 +615,15 @@ def create_app(role: str | None = None) -> FastAPI:
                 load_symbols_config,
                 save_symbols_config,
                 get_desired_symbols,
-            )
-            from apps.realtime_datalayer.instrument_resolver import resolve_all
+            )  # lazy import to reduce startup cost
+            from apps.realtime_datalayer.instrument_resolver import resolve_all  # lazy import to reduce startup cost
             ingest = getattr(app.state, "ostium_ingest_service", None)
             if not ingest:
-                from fastapi import HTTPException
                 raise HTTPException(status_code=503, detail="Ostium ingest not available")
             symbols_raw = body.get("symbols", [])
             apply_mode = body.get("apply_mode", "diff")
             symbols = [s.strip().upper() for s in symbols_raw if s and str(s).strip()]
             if not symbols:
-                from fastapi import HTTPException
                 raise HTTPException(status_code=400, detail="symbols required, non-empty")
             cfg = load_symbols_config()
             current = set(cfg["symbols"])
