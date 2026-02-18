@@ -1,0 +1,2 @@
+# Smoke suite — mínim viable: valida instal·lació i imports (0-network)
+testing/apps/core/test_candle_semantics.py

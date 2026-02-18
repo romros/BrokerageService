@@ -1,0 +1,8 @@
+# Core — foundation/shared (0-network)
+testing/apps/core/test_candle_store.py
+testing/apps/core/test_candle_semantics.py
+testing/apps/core/test_gap_validator.py
+testing/unit/test_candle_builder.py
+testing/unit/test_backfill_provider.py
+testing/unit/test_idempotency.py
+testing/unit/test_cost_model.py

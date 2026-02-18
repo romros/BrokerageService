@@ -309,11 +309,24 @@ async def lifespan(app: FastAPI):
                 DATA_LAYER_GATES_MAX_MISSING_PER_24H_ENV,
                 DATA_LAYER_STALE_SECONDS_ENV,
                 DATA_LAYER_WARMUP_MINUTES_ENV,
+                OSTIUM_TICK_RECORDER_ENABLED_ENV,
+                OSTIUM_TICK_RECORDER_OUTDIR_ENV,
+                OSTIUM_TICK_RETENTION_DAYS_ENV,
                 DEFAULT_DATA_LAYER_GATES_MAX_GAP_S,
                 DEFAULT_DATA_LAYER_GATES_MAX_MISSING_PER_24H,
                 DEFAULT_DATA_LAYER_STALE_SECONDS,
                 DEFAULT_DATA_LAYER_WARMUP_MINUTES,
+                DEFAULT_OSTIUM_TICK_RECORDER_OUTDIR,
+                DEFAULT_OSTIUM_TICK_RETENTION_DAYS,
             )
+            tick_recorder = None
+            if os.getenv(OSTIUM_TICK_RECORDER_ENABLED_ENV, "").strip().lower() in ("1", "true", "yes"):
+                from application.services.ostium_tick_recorder import OstiumTickRecorder  # lazy
+                tick_recorder = OstiumTickRecorder(
+                    outdir=os.getenv(OSTIUM_TICK_RECORDER_OUTDIR_ENV, DEFAULT_OSTIUM_TICK_RECORDER_OUTDIR),
+                    retention_days=int(os.getenv(OSTIUM_TICK_RETENTION_DAYS_ENV, str(DEFAULT_OSTIUM_TICK_RETENTION_DAYS))),
+                )
+                logger.info("OstiumTickRecorder enabled: outdir=%s", tick_recorder.outdir)
             ostium_ingest_service = OstiumCandleIngestService(
                 store=candle_store,
                 symbols=ostium_symbols,
@@ -322,6 +335,7 @@ async def lifespan(app: FastAPI):
                 max_gap_s=int(os.getenv(DATA_LAYER_GATES_MAX_GAP_S_ENV, str(DEFAULT_DATA_LAYER_GATES_MAX_GAP_S))),
                 max_missing_per_24h=int(os.getenv(DATA_LAYER_GATES_MAX_MISSING_PER_24H_ENV, str(DEFAULT_DATA_LAYER_GATES_MAX_MISSING_PER_24H))),
                 stale_seconds=int(os.getenv(DATA_LAYER_STALE_SECONDS_ENV, str(DEFAULT_DATA_LAYER_STALE_SECONDS))),
+                tick_recorder=tick_recorder,
             )
             await ostium_ingest_service.start()
             logger.info("OstiumCandleIngestService started symbols=%s", ostium_symbols)

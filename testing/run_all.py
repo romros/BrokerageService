@@ -8,6 +8,8 @@ Executes all test scripts in order:
 
 P3.2: Default = MVP Lighter (core + Lighter). gTrade tests opt-in amb --include-gtrade.
 
+Per suites curtes per focus: ./scripts/run_tests.sh <suite> (smoke|core|realtime_datalayer|historical_datalayer|trading_service)
+
 Returns exit code 0 if all pass, 1 if any fail.
 """
 
@@ -261,10 +263,10 @@ def main():
 
     # Define test order
     tests = [
-        # Unit tests - Core
-        testing_dir / "unit" / "test_candle_store.py",
-        testing_dir / "unit" / "test_candle_semantics.py",  # AGENTS §5.1 interval [ts, ts+60)
-        testing_dir / "unit" / "test_gap_validator.py",
+        # Unit tests - Core (alguns a testing/apps/core/)
+        testing_dir / "apps" / "core" / "test_candle_store.py",
+        testing_dir / "apps" / "core" / "test_candle_semantics.py",  # AGENTS §5.1 interval [ts, ts+60)
+        testing_dir / "apps" / "core" / "test_gap_validator.py",
         testing_dir / "unit" / "test_candle_builder.py",
         testing_dir / "unit" / "test_backfill_provider.py",
         testing_dir / "unit" / "test_idempotency.py",
@@ -295,11 +297,11 @@ def main():
         testing_dir / "unit" / "test_smoke_repeat.py",  # M3.5 smoke --repeat N + log path + SMOKE_RESULT/SUMMARY
         testing_dir / "unit" / "test_smoke_runner_lifecycle.py",  # M3.5.1 lifecycle hardening (start/stop per run)
         testing_dir / "unit" / "test_e2e_trade.py",  # M3.6 Real Paper E2E trading sanity
-        testing_dir / "unit" / "test_broker_api.py",  # Broker API
+        testing_dir / "apps" / "trading_service" / "test_broker_api.py",  # Broker API
         testing_dir / "unit" / "test_broker_api_trades.py",  # P1 GET /trades
         testing_dir / "unit" / "test_p5_ohlcv_headers_coverage.py",  # P5 Data Observability v0
         testing_dir / "unit" / "test_data_layer_prod_service.py",  # Data Layer prod v0 (prefetch, writer, gates)
-        testing_dir / "unit" / "test_ostium_ingest.py",  # Ostium ingest (0-network)
+        testing_dir / "apps" / "realtime_datalayer" / "test_ostium_ingest.py",  # Ostium ingest (0-network)
         testing_dir / "unit" / "test_data_layer_startup_gate.py",  # Startup gate (0 network)
         testing_dir / "unit" / "test_data_layer_run_eval.py",  # run eval exit codes (0 network)
         testing_dir / "unit" / "test_warmup_suppresses_missing_gate.py",  # warmup window no DEGRADED (0 network)
@@ -309,8 +311,8 @@ def main():
         testing_dir / "unit" / "test_p7_mixed_gated_stitching.py",  # P7 Mixed gated stitching (0 network)
         testing_dir / "unit" / "test_p8_read_through_response_only.py",  # P8.0 Read-through gap serving (0 network)
         testing_dir / "unit" / "test_compat_registry_parsing.py",  # P7b compat registry robustesa
-        testing_dir / "unit" / "test_dukascopy_provider.py",  # P6 Dukascopy provider (cache, parser)
-        testing_dir / "unit" / "test_compat_report_service.py",  # P8 Compat report (0 network)
+        testing_dir / "apps" / "historical_datalayer" / "test_dukascopy_provider.py",  # P6 Dukascopy provider (cache, parser)
+        testing_dir / "apps" / "historical_datalayer" / "test_compat_report_service.py",  # P8 Compat report (0 network)
         testing_dir / "unit" / "test_ostium_compat_report_service.py",  # Ostium compat (0 network)
         testing_dir / "unit" / "test_compat_registry_ostium_gate.py",  # Ostium graduation gate (0 network)
         testing_dir / "unit" / "test_save_ostium_registry_robust.py",  # save_ostium_registry atomic + dirs + error (0 network)
@@ -318,8 +320,8 @@ def main():
         testing_dir / "unit" / "test_ostium_symbol_allowlist.py",  # Ostium allowlist + quarantine (0 network)
         testing_dir / "unit" / "test_data_status_quarantine_flags.py",  # data_status quarantine flags (0 network)
         testing_dir / "unit" / "test_ostium_lab_monitor_status.py",  # Ostium LAB monitor parser + rotation + retention (0 network)
-        testing_dir / "unit" / "test_ostium_tick_recorder.py",  # Ostium tick recorder forense (0 network)
-        testing_dir / "unit" / "test_service_role_wiring.py",  # Split vNext Phase 1 role boundaries (0 network)
+        testing_dir / "apps" / "realtime_datalayer" / "test_ostium_tick_recorder.py",  # Ostium tick recorder forense (0 network)
+        testing_dir / "apps" / "realtime_datalayer" / "test_service_role_wiring.py",  # Split vNext Phase 1 role boundaries (0 network)
         testing_dir / "unit" / "test_headers_reflect_primary_ostium.py",  # Headers ostium_recorded (0 network)
         testing_dir / "unit" / "test_mixed_denied_when_not_pass.py",  # Mixed denied sense PASS (0 network)
         testing_dir / "unit" / "test_market_hours_fx_closed_weekend.py",  # Market hours FX 24/5 (0 network)
@@ -334,7 +336,7 @@ def main():
         testing_dir / "unit" / "test_trade_history_models.py",  # P1 TradeFill mapping
         testing_dir / "unit" / "test_ws_preflight_contract.py",  # P2.0 WS candle contract
         testing_dir / "unit" / "test_mode_market_data_env.py",  # PAPER mainnet-data (Freqtrade)
-        testing_dir / "unit" / "test_paper_venue_adapter.py",  # PaperVenueAdapter open→close→positions_after=0
+        testing_dir / "apps" / "trading_service" / "test_paper_venue_adapter.py",  # PaperVenueAdapter open→close→positions_after=0
         testing_dir / "unit" / "test_paper_risk_engine.py",  # P3.0 TP/SL/liquidation triggers
 
         # Integration tests

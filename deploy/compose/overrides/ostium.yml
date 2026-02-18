@@ -28,3 +28,6 @@ services:
       - OSTIUM_QUARANTINE_SYMBOLS=${OSTIUM_QUARANTINE_SYMBOLS:-XAUUSD,XAU}
       - OSTIUM_POLL_S=${OSTIUM_POLL_S:-2}
       - OSTIUM_PRICE_API_BASE=${OSTIUM_PRICE_API_BASE:-https://metadata-backend.ostium.io}
+      # Tick recorder forense (opt-in): lab/out/ostium_forensics/daily/YYYYMMDD/<symbol>.jsonl
+      - OSTIUM_TICK_RECORDER_ENABLED=${OSTIUM_TICK_RECORDER_ENABLED:-0}
+      - OSTIUM_TICK_RETENTION_DAYS=${OSTIUM_TICK_RETENTION_DAYS:-7}

@@ -10,7 +10,7 @@ import os
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from domain.interfaces import ICandleStore
 from domain.models import Candle
@@ -83,9 +83,11 @@ class OstiumCandleIngestService:
         max_gap_s: int = 180,
         max_missing_per_24h: int = 1,
         stale_seconds: int = 180,
+        tick_recorder: Optional[Any] = None,
     ):
         self.store = store
         self.symbols = symbols
+        self.tick_recorder = tick_recorder
         self.poll_interval_s = poll_interval_s
         self.warmup_minutes = warmup_minutes
         self.max_gap_s = max_gap_s
@@ -139,6 +141,10 @@ class OstiumCandleIngestService:
                         tick = _Tick(ts=result["timestamp"], price=result["price"])
                         minute_start = (tick.ts // 60) * 60
                         self._ticks[symbol][minute_start].append(tick)
+                        if self.tick_recorder:
+                            self.tick_recorder.record_tick(
+                                symbol, result["timestamp"], result["price"]
+                            )
 
                 # Flush closed minutes
                 for symbol in self.symbols:

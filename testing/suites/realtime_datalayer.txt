@@ -1,0 +1,13 @@
+# realtime_datalayer — Data Layer + Ostium ingest + market_hours (0-network)
+testing/apps/core/test_candle_store.py
+testing/unit/test_data_layer_prod_service.py
+testing/apps/realtime_datalayer/test_ostium_ingest.py
+testing/apps/realtime_datalayer/test_ostium_tick_recorder.py
+testing/apps/realtime_datalayer/test_service_role_wiring.py
+testing/unit/test_data_layer_startup_gate.py
+testing/unit/test_warmup_suppresses_missing_gate.py
+testing/unit/test_data_status_initializing.py
+testing/unit/test_ostium_symbol_allowlist.py
+testing/unit/test_market_hours_fx_closed_weekend.py
+testing/unit/test_stale_ignored_when_market_closed.py
+testing/unit/test_data_status_includes_market_open.py
