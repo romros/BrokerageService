@@ -252,6 +252,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-18 | Split vNext Phase 2 | ✅ trading_service consumeix realtime_datalayer via HTTP (contracte mínim); RealtimeDataLayerClient (packages/shared); IDataLayerReader; REALTIME_DATALAYER_BASE_URL | `./scripts/run_tests.sh trading_service`; `curl -s http://localhost:8010/api/v1/broker/data_status` |
 | 2026-02-18 | Realtime DataLayer v1 | ✅ servei autònom; GET /health, /status; storage datafiles/realtime_datalayer/; tests curts run_realtime.py | `./test.sh testing/run_realtime.py`; `curl -s http://localhost:8001/status` |
 | 2026-02-18 | Realtime hot-reload | ✅ GET/PUT /symbols; config persistent symbols.json; instrument resolution (spot/perp); add/remove símbols sense restart | `curl -X PUT http://localhost:8001/symbols -d '{"symbols":["EURUSD","XAUUSD"],"apply_mode":"replace"}'` |
+| 2026-02-18 | Realtime UI + smoke | ✅ /docs, /openapi.json, /ui (dashboard); smoke canònic `./scripts/run_smoke.sh realtime_datalayer`; artifact runs/ | http://localhost:8001/ui ; http://localhost:8001/docs |
 
 **Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 

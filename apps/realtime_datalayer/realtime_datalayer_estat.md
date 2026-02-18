@@ -34,6 +34,9 @@ curl -s http://localhost:8001/status
 curl -s http://localhost:8001/symbols
 curl -s http://localhost:8001/api/v1/broker/data_status
 
+# UI i docs (túnel: ssh -L 8001:localhost:8001 user@host)
+# Obrir al navegador: http://localhost:8001/ui  i  http://localhost:8001/docs
+
 # Canviar símbols sense restart (hot-reload)
 curl -X PUT http://localhost:8001/symbols -H "Content-Type: application/json" \
   -d '{"symbols": ["EURUSD","USDJPY","XAUUSD","GBPUSD"], "apply_mode": "replace"}'
@@ -44,7 +47,18 @@ curl -X PUT http://localhost:8001/symbols -H "Content-Type: application/json" \
 
 # Rebuild (si has canviat codi)
 docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml build realtime_datalayer
+
+# Smoke canònic (up + checks /health /status /symbols /docs /ui + artifact)
+./scripts/run_smoke.sh realtime_datalayer
+# Artifact: datafiles/realtime_datalayer/runs/<ts>_smoke.json
 ```
+
+## Canviar símbols des del web
+
+1. Obrir http://localhost:8001/ui
+2. Editar el textarea (JSON array de símbols)
+3. Triar apply_mode: replace o diff
+4. Clic "PUT /symbols"
 
 ## Llista d'assets (exemple)
 

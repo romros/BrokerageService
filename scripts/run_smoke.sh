@@ -4,11 +4,14 @@
 # Ús:
 #   ./scripts/run_smoke.sh [profile]
 #
-# Profiles: data-layer (default), smoke
+# Profiles: data-layer (default), smoke, ostium, realtime_datalayer
 #   data-layer: Data Layer smoke (3 min, prefetch+writer+gates)
 #   smoke: Smoke reconcile (venue=lighter, 10 min)
+#   ostium: Ostium override
+#   realtime_datalayer: Realtime DataLayer split (up -d, checks /health /status /symbols /docs, artifact)
 #
 # Compose: docker compose -f docker-compose.yml -f deploy/compose/overrides/<profile>.yml
+#   realtime_datalayer: deploy/compose/docker-compose.split.yml
 
 set -e
 
@@ -23,7 +26,7 @@ export DOCKER_GID=${DOCKER_GID:-$(id -g 2>/dev/null || echo 0)}
 # Pre-flight: datafiles/logs han de ser writable quan contenidor corre com a host user
 # (user DOCKER_UID per compat_reports; set_host_readable_permissions fa 0o644/755 per llegir)
 if [ "$DOCKER_UID" != "0" ] 2>/dev/null; then
-  mkdir -p "$PROJECT_ROOT/datafiles" "$PROJECT_ROOT/logs"
+  mkdir -p "$PROJECT_ROOT/datafiles" "$PROJECT_ROOT/logs" "$PROJECT_ROOT/datafiles/realtime_datalayer/runs"
   if [ ! -w "$PROJECT_ROOT/datafiles" ] || [ ! -w "$PROJECT_ROOT/logs" ]; then
     echo "⚠ datafiles o logs no són writable. Una vegada: sudo chown -R \$(id -u):\$(id -g) datafiles logs"
     exit 1
@@ -34,6 +37,7 @@ BROKER_URL="${BROKER_URL:-http://localhost:8000}"
 HEALTH_URL="${BROKER_URL}/api/v1/broker/health"
 
 # Resoldre compose override per profile
+REALTIME_SMOKE=0
 case "$PROFILE" in
   data-layer)
     OVERRIDE="$OVERRIDES_DIR/data-layer.yml"
@@ -44,11 +48,80 @@ case "$PROFILE" in
   ostium)
     OVERRIDE="$OVERRIDES_DIR/ostium.yml"
     ;;
+  realtime_datalayer)
+    OVERRIDE="$PROJECT_ROOT/deploy/compose/docker-compose.split.yml"
+    REALTIME_SMOKE=1
+    ;;
   *)
-    echo "Profile desconegut: $PROFILE (data-layer, smoke, ostium)"
+    echo "Profile desconegut: $PROFILE (data-layer, smoke, ostium, realtime_datalayer)"
     exit 1
     ;;
 esac
+
+if [ "$REALTIME_SMOKE" -eq 1 ]; then
+  # Smoke Realtime DataLayer (split compose)
+  REALTIME_URL="${REALTIME_URL:-http://localhost:8001}"
+  echo "Smoke realtime_datalayer"
+  echo "  Build + up..."
+  docker compose -f docker-compose.yml -f "$OVERRIDE" build realtime_datalayer 2>/dev/null || true
+  docker compose -f docker-compose.yml -f "$OVERRIDE" up -d realtime_datalayer
+
+  echo "  Waiting for /health..."
+  for i in $(seq 1 30); do
+    if curl -sf "$REALTIME_URL/health" >/dev/null 2>&1; then
+      echo "  ✓ Realtime ready"
+      break
+    fi
+    if [ "$i" -eq 30 ]; then
+      echo "✗ Realtime not ready after 30s"
+      exit 6
+    fi
+    sleep 1
+  done
+
+  TS=$(date +%Y%m%d_%H%M%S)
+  RUNS_DIR="$PROJECT_ROOT/datafiles/realtime_datalayer/runs"
+  if ! mkdir -p "$RUNS_DIR" 2>/dev/null; then
+    RUNS_DIR="$PROJECT_ROOT/datafiles/realtime_datalayer_runs"
+    mkdir -p "$RUNS_DIR"
+    echo "  ⚠ datafiles/realtime_datalayer/runs no writable, using datafiles/realtime_datalayer_runs"
+  fi
+  ARTIFACT="$RUNS_DIR/${TS}_smoke.json"
+
+  echo "  Checking /status, /symbols, /docs..."
+  STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$REALTIME_URL/status")
+  SYMBOLS_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$REALTIME_URL/symbols")
+  DOCS_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$REALTIME_URL/docs")
+  OPENAPI_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$REALTIME_URL/openapi.json")
+  UI_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$REALTIME_URL/ui")
+
+  OK=1
+  [ "$STATUS_CODE" = "200" ] || { echo "✗ /status: $STATUS_CODE"; OK=0; }
+  [ "$SYMBOLS_CODE" = "200" ] || { echo "✗ /symbols: $SYMBOLS_CODE"; OK=0; }
+  [ "$DOCS_CODE" = "200" ] || { echo "✗ /docs: $DOCS_CODE"; OK=0; }
+  [ "$OPENAPI_CODE" = "200" ] || { echo "✗ /openapi.json: $OPENAPI_CODE"; OK=0; }
+  [ "$UI_CODE" = "200" ] || { echo "✗ /ui: $UI_CODE"; OK=0; }
+
+  PASSED_VAL="false"; [ "$OK" -eq 1 ] && PASSED_VAL="true"
+  cat > "$ARTIFACT" << EOF
+{
+  "ts": "$TS",
+  "profile": "realtime_datalayer",
+  "url": "$REALTIME_URL",
+  "checks": {
+    "status": $STATUS_CODE,
+    "symbols": $SYMBOLS_CODE,
+    "docs": $DOCS_CODE,
+    "openapi.json": $OPENAPI_CODE,
+    "ui": $UI_CODE
+  },
+  "passed": $PASSED_VAL
+}
+EOF
+  echo "  Artifact: $ARTIFACT"
+  [ "$OK" -eq 1 ] && echo "✓ Smoke realtime_datalayer OK" || { echo "✗ Smoke failed"; exit 7; }
+  exit 0
+fi
 
 if [ ! -f "$OVERRIDE" ]; then
   echo "Override no trobat: $OVERRIDE"

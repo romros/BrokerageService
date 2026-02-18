@@ -12,7 +12,7 @@
 | **Ostium Ingest** | Polling REST `/latest-price` → ticks → candles 1m |
 | **Tick Recorder** | Persistència ticks a JSONL (forense, best-effort) |
 | **Candle Store** | CSV candles 1m (ts, O, H, L, C, V) |
-| **API** | /health, /status, /symbols (GET/PUT), /api/v1/broker/ohlcv, /api/v1/broker/data_status, /api/v1/broker/coverage |
+| **API** | /health, /status, /symbols (GET/PUT), /docs, /ui, /api/v1/broker/ohlcv, /api/v1/broker/data_status, /api/v1/broker/coverage |
 
 ---
 
@@ -84,6 +84,16 @@
 | REALTIME_TICKS_MAX_HOURS | 72 | Retenció ticks (hores) |
 | OSTIUM_ENABLED | 1 | Ingest Ostium |
 | OSTIUM_POLL_S | 2 | Interval polling (segons) |
+
+---
+
+## Operativa web: /docs i /ui
+
+- **GET /docs** — Swagger UI (OpenAPI). Permet provar GET/PUT /symbols, GET /status, GET /health des del navegador.
+- **GET /openapi.json** — Especificació OpenAPI.
+- **GET /ui** — Mini dashboard HTML: health, status, symbols (desired/active/by_symbol) + formulari PUT /symbols (diff/replace). Preset d’assets, refresh, copy curl.
+
+Via túnel SSH: `ssh -L 8001:localhost:8001 user@host` → obrir http://localhost:8001/ui i http://localhost:8001/docs.
 
 ---
 

@@ -10,9 +10,11 @@ from contextlib import asynccontextmanager
 import os
 import threading
 
+from pathlib import Path
+
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from application.api.broker_routes import get_routers_for_role, set_broker_deps
 from application.api.ws_routes import router as ws_router
@@ -409,9 +411,16 @@ def create_app(role: str | None = None) -> FastAPI:
         if adapter:
             await adapter.stop()
 
+    _title = "Realtime DataLayer API" if role == "realtime_datalayer" else "BrokerageService"
+    _desc = (
+        "Realtime DataLayer v1 — Ostium ingest 24/7, candles/ticks, hot-reload símbols. "
+        "Endpoints: /health, /status, /symbols (GET/PUT), /docs, /ui"
+        if role == "realtime_datalayer"
+        else "Trading brokerage service (role=%s)" % (role or "monolithic")
+    )
     app = FastAPI(
-        title="BrokerageService",
-        description="Trading brokerage service (role=%s)" % (role or "monolithic"),
+        title=_title,
+        description=_desc,
         version="0.1.0",
         lifespan=lifespan,
     )
@@ -537,6 +546,14 @@ def create_app(role: str | None = None) -> FastAPI:
                 "active": active,
                 "by_symbol": by_symbol,
             }
+
+        @app.get("/ui")
+        async def _realtime_ui():
+            """Mini dashboard: health, status, symbols + PUT /symbols (diff/replace)."""
+            ui_path = Path(__file__).resolve().parent.parent / "apps" / "realtime_datalayer" / "ui" / "index.html"
+            if ui_path.exists():
+                return HTMLResponse(content=ui_path.read_text(encoding="utf-8"))
+            return HTMLResponse(content="<h1>UI not found</h1>", status_code=404)
 
         @app.put("/symbols")
         async def _realtime_symbols_put(body: dict = Body(default={})):

@@ -4,6 +4,8 @@ testing/realtime_datalayer/test_status_contract.py
 testing/realtime_datalayer/test_health_states.py
 testing/realtime_datalayer/test_candle_builder_from_ticks.py
 testing/realtime_datalayer/test_retention_pruning.py
+testing/realtime_datalayer/test_docs_openapi.py
+testing/realtime_datalayer/test_ui_endpoint.py
 testing/realtime_datalayer/test_symbols_api_contract.py
 testing/realtime_datalayer/test_symbol_supervisor_hot_reload.py
 testing/realtime_datalayer/test_instrument_resolution_override.py

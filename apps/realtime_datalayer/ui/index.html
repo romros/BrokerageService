@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Realtime DataLayer — Dashboard</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 1rem; max-width: 900px; }
+    h1 { font-size: 1.2rem; }
+    section { margin: 1rem 0; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; }
+    .ok { color: green; }
+    .warn { color: orange; }
+    .err { color: red; }
+    pre { overflow-x: auto; font-size: 0.85rem; background: #f5f5f5; padding: 0.5rem; }
+    button { padding: 0.4rem 0.8rem; cursor: pointer; margin-right: 0.5rem; }
+    input, select { padding: 0.3rem; margin: 0.2rem; }
+    textarea { width: 100%; min-height: 60px; font-family: monospace; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; }
+    .sym-card { padding: 0.4rem; border: 1px solid #ddd; border-radius: 3px; font-size: 0.9rem; }
+    .sym-card.running { border-left: 3px solid green; }
+    .sym-card.stopped { border-left: 3px solid #999; }
+    .sym-card.degraded { border-left: 3px solid red; }
+  </style>
+</head>
+<body>
+  <h1>Realtime DataLayer v1 — Dashboard</h1>
+  <p><a href="/docs">OpenAPI /docs</a> · <a href="/openapi.json">openapi.json</a></p>
+
+  <section>
+    <h2>Accions</h2>
+    <button id="btnRefresh">Refresh</button>
+    <button id="btnCopyCurl">Copy curl /symbols</button>
+  </section>
+
+  <section>
+    <h2>Health</h2>
+    <div id="health">—</div>
+  </section>
+
+  <section>
+    <h2>Status</h2>
+    <div id="status">—</div>
+  </section>
+
+  <section>
+    <h2>Symbols (desired / active)</h2>
+    <div id="symbols">—</div>
+  </section>
+
+  <section>
+    <h2>PUT /symbols (hot-reload)</h2>
+    <p>
+      <label>Apply mode: <select id="applyMode"><option value="replace">replace</option><option value="diff">diff</option></select></label>
+      <button id="btnPreset">Preset (8 assets)</button>
+    </p>
+    <textarea id="symbolsInput" placeholder='["EURUSD","USDJPY","XAUUSD",...]'>["EURUSD","USDJPY","XAUUSD","GBPUSD","GOOGUSD","NVDAUSD","DAXEUR","SPXUSD"]</textarea>
+    <p><button id="btnPut">PUT /symbols</button> <span id="putResult"></span></p>
+  </section>
+
+  <script>
+    const BASE = '';
+    const preset = ["EURUSD","USDJPY","XAUUSD","GBPUSD","GOOGUSD","NVDAUSD","DAXEUR","SPXUSD"];
+
+    async function fetchJson(path) {
+      const r = await fetch(BASE + path);
+      if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+      return r.json();
+    }
+
+    function renderHealth(data) {
+      const el = document.getElementById('health');
+      const c = data.status === 'ok' ? 'ok' : (data.status === 'degraded' ? 'warn' : 'err');
+      el.innerHTML = `<span class="${c}">${data.status}</span>`;
+    }
+
+    function renderStatus(data) {
+      const el = document.getElementById('status');
+      el.innerHTML = `
+        <p><b>ingest_state:</b> ${data.ingest_state || '—'} · <b>uptime_s:</b> ${data.uptime_s ?? '—'}</p>
+        <p><b>retention:</b> candles_max_hours=${data.retention?.candles_max_hours ?? '—'}, ticks_max_hours=${data.retention?.ticks_max_hours ?? '—'}</p>
+        <p><b>tick_recorder_enabled:</b> ${data.tick_recorder_enabled ?? '—'}</p>
+        <details><summary>Raw</summary><pre>${JSON.stringify(data, null, 2)}</pre></details>
+      `;
+    }
+
+    function renderSymbols(data) {
+      const el = document.getElementById('symbols');
+      const by = data.by_symbol || {};
+      const cards = Object.entries(by).map(([sym, info]) => `
+        <div class="sym-card ${info.state || ''}">
+          <b>${sym}</b> → ${info.ostium_asset} (${info.kind}, ${info.resolution_source})<br>
+          ticks: ${info.ticks_seen ?? 0} · candles: ${info.candles_written ?? 0} · state: ${info.state || '—'}
+          ${info.errors_count > 0 ? `<br><span class="err">errors: ${info.errors_count}</span>` : ''}
+        </div>
+      `).join('');
+      el.innerHTML = `
+        <p><b>desired:</b> ${(data.desired || []).join(', ')}</p>
+        <p><b>active:</b> ${(data.active || []).join(', ')}</p>
+        <div class="grid">${cards}</div>
+      `;
+    }
+
+    async function refresh() {
+      try {
+        const [health, status, symbols] = await Promise.all([
+          fetchJson('/health'),
+          fetchJson('/status'),
+          fetchJson('/symbols')
+        ]);
+        renderHealth(health);
+        renderStatus(status);
+        renderSymbols(symbols);
+      } catch (e) {
+        document.getElementById('health').innerHTML = `<span class="err">${e.message}</span>`;
+      }
+    }
+
+    document.getElementById('btnRefresh').onclick = refresh;
+    document.getElementById('btnPreset').onclick = () => {
+      document.getElementById('symbolsInput').value = JSON.stringify(preset, null, 2);
+    };
+
+    document.getElementById('btnPut').onclick = async () => {
+      const result = document.getElementById('putResult');
+      try {
+        const raw = document.getElementById('symbolsInput').value;
+        const symbols = JSON.parse(raw);
+        const applyMode = document.getElementById('applyMode').value;
+        const r = await fetch(BASE + '/symbols', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbols, apply_mode: applyMode })
+        });
+        const data = await r.json();
+        result.innerHTML = r.ok ? `<span class="ok">OK: ${data.active?.length ?? 0} active</span>` : `<span class="err">${r.status}: ${JSON.stringify(data)}</span>`;
+        refresh();
+      } catch (e) {
+        result.innerHTML = `<span class="err">${e.message}</span>`;
+      }
+    };
+
+    document.getElementById('btnCopyCurl').onclick = () => {
+      const symbols = document.getElementById('symbolsInput').value;
+      const applyMode = document.getElementById('applyMode').value;
+      const curl = `curl -X PUT ${location.origin}/symbols -H "Content-Type: application/json" -d '{"symbols":${symbols},"apply_mode":"${applyMode}"}'`;
+      navigator.clipboard.writeText(curl).then(() => alert('Copiat!'));
+    };
+
+    refresh();
+  </script>
+</body>
+</html>

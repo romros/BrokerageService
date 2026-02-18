@@ -61,7 +61,7 @@
 
 - Servei autònom: `docker compose -f ... up -d realtime_datalayer`
 - Storage: `datafiles/realtime_datalayer/candles/`, `ticks/`
-- API: GET /health, GET /status, GET/PUT /symbols (hot-reload), /api/v1/broker/ohlcv, data_status, coverage
+- API: GET /health, GET /status, GET/PUT /symbols (hot-reload), /docs, /ui, /api/v1/broker/ohlcv, data_status, coverage
 - Docs: `apps/realtime_datalayer/realtime_datalayer_arquitectura.md`, `realtime_datalayer_estat.md`
 - Tests curts: `./test.sh testing/run_realtime.py`
 
