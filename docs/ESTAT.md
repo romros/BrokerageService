@@ -69,6 +69,8 @@
 
 **Registry:** `datafiles/compat_reports/ostium_compat_registry.json` — font de veritat per `get_ostium_primary_allowed(symbol)`.
 
+**Permisos (gotcha resolt):** Ostium/data-layer compose usen `user: ${UID}:${GID}` perquè registry i artifacts siguin writable per host. run_smoke.sh i run_soak.sh exporten UID/GID. Si compose manual: `export UID=$(id -u) GID=$(id -g)` abans.
+
 **Verdict:** PASS | PARTIAL | FAIL (llindars via `compat_report_service` + constants). PASS → primary allowed; PARTIAL/FAIL → opt-in experimental sense declarar primary.
 
 **PASS ⇒ primary (detall explícit):** Quan `ostium_primary_allowed(symbol)=true` → `primary_source=ostium_recorded`, `mixed_allowed=true`. Headers OHLCV: `X-Data-Source=ostium_recorded` (o `mixed` si rang travessa cutover), `X-Data-Primary-Source=ostium_recorded`. Coverage retorna `source=ostium_recorded`. data_status inclou `primary_allowed_by_symbol[symbol]=true`.
@@ -96,7 +98,21 @@
 - **Read-through:** Fill de gaps requereix compat PASS.
 - **Sense PASS:** Mode "opt-in experimental" — es graven dades Ostium però no es declara primary; només primary o fallback per rang.
 
-**Tests:** Unit 0-network: `test_ostium_compat_report_service.py`, `test_compat_registry_ostium_gate.py`. Opt-in real: `./test.sh testing/run_all.py --include-ostium-compat`.
+**Tests:** Unit 0-network: `test_ostium_compat_report_service.py`, `test_compat_registry_ostium_gate.py`, `test_save_ostium_registry_robust.py`. Opt-in real: `./test.sh testing/run_all.py --include-ostium-compat`.
+
+**Graduation run canònic (EURUSD):**
+```bash
+# 1. Arrancar broker ostium (scripts exporten UID/GID → datafiles writable)
+./scripts/run_smoke.sh ostium
+# o: ./scripts/run_soak.sh 2 ostium post-compat  # arranca broker si no està up
+
+# 2. Soak + post-compat (2–5 min)
+./scripts/run_soak.sh 2 ostium post-compat
+
+# 3. O només compat (si broker ja té dades)
+./scripts/run_compat.sh ostium EURUSD
+```
+Si PASS → `ostium_compat_registry.json` actualitzat, `ostium_primary_allowed=true` per EURUSD. Artifact a `datafiles/data_layer_prod_runs/` i `datafiles/compat_reports/`.
 
 ---
 
@@ -155,6 +171,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-17 | Ostium allowlist + quarantine v1 | ✅ OSTIUM_SYMBOLS, OSTIUM_QUARANTINE_SYMBOLS; EURUSD primary allowed; XAUUSD quarantined | run_soak ostium usa llista canònica |
 | 2026-02-18 | run_all.py | ✅ passa (incl. test_ostium_symbol_allowlist, test_data_status_quarantine_flags) | `./test.sh testing/run_all.py` |
 | 2026-02-18 | Ostium LAB monitor (continuous) | ✅ run_lab.sh ostium-monitor start/stop/status; rotació diària + retenció | `./scripts/run_lab.sh ostium-monitor start` |
+| 2026-02-18 | EURUSD graduation (permisos + run canònic) | ✅ user UID:GID a compose; save_ostium_registry atomic; run_compat/run_soak post-compat escriuen registry | `./scripts/run_soak.sh 2 ostium post-compat` |
 
 **Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 

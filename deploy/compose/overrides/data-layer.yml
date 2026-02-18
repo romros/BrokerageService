@@ -1,5 +1,8 @@
 # Override per Data Layer prod v0 (prefetch + writer + gates)
 #
+# Permisos: user ${UID}:${GID} perquè datafiles/ sigui writable per host.
+# Scripts exporten UID/GID automàticament.
+#
 # Ús:
 #   docker compose -f docker-compose.yml -f deploy/compose/overrides/data-layer.yml up -d brokerage
 #   ./scripts/run_smoke.sh data-layer
@@ -7,6 +10,7 @@
 
 services:
   brokerage:
+    user: "${UID:-0}:${GID:-0}"
     environment:
       - DATA_LAYER_ENABLED=1
       - DATA_LAYER_PREFETCH_MINUTES=120

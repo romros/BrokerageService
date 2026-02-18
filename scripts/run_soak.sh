@@ -20,6 +20,9 @@ cd "$PROJECT_ROOT"
 MINUTES=${1:-30}
 PROFILE=${2:-data-layer}
 POST_COMPAT=${3:-}
+# Permisos: data-layer/ostium escriuen datafiles amb UID/GID host (compat_reports writable)
+export UID=${UID:-$(id -u 2>/dev/null || echo 0)}
+export GID=${GID:-$(id -g 2>/dev/null || echo 0)}
 OVERRIDES_DIR="$PROJECT_ROOT/deploy/compose/overrides"
 BROKER_URL="${BROKER_URL:-http://localhost:8000}"
 HEALTH_URL="${BROKER_URL}/api/v1/broker/health"

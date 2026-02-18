@@ -136,13 +136,27 @@ async def run_compat(
 
     path = save_compat_report(report, datafiles_root=datafiles_root)
     registry_path = Path(datafiles_root) / "compat_reports" / "ostium_compat_registry.json"
-    save_ostium_registry(
-        symbol=symbol,
-        status=status,
-        verdict_reason=reason,
-        window_minutes=report.get("window_minutes", window_minutes),
-        registry_path=registry_path,
-    )
+    try:
+        save_ostium_registry(
+            symbol=symbol,
+            status=status,
+            verdict_reason=reason,
+            window_minutes=report.get("window_minutes", window_minutes),
+            registry_path=registry_path,
+        )
+    except OSError as e:
+        logger.error("ostium_compat: registry write failed: %s", e)
+        return {
+            "symbol": symbol,
+            "verdict": verdict,
+            "status": status,
+            "verdict_reason": f"{reason}; registry write failed: {e}",
+            "aligned_count": report.get("aligned_count", 0),
+            "path": path,
+            "registry_updated": False,
+            "ostium_primary_allowed": False,
+            "registry_write_error": str(e),
+        }
 
     return {
         "symbol": symbol,
@@ -192,7 +206,11 @@ def main() -> int:
     print(f"  ostium_primary_allowed={result.get('ostium_primary_allowed', False)}")
     if result.get("path"):
         print(f"  artifact={result['path']}")
+    if result.get("registry_write_error"):
+        print(f"  ERROR: registry no actualitzat: {result['registry_write_error']}")
 
+    if result.get("registry_write_error"):
+        return 3  # Registry write failed (permisos, etc.)
     if result["verdict"] == VERDICT_COMPATIBLE:
         return 0
     if result["verdict"] == VERDICT_PARTIAL:

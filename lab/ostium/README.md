@@ -30,12 +30,15 @@
 | `ostium_vs_dukascopy_compat_v2.py` | Compara Ostium vs Dukascopy | ✅ |
 | `check_24h_progress.sh` | Check progrés | ✅ |
 
-**Primera comparació (388 candles, 6.5h):**
-- Correlació: 0.976 (excel·lent)
-- Direction agree: 92.7% (molt bo)
-- Price diffs: ~0.04 pips (ínfimes)
-- Best lag: 0 min (perfecte alignment)
-- Veredicte: PARTIAL (amb 1440c → PASS)
+**Resultats finals (2026-02-18, 24h captura):**
+
+| Símbol | Candles | Corr | Dir agree | Veredicte |
+|--------|---------|------|-----------|-----------|
+| **EURUSD** | 1440 | 0,95 | 88,5% | **PASS** |
+| **XAUUSD** | 1340 | 0,43 | 92,1% | FAIL |
+
+- EURUSD: Dukascopy compatible per backtest Ostium (ostium_primary_allowed=true)
+- XAUUSD: Correlació baixa, max diff ~163$ — revisar instrument/offset
 
 **Timestamp alignment verificat:**
 - UTC start-of-minute (:00s)
@@ -141,12 +144,14 @@ lab/ostium/
 
 ## Path to Production
 
-⚠️ **Pendent validació abans producció:**
-
+**Progrés:**
 1. **Trading mainnet:** Validar fees/latency real (ara només testnet)
-2. **Compat PASS:** Aconseguir dir_agree >95% amb 1440c
-3. **Infra monitoring:** Validar polling 2s estable 72h+
-4. **Comparativa Lighter:** Decidir si val la pena canviar
+2. **Compat PASS EURUSD:** ✅ Aconseguit (1440c, corr 0.95, dir_agree 88.5%)
+3. **Compat XAUUSD:** ❌ FAIL (corr 0.43) — pendent investigar
+4. **Infra monitoring:** Validar polling 2s estable 72h+
+5. **Comparativa Lighter:** Decidir si val la pena canviar
+
+**Connexió amb prod-ish registry:** Els resultats LAB (compat report) es graduen a prod-ish via `./scripts/run_compat.sh ostium EURUSD` o `./scripts/run_soak.sh 2 ostium post-compat`. El tool escriu `datafiles/compat_reports/ostium_compat_registry.json`; si PASS → `ostium_primary_allowed=true` per aquell símbol. Font de veritat: `get_ostium_primary_allowed(symbol)`.
 
 **Si tot OK → Candidat per substituir Lighter en RWA**
 

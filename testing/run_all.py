@@ -311,6 +311,7 @@ def main():
         testing_dir / "unit" / "test_compat_report_service.py",  # P8 Compat report (0 network)
         testing_dir / "unit" / "test_ostium_compat_report_service.py",  # Ostium compat (0 network)
         testing_dir / "unit" / "test_compat_registry_ostium_gate.py",  # Ostium graduation gate (0 network)
+        testing_dir / "unit" / "test_save_ostium_registry_robust.py",  # save_ostium_registry atomic + dirs + error (0 network)
         testing_dir / "unit" / "test_ostium_primary_policy_selection.py",  # Ostium primary policy (0 network)
         testing_dir / "unit" / "test_ostium_symbol_allowlist.py",  # Ostium allowlist + quarantine (0 network)
         testing_dir / "unit" / "test_data_status_quarantine_flags.py",  # data_status quarantine flags (0 network)

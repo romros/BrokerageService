@@ -78,10 +78,12 @@ def save_ostium_registry(
     Actualitza registry amb resultat compat per símbol.
 
     PASS → ostium_primary_allowed=true; PARTIAL/FAIL → false.
+    Escritura atòmica (.tmp + rename). Crea directoris si no existeixen.
+    Raises OSError amb missatge clar si no pot escriure.
     """
     import time
 
-    path = _get_registry_path(registry_path)
+    path = Path(_get_registry_path(registry_path))
     path.parent.mkdir(parents=True, exist_ok=True)
 
     data = load_ostium_registry(registry_path)
@@ -93,6 +95,14 @@ def save_ostium_registry(
         "verdict_reason": verdict_reason,
         "window_minutes": window_minutes,
     }
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
+
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    try:
+        with open(tmp_path, "w") as f:
+            json.dump(data, f, indent=2)
+        tmp_path.rename(path)
+    except OSError as e:
+        msg = f"ostium_compat_registry: no es pot escriure {path}: {e}"
+        logger.error(msg)
+        raise OSError(msg) from e
     logger.info("ostium_compat_registry updated symbol=%s status=%s", symbol, status)
