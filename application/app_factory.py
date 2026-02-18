@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 import os
 import threading
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -296,8 +296,16 @@ def create_app(role: str | None = None) -> FastAPI:
 
             # Ostium ingest: només realtime (o monolithic)
             if _role_starts_ostium_ingest(role) and ostium_enabled:
-                from application.data.ostium_symbol_policy import get_ostium_ingest_symbols
-                ostium_symbols = list(get_ostium_ingest_symbols())
+                if role == "realtime_datalayer":
+                    from apps.realtime_datalayer.symbol_config import get_desired_symbols
+                    from apps.realtime_datalayer.instrument_resolver import resolve_all
+                    ostium_symbols = get_desired_symbols()
+                    resolved = resolve_all(ostium_symbols)
+                    symbol_to_ostium_asset = {s: r["ostium_asset"] for s, r in resolved.items()}
+                else:
+                    from application.data.ostium_symbol_policy import get_ostium_ingest_symbols
+                    ostium_symbols = list(get_ostium_ingest_symbols())
+                    symbol_to_ostium_asset = None
                 _write_mode = cfg.get("write_mode", os.getenv("DATA_LAYER_WRITE_MODE", "realtime_plus_backfill"))
                 _write_mode = str(_write_mode).lower()
                 ostium_ingest_allowed = _write_mode in ("realtime_only", "realtime_plus_backfill")
@@ -330,10 +338,13 @@ def create_app(role: str | None = None) -> FastAPI:
                             max_missing_per_24h=int(os.getenv(DATA_LAYER_GATES_MAX_MISSING_PER_24H_ENV, str(DEFAULT_DATA_LAYER_GATES_MAX_MISSING_PER_24H))),
                             stale_seconds=int(os.getenv(DATA_LAYER_STALE_SECONDS_ENV, str(DEFAULT_DATA_LAYER_STALE_SECONDS))),
                             tick_recorder=tick_recorder,
+                            symbol_to_ostium_asset=symbol_to_ostium_asset,
                         )
                         await ostium_ingest_service.start()
                         logger.info("OstiumCandleIngestService started symbols=%s", ostium_symbols)
                         set_broker_deps(data_layer_write_mode=_write_mode, ostium_ingest_enabled=True)
+                        if role == "realtime_datalayer":
+                            app.state.ostium_ingest_service = ostium_ingest_service
                     except Exception as e:
                         logger.warning("OstiumCandleIngestService not started: %s", e)
 
@@ -488,5 +499,74 @@ def create_app(role: str | None = None) -> FastAPI:
                 "ingest_state": "running" if metrics else "initializing",
                 "tick_recorder_enabled": tick_rec is not None,
             }
+
+        @app.get("/symbols")
+        async def _realtime_symbols_get():
+            """Llista desired + active + mapping resolved (spot/perp) + per-symbol stats."""
+            from apps.realtime_datalayer.symbol_config import load_symbols_config, get_desired_symbols
+            from apps.realtime_datalayer.instrument_resolver import resolve_all
+            ingest = getattr(app.state, "ostium_ingest_service", None)
+            desired = get_desired_symbols()
+            active = (
+                [s for s in ingest.symbols if s not in ingest._stopped_symbols]
+                if ingest else desired
+            )
+            all_symbols = set(desired) | set(active)
+            if ingest:
+                all_symbols |= ingest._stopped_symbols
+            resolved = resolve_all(list(all_symbols))
+            per_symbol_stats = ingest.get_symbol_stats() if ingest else {}
+            by_symbol = {}
+            for sym in all_symbols:
+                r = resolved.get(sym, {"ostium_asset": sym, "kind": "unknown", "resolution_source": "auto"})
+                stats = per_symbol_stats.get(sym, {})
+                by_symbol[sym] = {
+                    "ostium_asset": r.get("ostium_asset", sym),
+                    "kind": r.get("kind", "unknown"),
+                    "resolution_source": r.get("resolution_source", "auto"),
+                    "ticks_seen": stats.get("ticks_seen", 0),
+                    "ticks_last_ts": stats.get("ticks_last_ts"),
+                    "candles_written": stats.get("candles_written", 0),
+                    "candle_last_ts": stats.get("candle_last_ts"),
+                    "errors_count": stats.get("errors_count", 0),
+                    "last_error": stats.get("last_error"),
+                    "state": stats.get("state", "stopped" if sym not in active else "running"),
+                }
+            return {
+                "desired": desired,
+                "active": active,
+                "by_symbol": by_symbol,
+            }
+
+        @app.put("/symbols")
+        async def _realtime_symbols_put(body: dict = Body(default={})):
+            """Hot-reload: actualitza símbols. Body: {symbols: [...], apply_mode: diff|replace}."""
+            from apps.realtime_datalayer.symbol_config import (
+                load_symbols_config,
+                save_symbols_config,
+                get_desired_symbols,
+            )
+            from apps.realtime_datalayer.instrument_resolver import resolve_all
+            ingest = getattr(app.state, "ostium_ingest_service", None)
+            if not ingest:
+                from fastapi import HTTPException
+                raise HTTPException(status_code=503, detail="Ostium ingest not available")
+            symbols_raw = body.get("symbols", [])
+            apply_mode = body.get("apply_mode", "diff")
+            symbols = [s.strip().upper() for s in symbols_raw if s and str(s).strip()]
+            if not symbols:
+                from fastapi import HTTPException
+                raise HTTPException(status_code=400, detail="symbols required, non-empty")
+            cfg = load_symbols_config()
+            current = set(cfg["symbols"])
+            if apply_mode == "replace":
+                new_desired = symbols
+            else:
+                new_desired = list(current | set(symbols))
+            resolved = resolve_all(new_desired)
+            symbol_to_ostium_asset = {s: r["ostium_asset"] for s, r in resolved.items()}
+            save_symbols_config(new_desired, cfg.get("instrument_overrides"))
+            ingest.update_symbols(new_desired, symbol_to_ostium_asset)
+            return {"desired": new_desired, "active": list(ingest.symbols)}
 
     return app

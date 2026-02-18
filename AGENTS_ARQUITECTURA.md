@@ -61,7 +61,7 @@
 
 - Servei autònom: `docker compose -f ... up -d realtime_datalayer`
 - Storage: `datafiles/realtime_datalayer/candles/`, `ticks/`
-- API: GET /health, GET /status, /api/v1/broker/ohlcv, data_status, coverage
+- API: GET /health, GET /status, GET/PUT /symbols (hot-reload), /api/v1/broker/ohlcv, data_status, coverage
 - Docs: `apps/realtime_datalayer/realtime_datalayer_arquitectura.md`, `realtime_datalayer_estat.md`
 - Tests curts: `./test.sh testing/run_realtime.py`
 
@@ -475,6 +475,7 @@ Decisió de "venue principal" sempre és en 2 eixos:
 ## 15) Changelog
 
 - **2026-02-18** — Split vNext Phase 2: trading_service consumeix realtime_datalayer via HTTP (RealtimeDataLayerClient, IDataLayerReader, REALTIME_DATALAYER_BASE_URL). OHLCV/coverage/data_status forward quan env set.
+- **2026-02-18** — Realtime DataLayer hot-reload: GET/PUT /symbols per canviar símbols sense restart; config persistent a `{REALTIME_DATALAYER_ROOT}/config/symbols.json`; instrument resolution (spot/perp) amb override.
 - **2026-02-18** — Split vNext Phase 1: SERVICE_ROLE, entrypoints per servei (apps/*/app.py), create_app(role), role boundaries, compose amb entrypoints reals.
 - **2026-02-18** — Split vNext: scaffold monorepo (apps/, packages/), compose 3 serveis, plantilla_tasca.md, mapping actual→vNext.
 - **2026-02-17** — Ostium prod-ish opt-in: graduation path (§8.4); Ostium integrat com a recorder opt-in (no primary fins gates). Data Layer canònic; fallback Dukascopy; exec desacoblat. Normes (§6), Testing sense pytest (§7), LAB (§8), Docker (§11).

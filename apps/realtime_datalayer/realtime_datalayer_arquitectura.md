@@ -12,7 +12,7 @@
 | **Ostium Ingest** | Polling REST `/latest-price` → ticks → candles 1m |
 | **Tick Recorder** | Persistència ticks a JSONL (forense, best-effort) |
 | **Candle Store** | CSV candles 1m (ts, O, H, L, C, V) |
-| **API** | /health, /status, /api/v1/broker/ohlcv, /api/v1/broker/data_status, /api/v1/broker/coverage |
+| **API** | /health, /status, /symbols (GET/PUT), /api/v1/broker/ohlcv, /api/v1/broker/data_status, /api/v1/broker/coverage |
 
 ---
 
@@ -39,6 +39,22 @@
 - `uptime`: segons des d'arrencada
 - `ingest_state`: running | stopped | initializing
 
+### GET /symbols
+- `desired`: llista desitjada (config)
+- `active`: símbols actualment en ingest (no stopped)
+- `by_symbol`: per cada símbol: ostium_asset, kind (perp|spot|unknown), resolution_source (auto|override), ticks_seen, ticks_last_ts, candles_written, candle_last_ts, errors_count, last_error, state (running|stopped|degraded)
+
+### PUT /symbols
+- Body: `{"symbols": ["EURUSD","USDJPY",...], "apply_mode": "diff"|"replace"}`
+- `diff`: afegeix símbols a la llista actual (no treu)
+- `replace`: reemplaça la llista total
+- Hot-reload: sense restart; config guardada a disc
+
+### Instrument resolution
+- Per cada logical_symbol es resol a ostium_asset (Ostium API).
+- Si hi ha ambigüitat (spot/perp), es prefereix PERP quan està disponible.
+- Override manual a `config/symbols.json` → `instrument_overrides`: `{"XAUUSD": {"ostium_asset": "XAUUSD", "kind": "perp"}}`
+
 ### GET /api/v1/broker/ohlcv/{symbol}
 - Candles del store local (tf=1m)
 
@@ -47,7 +63,19 @@
 
 ---
 
-## Config (env)
+## Config
+
+### Persistent: `{REALTIME_DATALAYER_ROOT}/config/symbols.json`
+```json
+{
+  "symbols": ["EURUSD", "USDJPY", "XAUUSD", "GBPUSD", "GOOGUSD", "NVDAUSD", "DAXEUR", "SPXUSD"],
+  "instrument_overrides": {"XAUUSD": {"ostium_asset": "XAUUSD", "kind": "perp"}}
+}
+```
+- Carregat a l'arrencada; actualitzat via PUT /symbols.
+- Llista inicial d'assets: EURUSD, USDJPY, XAUUSD (prefer perp), GBPUSD, GOOGUSD, NVDAUSD, DAXEUR, SPXUSD.
+
+### Env
 
 | Env | Default | Descripció |
 |-----|---------|------------|
@@ -55,7 +83,6 @@
 | REALTIME_CANDLES_MAX_HOURS | 168 | Retenció candles (hores) |
 | REALTIME_TICKS_MAX_HOURS | 72 | Retenció ticks (hores) |
 | OSTIUM_ENABLED | 1 | Ingest Ostium |
-| OSTIUM_SYMBOLS | EURUSD,GBPUSD | Símbols a ingerir |
 | OSTIUM_POLL_S | 2 | Interval polling (segons) |
 
 ---

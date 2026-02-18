@@ -10,7 +10,9 @@
 |---------|-------|-------|
 | Servei autònom | ✅ | `docker compose -f ... up -d realtime_datalayer` |
 | GET /health | ✅ | Via broker routes /api/v1/broker/health |
-| GET /status | 🟡 | En curs (stats, retention, uptime) |
+| GET /status | ✅ | stats, retention, uptime |
+| GET/PUT /symbols | ✅ | Hot-reload símbols sense restart |
+| Instrument resolution | ✅ | spot/perp, override a config |
 | Ostium ingest 24/7 | ✅ | OstiumCandleIngestService |
 | Tick recorder | ✅ | OstiumTickRecorder (opt-in) |
 | Storage candles | ✅ | datafiles/realtime_datalayer/candles (configurable) |
@@ -27,13 +29,27 @@
 docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml up -d realtime_datalayer
 
 # Verificar
-curl -s http://localhost:8001/api/v1/broker/health
+curl -s http://localhost:8001/health
 curl -s http://localhost:8001/status
+curl -s http://localhost:8001/symbols
 curl -s http://localhost:8001/api/v1/broker/data_status
+
+# Canviar símbols sense restart (hot-reload)
+curl -X PUT http://localhost:8001/symbols -H "Content-Type: application/json" \
+  -d '{"symbols": ["EURUSD","USDJPY","XAUUSD","GBPUSD"], "apply_mode": "replace"}'
+
+# Afegir símbols (diff)
+curl -X PUT http://localhost:8001/symbols -H "Content-Type: application/json" \
+  -d '{"symbols": ["GOOGUSD"], "apply_mode": "diff"}'
 
 # Rebuild (si has canviat codi)
 docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml build realtime_datalayer
 ```
+
+## Llista d'assets (exemple)
+
+EURUSD, USDJPY, XAUUSD (prefer perp), GBPUSD, GOOGUSD, NVDAUSD, DAXEUR, SPXUSD.
+Config guardada a `{REALTIME_DATALAYER_ROOT}/config/symbols.json`; recarregada en reinici.
 
 ---
 

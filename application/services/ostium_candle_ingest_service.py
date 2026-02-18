@@ -72,6 +72,7 @@ def _aggregate_ticks_to_candles(
 class OstiumCandleIngestService:
     """
     Ostium realtime writer: poll → aggregate → write closed minutes.
+    Suporta update_symbols() per hot-reload sense restart.
     """
 
     def __init__(
@@ -84,9 +85,11 @@ class OstiumCandleIngestService:
         max_missing_per_24h: int = 1,
         stale_seconds: int = 180,
         tick_recorder: Optional[Any] = None,
+        symbol_to_ostium_asset: Optional[Dict[str, str]] = None,
     ):
         self.store = store
-        self.symbols = symbols
+        self.symbols = list(symbols)
+        self._symbol_to_ostium_asset = symbol_to_ostium_asset or {s: s for s in symbols}
         self.tick_recorder = tick_recorder
         self.poll_interval_s = poll_interval_s
         self.warmup_minutes = warmup_minutes
@@ -98,10 +101,15 @@ class OstiumCandleIngestService:
         self._task: Optional[asyncio.Task] = None
         self._ticks: Dict[str, Dict[int, List[_Tick]]] = defaultdict(lambda: defaultdict(list))
         self._degraded_symbols: set = set()
+        self._stopped_symbols: set = set()
+        self._ticks_seen: Dict[str, int] = defaultdict(int)
+        self._ticks_last_ts: Dict[str, int] = {}
+        self._errors_count: Dict[str, int] = defaultdict(int)
+        self._last_error: Dict[str, str] = {}
 
         logger.info(
             "OstiumCandleIngestService initialized: symbols=%s poll_s=%s",
-            symbols,
+            self.symbols,
             poll_interval_s,
         )
 
@@ -125,6 +133,58 @@ class OstiumCandleIngestService:
                 pass
         logger.info("OstiumCandleIngestService stopped")
 
+    def update_symbols(
+        self,
+        symbols: List[str],
+        symbol_to_ostium_asset: Optional[Dict[str, str]] = None,
+    ) -> None:
+        """
+        Hot-reload: actualitza símbols sense restart.
+        remove: stop loop per símbol (no esborra dades).
+        add: inicia processament.
+        """
+        new_set = set(s.upper() for s in symbols)
+        old_set = set(self.symbols)
+        to_add = new_set - old_set
+        to_remove = old_set - new_set
+        for s in to_remove:
+            self._stopped_symbols.add(s)
+        for s in to_add:
+            self._stopped_symbols.discard(s)
+        self.symbols = list(new_set)
+        if symbol_to_ostium_asset is not None:
+            self._symbol_to_ostium_asset = dict(symbol_to_ostium_asset)
+        else:
+            for s in self.symbols:
+                if s not in self._symbol_to_ostium_asset:
+                    self._symbol_to_ostium_asset[s] = s
+        logger.info("OstiumCandleIngestService update_symbols: active=%s stopped=%s", self.symbols, to_remove)
+
+    def get_symbol_stats(self) -> Dict[str, Dict[str, Any]]:
+        """Stats per símbol: ticks_seen, ticks_last_ts, candles_written, candle_last_ts, errors_count, last_error, state."""
+        metrics = get_data_layer_metrics()
+        snapshot = metrics.snapshot() if metrics else {}
+        symbols_data = snapshot.get("symbols", {})
+        result = {}
+        for symbol in set(self.symbols) | self._stopped_symbols:
+            state = "stopped" if symbol in self._stopped_symbols else (
+                "degraded" if symbol in self._degraded_symbols else "running"
+            )
+            m = symbols_data.get(symbol, {})
+            result[symbol] = {
+                "ticks_seen": self._ticks_seen.get(symbol, 0),
+                "ticks_last_ts": self._ticks_last_ts.get(symbol),
+                "candles_written": m.get("candles_written", 0),
+                "candle_last_ts": m.get("last_candle_ts"),
+                "errors_count": self._errors_count.get(symbol, 0),
+                "last_error": self._last_error.get(symbol),
+                "state": state,
+            }
+        return result
+
+    def _ostium_asset(self, symbol: str) -> str:
+        return self._symbol_to_ostium_asset.get(symbol, symbol)
+
     async def _poll_loop(self) -> None:
         """Loop: poll Ostium, aggregate, write closed minutes."""
         loop = asyncio.get_event_loop()
@@ -132,12 +192,16 @@ class OstiumCandleIngestService:
             try:
                 now_ts = int(datetime.now(timezone.utc).timestamp())
                 current_minute = (now_ts // 60) * 60
+                active_symbols = [s for s in self.symbols if s not in self._stopped_symbols]
 
-                for symbol in self.symbols:
+                for symbol in active_symbols:
                     if symbol in self._degraded_symbols:
                         continue
-                    result = await loop.run_in_executor(None, fetch_latest_price, symbol)
+                    ostium_asset = self._ostium_asset(symbol)
+                    result = await loop.run_in_executor(None, fetch_latest_price, ostium_asset)
                     if result:
+                        self._ticks_seen[symbol] += 1
+                        self._ticks_last_ts[symbol] = result["timestamp"]
                         tick = _Tick(ts=result["timestamp"], price=result["price"])
                         minute_start = (tick.ts // 60) * 60
                         self._ticks[symbol][minute_start].append(tick)
@@ -147,7 +211,7 @@ class OstiumCandleIngestService:
                             )
 
                 # Flush closed minutes
-                for symbol in self.symbols:
+                for symbol in active_symbols:
                     if symbol in self._degraded_symbols:
                         continue
                     await self._flush_closed_minutes(symbol, current_minute)
@@ -158,6 +222,10 @@ class OstiumCandleIngestService:
                 break
             except Exception as e:
                 logger.error("OstiumCandleIngestService poll_loop error: %s", e)
+                for s in self.symbols:
+                    if s not in self._stopped_symbols:
+                        self._errors_count[s] += 1
+                        self._last_error[s] = str(e)
                 await asyncio.sleep(5)
 
             await asyncio.sleep(self.poll_interval_s)
