@@ -319,6 +319,8 @@ def main():
         testing_dir / "unit" / "test_missing_ignores_closed_minutes.py",  # Missing exclou closed (0 network)
         testing_dir / "unit" / "test_data_status_includes_market_open.py",  # data_status market_open (0 network)
         testing_dir / "unit" / "test_ostium_post_compat_hook.py",  # Ostium graduation loop post-compat (0 network)
+        testing_dir / "unit" / "test_data_status_initializing.py",  # data_status 200 initializing (0 network)
+        testing_dir / "unit" / "test_data_layer_soak_wait_ready.py",  # soak wait_for_ready (0 network)
         testing_dir / "unit" / "test_p8_provenance_rest_only.py",  # P8.2 Provenance REST-only (0 network)
         testing_dir / "unit" / "test_ws_collector_persistence.py",  # P8.4 WS Candle Collector persistence (0 network)
         testing_dir / "unit" / "test_trade_history_models.py",  # P1 TradeFill mapping

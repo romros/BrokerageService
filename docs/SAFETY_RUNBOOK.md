@@ -58,6 +58,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=10" | grep -i
 | **Missing minutes** | X-Data-Missing-Minutes, coverage | Activar read-through (serve-only); executar repair; no mutar primary |
 | **Duplicates / ts_step_errors** | data_status, integrity | Hard stop (no declarar primary); symbol_state=DEGRADED; investigar writer |
 | **503 / pipeline down** | health, data_status | Restart; check logs |
+| **data_layer_status=initializing** | data_status 200 amb data_layer_status | Normal durant arrencada; scripts esperen readiness. Si persisteix >2 min → pipeline no arranca; check logs |
 
 ### Ostium ingest (profile ostium)
 

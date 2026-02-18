@@ -237,8 +237,13 @@ async def lifespan(app: FastAPI):
     # P7c: DataLayerMetrics (telemetria) quan tenim pipeline o Data Layer prod
     data_layer_prod_service = None
     if market_data_service is not None or os.getenv(DATA_LAYER_ENABLED_ENV, "0") == "1":
+        from application.data.data_layer_lifecycle import (
+            DATA_LAYER_INITIALIZING,
+            set_data_layer_status,
+        )
         from application.data.data_layer_metrics import DataLayerMetrics, set_data_layer_metrics  # lazy: només quan hi ha pipeline
         set_data_layer_metrics(DataLayerMetrics())
+        set_data_layer_status(DATA_LAYER_INITIALIZING, reason="Data Layer startup")
 
     # Data Layer prod v0: prefetch + writer loop (DATA_LAYER_ENABLED=1)
     # Ostium mode: realtime_plus_backfill (ingest) | backfill_only (no ingest)

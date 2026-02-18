@@ -36,6 +36,13 @@ def test_eval_empty_symbols():
     assert "no symbols" in r.reason
 
 
+def test_eval_initializing():
+    """data_layer_status=initializing → EXIT_HEALTH_FAIL (wait for ready)."""
+    r = eval_data_status({"data_layer_status": "initializing", "symbols": {}})
+    assert r.exit_code == EXIT_HEALTH_FAIL
+    assert "initializing" in r.reason.lower()
+
+
 def test_eval_ok():
     """Mètriques dins llindars → EXIT_OK."""
     data = {
@@ -178,6 +185,7 @@ def test_eval_degraded_takes_precedence():
 def run_tests():
     test_eval_health_fail()
     test_eval_empty_symbols()
+    test_eval_initializing()
     test_eval_ok()
     test_eval_degraded()
     test_eval_dupes_ts_step()

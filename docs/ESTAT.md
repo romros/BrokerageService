@@ -138,6 +138,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-17 | Ostium primary serving v1 | ✅ policy per símbol, X-Data-Source=ostium_recorded, data_status primary_allowed_by_symbol | headers + coverage + tests |
 | 2026-02-17 | Market-hours aware gates | ✅ is_market_open, closed_intervals; stale/missing ajustats; data_status market_open | soak cap de setmana no DEGRADED |
 | 2026-02-17 | Ostium Graduation Loop v1 | ✅ run_soak.sh 30 ostium post-compat; SKIP si no candles; graduation_summary a artifact | `./scripts/run_soak.sh 2 ostium post-compat` (SKIP per falta Dukascopy) |
+| 2026-02-18 | Data Layer readiness handshake | ✅ data_status 200 amb initializing; soak wait_for_ready; startup_wait_s a artifact | `./scripts/run_soak.sh 2 ostium post-compat` sense 503 |
 
 **Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 
@@ -179,6 +180,8 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | ostium | deploy/compose/overrides/ostium.yml | `run_smoke.sh ostium` | `run_soak.sh 30 ostium` | `run_compat.sh ostium` |
 
 **Graduation loop Ostium:** `./scripts/run_soak.sh 30 ostium post-compat` — soak + compat automàtic al final. Si no hi ha candles suficients o Dukascopy falta → SKIP (exit 0). Artifact inclou `graduation_summary`. Quan acabi la 24h i Dukascopy tingui delay resolt, correr compat 1440: `run_compat.sh ostium` amb `OSTIUM_COMPAT_WINDOW_MINUTES=1440`.
+
+**Readiness handshake:** `data_status` pot estar `initializing` els primers segons; scripts esperen readiness automàticament (`--wait-timeout` default 120s).
 
 **Regla:** No crear scripts nous ad-hoc. Lògica a `application/tools/*.py`; wrappers a `scripts/*.sh`.
 

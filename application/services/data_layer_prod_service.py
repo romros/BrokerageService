@@ -18,6 +18,11 @@ from domain.models import Candle
 from foundation.logging import get_logger
 from infrastructure.storage.gap_validator import GapValidator
 
+from application.data.data_layer_lifecycle import (
+    DATA_LAYER_DEGRADED,
+    DATA_LAYER_READY,
+    set_data_layer_status,
+)
 from application.data.data_layer_metrics import (
     SYMBOL_STATE_ACTIVE,
     SYMBOL_STATE_DEGRADED,
@@ -325,6 +330,12 @@ class DataLayerProdService:
                     self._mark_degraded(symbol, f"stale_seconds={stale_s} > {self.stale_seconds}")
                 elif missing_24h > self.max_missing_per_24h:
                     self._mark_degraded(symbol, f"missing_minutes_24h={missing_24h} > {self.max_missing_per_24h}")
+
+        # Lifecycle: ready quan tenim mètriques; degraded si algun símbol DEGRADED
+        if self._degraded_symbols:
+            set_data_layer_status(DATA_LAYER_DEGRADED, reason="symbol(s) DEGRADED")
+        else:
+            set_data_layer_status(DATA_LAYER_READY)
 
     def run_startup_gate_check(self) -> tuple[bool, str]:
         """

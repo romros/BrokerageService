@@ -60,6 +60,13 @@ def eval_data_status(
             reason="data_status not available (API fail or 503)",
         )
 
+    if data_status.get("data_layer_status") == "initializing":
+        return EvalResult(
+            exit_code=EXIT_HEALTH_FAIL,
+            verdict="health_fail",
+            reason="data_status initializing (wait for ready)",
+        )
+
     symbols_data = data_status.get("symbols") or {}
     if not symbols_data:
         return EvalResult(

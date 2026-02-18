@@ -32,6 +32,7 @@ from application.tools.data_layer_run_eval import eval_data_status
 
 BROKER_URL = os.getenv("BROKER_URL", "http://localhost:8000")
 POLL_INTERVAL = 60
+DEFAULT_WAIT_READY_TIMEOUT_S = int(os.getenv("DATA_LAYER_SOAK_WAIT_READY_S", "120"))
 MAX_GAP_S = int(os.getenv("DATA_LAYER_GATES_MAX_GAP_S", "180"))
 MAX_MISSING_PER_24H = int(os.getenv("DATA_LAYER_GATES_MAX_MISSING_PER_24H", "1"))
 MAX_STALE_SECONDS = int(os.getenv("DATA_LAYER_STALE_SECONDS", "180"))
@@ -45,6 +46,32 @@ def _get(url: str, timeout: int = 10) -> dict | None:
     except Exception:
         pass
     return None
+
+
+def wait_for_data_status_ready(
+    data_status_url: str,
+    timeout_s: int = DEFAULT_WAIT_READY_TIMEOUT_S,
+    poll_s: int = 1,
+) -> tuple[dict | None, float, str, bool]:
+    """
+    Poll data_status fins que data_layer_status != initializing o timeout.
+    Retorna (data_status, startup_wait_s, startup_status, startup_timeout).
+    """
+    start = time.monotonic()
+    deadline = start + timeout_s
+    while time.monotonic() < deadline:
+        data_status = _get(data_status_url)
+        if data_status is None:
+            time.sleep(poll_s)
+            continue
+        status = data_status.get("data_layer_status", "ready")
+        if status != "initializing":
+            elapsed = time.monotonic() - start
+            return data_status, elapsed, status, False
+        time.sleep(poll_s)
+    elapsed = time.monotonic() - start
+    last = _get(data_status_url)
+    return last, elapsed, last.get("data_layer_status", "initializing") if last else "unknown", True
 
 
 def _run_post_compat(
@@ -114,6 +141,7 @@ def main() -> int:
     parser.add_argument("--post-compat", type=int, default=0, help="1 = run Ostium compat after soak (ostium profile)")
     parser.add_argument("--compat-symbol", default=os.getenv("OSTIUM_COMPAT_SYMBOL", "EURUSD"), help="Symbol for compat")
     parser.add_argument("--compat-candles", type=int, default=int(os.getenv("OSTIUM_COMPAT_WINDOW_MINUTES", "650")), help="Window minutes for compat")
+    parser.add_argument("--wait-timeout", type=int, default=DEFAULT_WAIT_READY_TIMEOUT_S, help="Seconds to wait for data_status ready")
     args = parser.parse_args()
 
     minutes = max(1, min(120, args.minutes))
@@ -135,11 +163,39 @@ def main() -> int:
         print(f"  Post-compat: {compat_symbol} ({compat_candles}m)")
     print()
 
+    # Wait for data_status ready (no 503 / initializing)
+    print("  Waiting for data_status ready...")
+    data_status, startup_wait_s, startup_status, startup_timeout = wait_for_data_status_ready(
+        data_status_url, timeout_s=args.wait_timeout, poll_s=1
+    )
+    print(f"  Ready in {startup_wait_s:.0f}s (status={startup_status}, timeout={startup_timeout})")
+    if startup_timeout:
+        print(f"\n✗ Soak FAILED: data_status still initializing after {args.wait_timeout}s")
+        datafiles_root = Path(os.getenv("DATAFILES_ROOT", str(ROOT / "datafiles")))
+        runs_dir = datafiles_root / "data_layer_prod_runs"
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        ts_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        artifact_path = runs_dir / f"{ts_str}_soak_{sym_str}_{minutes}m.json"
+        artifact = {
+            "run": "soak",
+            "timestamp": ts_str,
+            "symbols": symbols,
+            "duration_minutes": minutes,
+            "startup_wait_s": startup_wait_s,
+            "startup_status": startup_status,
+            "startup_timeout": True,
+            "result": {"exit_code": 6, "verdict": "health_fail", "reason": "data_status initializing timeout"},
+        }
+        with open(artifact_path, "w", encoding="utf-8") as f:
+            json.dump(artifact, f, indent=2)
+        print(f"  Artifact: {artifact_path}")
+        return 6
+
     start = time.monotonic()
     deadline = start + (minutes * 60)
     snapshots = []
     last_result = None
-    last_data_status = None
+    last_data_status = data_status
 
     while time.monotonic() < deadline:
         data_status = _get(data_status_url)
@@ -180,6 +236,9 @@ def main() -> int:
         "timestamp": ts_str,
         "symbols": symbols,
         "duration_minutes": minutes,
+        "startup_wait_s": startup_wait_s,
+        "startup_status": startup_status,
+        "startup_timeout": False,
         "result": {
             "exit_code": last_result.exit_code if last_result else 6,
             "verdict": last_result.verdict if last_result else "health_fail",

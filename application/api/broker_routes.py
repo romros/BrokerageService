@@ -539,16 +539,36 @@ async def get_coverage(
 async def get_data_status():
     """
     P7c: Data Layer telemetria (counters, last_ts per símbol).
-    503 si metrics no wired (sense pipeline).
+    200 sempre que el servei estigui viu; data_layer_status=initializing durant arrencada.
+    503 només quan Data Layer mai s'ha habilitat (no pipeline).
     """
+    from application.data.data_layer_lifecycle import get_data_layer_status as get_lifecycle
     from application.data.data_layer_metrics import get_data_layer_metrics  # lazy: evita carregar data_layer si no hi ha pipeline
 
+    lifecycle_status, lifecycle_reason = get_lifecycle()
     metrics = get_data_layer_metrics()
+
+    # Habilitat però encara sense mètriques (initializing) → 200 amb data_layer_status=initializing
     if metrics is None:
+        if lifecycle_status in ("initializing", "ready", "degraded"):
+            return {
+                "data_layer_status": lifecycle_status,
+                "initializing_reason": lifecycle_reason or "metrics not yet wired",
+                "symbols": {},
+                "ws_reconnects": 0,
+                "server_time": datetime.now(timezone.utc).isoformat(),
+                "canonical_tz": CANONICAL_TIMEZONE_NAME,
+                "mode": _mode,
+                "market_data_env": _market_data_env,
+                "write_mode": _data_layer_write_mode,
+                "ingest_enabled": _ostium_ingest_enabled,
+                "ingest_poll_s": _ostium_ingest_poll_s,
+            }
         _http_error(503, DATA_STATUS_NOT_AVAILABLE, "Data Layer metrics not available (no pipeline)")
 
     snapshot = metrics.snapshot()
     result = {
+        "data_layer_status": lifecycle_status,
         "symbols": snapshot["symbols"],
         "ws_reconnects": snapshot["ws_reconnects"],
         "server_time": datetime.now(timezone.utc).isoformat(),
@@ -559,6 +579,8 @@ async def get_data_status():
         "ingest_enabled": _ostium_ingest_enabled,
         "ingest_poll_s": _ostium_ingest_poll_s,
     }
+    if lifecycle_status == "initializing" and lifecycle_reason:
+        result["initializing_reason"] = lifecycle_reason
     if _ostium_ingest_enabled:
         result["ingest_source"] = "ostium_realtime"
         from application.data.ostium_compat_registry import get_ostium_primary_allowed
