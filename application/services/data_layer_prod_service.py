@@ -278,20 +278,6 @@ class DataLayerProdService:
             )
         logger.warning("DATA_LAYER_DEGRADED symbol=%s reason=%s", symbol, reason)
 
-    def _coverage_minutes(self, symbol: str) -> int:
-        """Minuts de cobertura (last - first) per símbol. 0 si no dades."""
-        last_ts = self.store.get_last_timestamp(symbol)
-        if last_ts is None:
-            return 0
-        get_first = getattr(self.store, "get_earliest_timestamp", None)
-        if get_first is None:
-            return 0
-        first_ts = get_first(symbol)
-        if first_ts is None:
-            return 0
-        delta = last_ts - first_ts
-        return max(0, int(delta.total_seconds() / 60))
-
     def _update_gate_metrics(self) -> None:
         """Actualitza stale_seconds, missing_minutes_24h, max_gap_s des del store.
         Market-hours aware: si mercat tancat, stale no degrada; missing exclou minuts tancats.
@@ -329,6 +315,11 @@ class DataLayerProdService:
                 missing_24h = max(0, missing_24h_raw - closed_mins)
             except Exception:
                 missing_24h = 0
+                closed_mins = 0
+
+            # Warmup: cobertura recent dins 24h (no span històric)
+            expected_open_minutes_24h = max(0, min(1440, 1440 - closed_mins))
+            observed_open_minutes_24h = max(0, expected_open_minutes_24h - missing_24h)
 
             # max_gap_s: simplificat (v1 no ajusta per closed; conservador)
             max_gap_s = min(self.max_gap_s, 60 * max(0, missing_24h)) if missing_24h > 0 else 0
@@ -341,27 +332,31 @@ class DataLayerProdService:
                 max_gap_s=max_gap_s,
                 market_open=market_open_now,
                 market_state_reason=market_state_reason,
+                expected_open_minutes_24h=expected_open_minutes_24h,
+                observed_open_minutes_24h=observed_open_minutes_24h,
             )
 
             # Gate: si stale > threshold o missing > llindar → DEGRADED
             # (stale només quan market_open; si closed, stale_s=0)
-            # Warmup: durant cold start (coverage < warmup_minutes) no aplicar gate missing_24h
+            # Warmup: no degradar per missing mentre observed_open_minutes_24h < warmup
+            in_warmup = observed_open_minutes_24h < self.warmup_minutes
             if symbol not in self._degraded_symbols:
                 if stale_s > self.stale_seconds:
                     self._mark_degraded(symbol, f"stale_seconds={stale_s} > {self.stale_seconds}")
-                elif missing_24h > self.max_missing_per_24h:
-                    # Comprovar warmup: coverage_minutes des del store
-                    coverage_minutes = self._coverage_minutes(symbol)
-                    if coverage_minutes >= self.warmup_minutes:
-                        self._mark_degraded(symbol, f"missing_minutes_24h={missing_24h} > {self.max_missing_per_24h}")
+                elif missing_24h > self.max_missing_per_24h and not in_warmup:
+                    self._mark_degraded(symbol, f"missing_minutes_24h={missing_24h} > {self.max_missing_per_24h}")
 
-        # Lifecycle: ready | warming_up | degraded
+        # Lifecycle: ready | warming_up | degraded (basat en cobertura recent 24h)
         if self._degraded_symbols:
             set_data_layer_status(DATA_LAYER_DEGRADED, reason="symbol(s) DEGRADED")
         else:
-            coverage_min = min((self._coverage_minutes(s) for s in self.symbols), default=0)
-            if coverage_min < self.warmup_minutes:
-                set_data_layer_status(DATA_LAYER_WARMING_UP, reason=f"coverage {coverage_min}m < warmup {self.warmup_minutes}m")
+            snapshot = metrics.snapshot()
+            observed_min = 1440
+            for s in self.symbols:
+                obs = snapshot.get("symbols", {}).get(s, {}).get("observed_open_minutes_24h", 0)
+                observed_min = min(observed_min, obs)
+            if observed_min < self.warmup_minutes:
+                set_data_layer_status(DATA_LAYER_WARMING_UP, reason=f"recent_coverage={observed_min}m < warmup {self.warmup_minutes}m")
             else:
                 set_data_layer_status(DATA_LAYER_READY)
 
@@ -390,9 +385,13 @@ class DataLayerProdService:
                 stale = sym_data.get("stale_seconds", 0)
                 if stale > self.stale_seconds:
                     return False, f"symbol {symbol} stale_seconds={stale} > {self.stale_seconds}"
-            missing = sym_data.get("missing_minutes_24h", 0)
-            if missing > self.max_missing_per_24h:
-                return False, f"symbol {symbol} missing_minutes_24h={missing} > {self.max_missing_per_24h}"
+            # Missing: no fallar mentre in_warmup (observed_open < warmup)
+            observed = sym_data.get("observed_open_minutes_24h", 0)
+            in_warmup = observed < self.warmup_minutes
+            if not in_warmup:
+                missing = sym_data.get("missing_minutes_24h", 0)
+                if missing > self.max_missing_per_24h:
+                    return False, f"symbol {symbol} missing_minutes_24h={missing} > {self.max_missing_per_24h}"
             max_gap = sym_data.get("max_gap_s", 0)
             if max_gap > self.max_gap_s:
                 return False, f"symbol {symbol} max_gap_s={max_gap} > {self.max_gap_s}"

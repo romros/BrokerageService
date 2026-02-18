@@ -39,6 +39,9 @@ class SymbolMetrics:
     # Market hours: si mercat tancat, stale no degrada
     market_open: bool = True
     market_state_reason: str = "open"
+    # Warmup: cobertura recent dins 24h (no span històric)
+    expected_open_minutes_24h: int = 1440
+    observed_open_minutes_24h: int = 0
 
 
 class DataLayerMetrics:
@@ -115,6 +118,8 @@ class DataLayerMetrics:
         max_gap_s: Optional[int] = None,
         market_open: Optional[bool] = None,
         market_state_reason: Optional[str] = None,
+        expected_open_minutes_24h: Optional[int] = None,
+        observed_open_minutes_24h: Optional[int] = None,
     ) -> None:
         """Actualitza mètriques de gates (sense canviar state)."""
         m = self._get_or_create(symbol)
@@ -131,6 +136,10 @@ class DataLayerMetrics:
                 m.market_open = market_open
             if market_state_reason is not None:
                 m.market_state_reason = market_state_reason
+            if expected_open_minutes_24h is not None:
+                m.expected_open_minutes_24h = expected_open_minutes_24h
+            if observed_open_minutes_24h is not None:
+                m.observed_open_minutes_24h = observed_open_minutes_24h
 
     def snapshot(self) -> dict:
         """Retorna dict serialitzable per API (JSON)."""
@@ -151,6 +160,8 @@ class DataLayerMetrics:
                     "degrade_reason": m.degrade_reason,
                     "market_open": m.market_open,
                     "market_state_reason": m.market_state_reason,
+                    "expected_open_minutes_24h": m.expected_open_minutes_24h,
+                    "observed_open_minutes_24h": m.observed_open_minutes_24h,
                 }
             return {
                 "symbols": symbols,

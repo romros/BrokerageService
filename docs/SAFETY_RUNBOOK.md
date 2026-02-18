@@ -59,9 +59,9 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=10" | grep -i
 | **Duplicates / ts_step_errors** | data_status, integrity | Hard stop (no declarar primary); symbol_state=DEGRADED; investigar writer |
 | **503 / pipeline down** | health, data_status | Restart; check logs |
 | **data_layer_status=initializing** | data_status 200 amb data_layer_status | Normal durant arrencada; scripts esperen readiness. Si persisteix >2 min → pipeline no arranca; check logs |
-| **data_layer_status=warming_up** | data_status 200, coverage < warmup_minutes | Cold start: no és incident. Soak continua polling fins coverage ≥ warmup (default 120 min). Esperar o augmentar `DATA_LAYER_WARMUP_MINUTES` si cal. |
+| **data_layer_status=warming_up** | data_status 200, observed_open_minutes_24h < warmup | Cold start: no és incident. Cobertura recent dins 24h encara insuficient. Soak retorna exit 0 (no fail). |
 
-**Si soak diu warming_up:** No és incident. El broker encara no té prou minuts de cobertura (last_ts - first_ts) per aplicar gates. Què mirar: `curl -s .../data_status` → `data_layer_status=warming_up`. Quant esperar: ~120 min per defecte (Ostium poll cada 2s acumula ~1 min/min). Per provar ràpid: `DATA_LAYER_WARMUP_MINUTES=5` (només validació).
+**Si soak diu warming_up:** No és incident. El broker encara no té prou **minuts recents** dins la finestra 24h (`observed_open_minutes_24h`). Què mirar: `curl -s .../data_status` → `data_layer_status=warming_up`, `symbols.EURUSD.observed_open_minutes_24h`. Quant esperar: ~120 min per defecte. Per provar ràpid: `DATA_LAYER_WARMUP_MINUTES=5`.
 
 ### Ostium ingest (profile ostium)
 

@@ -130,7 +130,7 @@ Llindars via env: `DATA_LAYER_GATES_MAX_GAP_S`, `DATA_LAYER_GATES_MAX_MISSING_PE
 - max_gap_s ≤ 180 (`DATA_LAYER_GATES_MAX_GAP_S`)
 - stale=0 (`DATA_LAYER_STALE_SECONDS`)
 
-**Cold start / warmup:** Mentre `coverage_minutes < DATA_LAYER_WARMUP_MINUTES` (default 120), `data_layer_status=warming_up` i no s'aplica gate missing_24h. Soak en cold start reporta warming_up; no és incident. Un cop superat warmup, gates normals.
+**Cold start / warmup:** Basat en **cobertura recent (24h window)**, no span històric. `observed_open_minutes_24h = expected_open_minutes_24h - missing_minutes_24h` (market-hours aware). Mentre `observed_open_minutes_24h < DATA_LAYER_WARMUP_MINUTES` (default 120), `data_layer_status=warming_up` i no s'aplica gate missing_24h. Soak reporta warming_up (exit 0); no és incident. `data_status` inclou `expected_open_minutes_24h` i `observed_open_minutes_24h` per símbol.
 
 **Market-hours aware (Ostium/profile FX):** Si mercat tancat (cap de setmana, fora d'horari), stale no degrada; missing exclou minuts en intervals tancats. `data_status` inclou `market_open` i `market_state_reason` per símbol.
 
@@ -179,6 +179,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-18 | Ostium LAB monitor (continuous) | ✅ run_lab.sh ostium-monitor start/stop/status; rotació diària + retenció | `./scripts/run_lab.sh ostium-monitor start` |
 | 2026-02-18 | EURUSD graduation (permisos + run canònic) | ✅ user UID:GID a compose; save_ostium_registry atomic; run_compat/run_soak post-compat escriuen registry | `./scripts/run_soak.sh 2 ostium post-compat` |
 | 2026-02-18 | Cold-start readiness + permisos | ✅ warmup window (DATA_LAYER_WARMUP_MINUTES); warming_up no DEGRADED; --user a docker run; ESTAT+SAFETY_RUNBOOK | soak cold start reporta warming_up; no root-owned files |
+| 2026-02-18 | Warmup basat en cobertura recent 24h | ✅ observed_open_minutes_24h (no span històric); prefetch no falsa warmup; startup gate ignora missing en warmup; warming_up→exit 0 | data_status expected/observed_open_minutes_24h |
 
 **Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 

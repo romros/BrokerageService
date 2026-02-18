@@ -23,6 +23,7 @@ from application.data.data_layer_metrics import (
     SYMBOL_STATE_DEGRADED,
     get_data_layer_metrics,
 )
+from application.market_hours.fx_24_5 import count_closed_minutes_between
 from foundation.config.constants import (
     OSTIUM_ENABLED_ENV,
     OSTIUM_POLL_S_ENV,
@@ -218,25 +219,12 @@ class OstiumCandleIngestService:
             )
         logger.warning("OSTIUM_DEGRADED symbol=%s reason=%s", symbol, reason)
 
-    def _coverage_minutes(self, symbol: str) -> int:
-        """Minuts de cobertura (last - first) per símbol. 0 si no dades."""
-        last_ts = self.store.get_last_timestamp(symbol)
-        if last_ts is None:
-            return 0
-        get_first = getattr(self.store, "get_earliest_timestamp", None)
-        if get_first is None:
-            return 0
-        first_ts = get_first(symbol)
-        if first_ts is None:
-            return 0
-        delta = last_ts - first_ts
-        return max(0, int(delta.total_seconds() / 60))
-
     def _update_gate_metrics(self) -> None:
-        """Actualitza stale_seconds, missing_minutes_24h, max_gap_s."""
+        """Actualitza stale_seconds, missing_minutes_24h, max_gap_s, observed_open_minutes_24h."""
         now_utc = datetime.now(timezone.utc)
         now_ts = int(now_utc.timestamp())
         window_24h_start = now_utc - timedelta(hours=24)
+        window_24h_start_ts = int(window_24h_start.timestamp())
         metrics = get_data_layer_metrics()
         if not metrics:
             return
@@ -249,9 +237,14 @@ class OstiumCandleIngestService:
             stale_s = max(0, now_ts - last_ts_int - 60)
             try:
                 r = self.store.read_range(symbol, window_24h_start, now_utc, validate_gaps=True)
-                missing_24h = getattr(r, "missing_count", 0) or 0
+                missing_24h_raw = getattr(r, "missing_count", 0) or 0
+                closed_mins = count_closed_minutes_between(symbol, window_24h_start_ts, now_ts)
+                missing_24h = max(0, missing_24h_raw - closed_mins)
             except Exception:
                 missing_24h = 0
+                closed_mins = 0
+            expected_open_minutes_24h = max(0, min(1440, 1440 - closed_mins))
+            observed_open_minutes_24h = max(0, expected_open_minutes_24h - missing_24h)
             max_gap_s = min(self.max_gap_s, 60 * max(0, missing_24h)) if missing_24h > 0 else 0
             metrics.update_gate_metrics(
                 symbol,
@@ -259,14 +252,15 @@ class OstiumCandleIngestService:
                 stale_seconds=stale_s,
                 missing_minutes_24h=missing_24h,
                 max_gap_s=max_gap_s,
+                expected_open_minutes_24h=expected_open_minutes_24h,
+                observed_open_minutes_24h=observed_open_minutes_24h,
             )
+            in_warmup = observed_open_minutes_24h < self.warmup_minutes
             if symbol not in self._degraded_symbols:
                 if stale_s > self.stale_seconds:
                     self._mark_degraded(symbol, f"stale_seconds={stale_s} > {self.stale_seconds}")
-                elif missing_24h > self.max_missing_per_24h:
-                    coverage_minutes = self._coverage_minutes(symbol)
-                    if coverage_minutes >= self.warmup_minutes:
-                        self._mark_degraded(
-                            symbol,
-                            f"missing_minutes_24h={missing_24h} > {self.max_missing_per_24h}",
-                        )
+                elif missing_24h > self.max_missing_per_24h and not in_warmup:
+                    self._mark_degraded(
+                        symbol,
+                        f"missing_minutes_24h={missing_24h} > {self.max_missing_per_24h}",
+                    )
