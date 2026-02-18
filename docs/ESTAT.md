@@ -54,6 +54,24 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 
 ---
 
+## Tests canònics per focus (vNext)
+
+**Suites curtes:** `./scripts/run_tests.sh <suite>` — focus-driven sense run_all.
+
+| Suite | Comanda | Quan s'usa |
+|-------|---------|------------|
+| smoke | `./scripts/run_tests.sh smoke` | Validar instal·lació i imports (1 test) |
+| core | `./scripts/run_tests.sh core` | foundation/shared (candle_store, gap_validator, etc.) |
+| realtime_datalayer | `./scripts/run_tests.sh realtime_datalayer` | Data Layer + Ostium ingest |
+| historical_datalayer | `./scripts/run_tests.sh historical_datalayer` | Dukascopy/compat/backfill |
+| trading_service | `./scripts/run_tests.sh trading_service` | execució/venue adapters |
+
+**Full suite:** `./test.sh testing/run_all.py` — tot (lent; CI o validació completa).
+
+**Estructura:** `testing/suites/*.txt` (paths), `testing/apps/<servei>/` (tests migrats). La resta a `testing/unit/`, `testing/integration/`, `testing/api/` — pendent de migració.
+
+---
+
 ## Data Layer prod v0
 
 **Activar:** `DATA_LAYER_ENABLED=1` (default 0). Prefetch + writer loop + gates.
@@ -204,6 +222,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-18 | Data Layer readiness handshake | ✅ data_status 200 amb initializing; soak wait_for_ready; startup_wait_s a artifact | `./scripts/run_soak.sh 2 ostium post-compat` sense 503 |
 | 2026-02-17 | Ostium allowlist + quarantine v1 | ✅ OSTIUM_SYMBOLS, OSTIUM_QUARANTINE_SYMBOLS; EURUSD primary allowed; XAUUSD quarantined | run_soak ostium usa llista canònica |
 | 2026-02-18 | run_all.py | ✅ passa (incl. test_ostium_symbol_allowlist, test_data_status_quarantine_flags) | `./test.sh testing/run_all.py` |
+| 2026-02-18 | Suites per servei (vNext) | ✅ smoke, core, realtime_datalayer, historical_datalayer, trading_service | `./scripts/run_tests.sh <suite>` |
 | 2026-02-18 | Ostium LAB monitor (continuous) | ✅ run_lab.sh ostium-monitor start/stop/status; rotació diària + retenció | `./scripts/run_lab.sh ostium-monitor start` |
 | 2026-02-18 | EURUSD graduation (permisos + run canònic) | ✅ user UID:GID a compose; save_ostium_registry atomic; run_compat/run_soak post-compat escriuen registry | `./scripts/run_soak.sh 2 ostium post-compat` |
 | 2026-02-18 | Cold-start readiness + permisos | ✅ warmup window (DATA_LAYER_WARMUP_MINUTES); warming_up no DEGRADED; --user a docker run; ESTAT+SAFETY_RUNBOOK | soak cold start reporta warming_up; no root-owned files |

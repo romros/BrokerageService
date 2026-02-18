@@ -262,8 +262,21 @@ testing/
   integration/    # wiring/serveis, pot usar fakes/mocks
   api/            # smoke contra localhost (HTTP)
   helpers/        # utilitats comunes per tests
-  run_all.py      # runner canònic del projecte
+  apps/           # tests migrats per servei (realtime_datalayer, historical_datalayer, trading_service, core)
+  suites/         # definicions de suite (*.txt amb paths)
+  run_all.py      # runner canònic del projecte (full suite)
 ```
+
+### 7.2.1 Operational surface area de tests (vNext)
+
+**Comandes canòniques per servei:**
+- `./scripts/run_tests.sh smoke` — mínim viable (instal·lació + imports)
+- `./scripts/run_tests.sh core` — foundation/shared
+- `./scripts/run_tests.sh realtime_datalayer` — Data Layer + Ostium
+- `./scripts/run_tests.sh historical_datalayer` — Dukascopy/compat
+- `./scripts/run_tests.sh trading_service` — execució/venue
+
+**Regla:** Suites curtes per focus; `run_all.py` per full suite (CI).
 
 ### 7.3 Plantilla canònica d'un test
 
@@ -284,13 +297,19 @@ if __name__ == "__main__":
 ### 7.4 Execució canònica
 
 ```bash
-# Suite default (CI-friendly)
+# Suites per focus (curtes)
+./scripts/run_tests.sh smoke
+./scripts/run_tests.sh core
+./scripts/run_tests.sh realtime_datalayer
+./scripts/run_tests.sh historical_datalayer
+./scripts/run_tests.sh trading_service
+
+# Full suite (CI-friendly)
 ./test.sh testing/run_all.py
 
 # Un test concret
 ./test.sh testing/unit/test_example.py
-./test.sh testing/integration/test_example_flow.py
-./test.sh testing/api/test_broker_api_smoke.py
+./test.sh testing/apps/core/test_candle_store.py
 ```
 
 ### 7.5 Regles d'opt-in (xarxa / credencials)
