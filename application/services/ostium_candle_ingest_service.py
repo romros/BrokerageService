@@ -31,9 +31,11 @@ from foundation.config.constants import (
     DATA_LAYER_GATES_MAX_GAP_S_ENV,
     DATA_LAYER_GATES_MAX_MISSING_PER_24H_ENV,
     DATA_LAYER_STALE_SECONDS_ENV,
+    DATA_LAYER_WARMUP_MINUTES_ENV,
     DEFAULT_DATA_LAYER_GATES_MAX_GAP_S,
     DEFAULT_DATA_LAYER_GATES_MAX_MISSING_PER_24H,
     DEFAULT_DATA_LAYER_STALE_SECONDS,
+    DEFAULT_DATA_LAYER_WARMUP_MINUTES,
 )
 
 logger = get_logger(__name__)
@@ -76,6 +78,7 @@ class OstiumCandleIngestService:
         store: ICandleStore,
         symbols: List[str],
         poll_interval_s: int = 2,
+        warmup_minutes: int = 120,
         max_gap_s: int = 180,
         max_missing_per_24h: int = 1,
         stale_seconds: int = 180,
@@ -83,6 +86,7 @@ class OstiumCandleIngestService:
         self.store = store
         self.symbols = symbols
         self.poll_interval_s = poll_interval_s
+        self.warmup_minutes = warmup_minutes
         self.max_gap_s = max_gap_s
         self.max_missing_per_24h = max_missing_per_24h
         self.stale_seconds = stale_seconds
@@ -214,6 +218,20 @@ class OstiumCandleIngestService:
             )
         logger.warning("OSTIUM_DEGRADED symbol=%s reason=%s", symbol, reason)
 
+    def _coverage_minutes(self, symbol: str) -> int:
+        """Minuts de cobertura (last - first) per símbol. 0 si no dades."""
+        last_ts = self.store.get_last_timestamp(symbol)
+        if last_ts is None:
+            return 0
+        get_first = getattr(self.store, "get_earliest_timestamp", None)
+        if get_first is None:
+            return 0
+        first_ts = get_first(symbol)
+        if first_ts is None:
+            return 0
+        delta = last_ts - first_ts
+        return max(0, int(delta.total_seconds() / 60))
+
     def _update_gate_metrics(self) -> None:
         """Actualitza stale_seconds, missing_minutes_24h, max_gap_s."""
         now_utc = datetime.now(timezone.utc)
@@ -246,7 +264,9 @@ class OstiumCandleIngestService:
                 if stale_s > self.stale_seconds:
                     self._mark_degraded(symbol, f"stale_seconds={stale_s} > {self.stale_seconds}")
                 elif missing_24h > self.max_missing_per_24h:
-                    self._mark_degraded(
-                        symbol,
-                        f"missing_minutes_24h={missing_24h} > {self.max_missing_per_24h}",
-                    )
+                    coverage_minutes = self._coverage_minutes(symbol)
+                    if coverage_minutes >= self.warmup_minutes:
+                        self._mark_degraded(
+                            symbol,
+                            f"missing_minutes_24h={missing_24h} > {self.max_missing_per_24h}",
+                        )

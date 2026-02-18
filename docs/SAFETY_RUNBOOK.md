@@ -59,6 +59,9 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=10" | grep -i
 | **Duplicates / ts_step_errors** | data_status, integrity | Hard stop (no declarar primary); symbol_state=DEGRADED; investigar writer |
 | **503 / pipeline down** | health, data_status | Restart; check logs |
 | **data_layer_status=initializing** | data_status 200 amb data_layer_status | Normal durant arrencada; scripts esperen readiness. Si persisteix >2 min → pipeline no arranca; check logs |
+| **data_layer_status=warming_up** | data_status 200, coverage < warmup_minutes | Cold start: no és incident. Soak continua polling fins coverage ≥ warmup (default 120 min). Esperar o augmentar `DATA_LAYER_WARMUP_MINUTES` si cal. |
+
+**Si soak diu warming_up:** No és incident. El broker encara no té prou minuts de cobertura (last_ts - first_ts) per aplicar gates. Què mirar: `curl -s .../data_status` → `data_layer_status=warming_up`. Quant esperar: ~120 min per defecte (Ostium poll cada 2s acumula ~1 min/min). Per provar ràpid: `DATA_LAYER_WARMUP_MINUTES=5` (només validació).
 
 ### Ostium ingest (profile ostium)
 
@@ -71,6 +74,8 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=10" | grep -i
 | **Ostium API 429 / timeout** | Logs OstiumCandleIngestService | Retry automàtic; si persistent → DEGRADED |
 
 **Comandes Ostium:** `./scripts/run_smoke.sh ostium`, `./scripts/run_soak.sh 30 ostium`, `curl -s .../data_status` (ingest_source=ostium_realtime quan actiu).
+
+**Root-owned files:** Si `datafiles/` o `compat_reports/` queden root-owned: `sudo chown -R $(id -u):$(id -g) datafiles logs`. Els scripts usen `--user` a docker compose run per evitar-ho.
 
 **Market hours:** Si `market_open=false` (cap de setmana, fora d'horari FX), `stale_seconds` no aplica; no degradar per "no ticks" quan és normal. `data_status` mostra `market_open` i `market_state_reason` per símbol.
 

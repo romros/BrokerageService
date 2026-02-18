@@ -1,9 +1,10 @@
 """
 Data Layer lifecycle status — readiness handshake.
 
-Estats: disabled | initializing | ready | degraded
+Estats: disabled | initializing | warming_up | ready | degraded
 - disabled: Data Layer no habilitat (DATA_LAYER_ENABLED=0, OSTIUM_ENABLED=0)
 - initializing: habilitat però encara no ha fet primer tick / mètriques per símbol
+- warming_up: coverage < warmup_minutes; no aplicar gate missing_24h (cold start)
 - ready: mètriques poblades, cap símbol DEGRADED
 - degraded: algun símbol DEGRADED
 
@@ -19,6 +20,7 @@ _lock = Lock()
 
 DATA_LAYER_DISABLED = "disabled"
 DATA_LAYER_INITIALIZING = "initializing"
+DATA_LAYER_WARMING_UP = "warming_up"
 DATA_LAYER_READY = "ready"
 DATA_LAYER_DEGRADED = "degraded"
 
@@ -40,12 +42,12 @@ def set_data_layer_status(status: str, reason: Optional[str] = None) -> None:
 
 
 def is_data_layer_enabled() -> bool:
-    """True si Data Layer està habilitat (initializing, ready o degraded)."""
+    """True si Data Layer està habilitat (initializing, warming_up, ready o degraded)."""
     s, _ = get_data_layer_status()
-    return s in (DATA_LAYER_INITIALIZING, DATA_LAYER_READY, DATA_LAYER_DEGRADED)
+    return s in (DATA_LAYER_INITIALIZING, DATA_LAYER_WARMING_UP, DATA_LAYER_READY, DATA_LAYER_DEGRADED)
 
 
 def is_ready_for_soak() -> bool:
-    """True si status és ready o degraded (no initializing)."""
+    """True si status és ready, warming_up o degraded (no initializing)."""
     s, _ = get_data_layer_status()
-    return s in (DATA_LAYER_READY, DATA_LAYER_DEGRADED)
+    return s in (DATA_LAYER_READY, DATA_LAYER_WARMING_UP, DATA_LAYER_DEGRADED)

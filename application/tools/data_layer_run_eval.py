@@ -10,6 +10,7 @@ Exit codes:
   4 dupes/ts_step_errors
   5 stale too high
   6 health down / api fail (no data_status)
+  7 warming_up (coverage < warmup; no incident)
 """
 
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ EXIT_MISSING_GAP = 3
 EXIT_DUPES_TS_STEP = 4
 EXIT_STALE = 5
 EXIT_HEALTH_FAIL = 6
+EXIT_WARMING_UP = 7
 
 
 @dataclass
@@ -65,6 +67,13 @@ def eval_data_status(
             exit_code=EXIT_HEALTH_FAIL,
             verdict="health_fail",
             reason="data_status initializing (wait for ready)",
+        )
+
+    if data_status.get("data_layer_status") == "warming_up":
+        return EvalResult(
+            exit_code=EXIT_WARMING_UP,
+            verdict="warming_up",
+            reason="coverage < warmup_minutes (cold start; no incident)",
         )
 
     symbols_data = data_status.get("symbols") or {}

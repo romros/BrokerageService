@@ -18,6 +18,7 @@ from application.tools.data_layer_run_eval import (
     EXIT_MISSING_GAP,
     EXIT_OK,
     EXIT_STALE,
+    EXIT_WARMING_UP,
     eval_data_status,
 )
 
@@ -41,6 +42,17 @@ def test_eval_initializing():
     r = eval_data_status({"data_layer_status": "initializing", "symbols": {}})
     assert r.exit_code == EXIT_HEALTH_FAIL
     assert "initializing" in r.reason.lower()
+
+
+def test_eval_warming_up():
+    """data_layer_status=warming_up → EXIT_WARMING_UP (cold start; no incident)."""
+    r = eval_data_status({
+        "data_layer_status": "warming_up",
+        "symbols": {"EURUSD": {"symbol_state": "ACTIVE", "missing_minutes_24h": 500}},
+    })
+    assert r.exit_code == EXIT_WARMING_UP
+    assert r.verdict == "warming_up"
+    assert "warmup" in r.reason.lower() or "cold" in r.reason.lower()
 
 
 def test_eval_ok():
@@ -186,6 +198,7 @@ def run_tests():
     test_eval_health_fail()
     test_eval_empty_symbols()
     test_eval_initializing()
+    test_eval_warming_up()
     test_eval_ok()
     test_eval_degraded()
     test_eval_dupes_ts_step()

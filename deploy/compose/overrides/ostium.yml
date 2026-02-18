@@ -7,12 +7,12 @@
 #   ./scripts/run_smoke.sh ostium
 #   ./scripts/run_soak.sh 30 ostium
 #
-# Permisos: user ${UID}:${GID} perquè datafiles/compat_reports/ sigui writable per host
+# Permisos: user ${DOCKER_UID}:${DOCKER_GID} perquè datafiles/compat_reports/ sigui writable per host
 # (run_compat.sh, run_soak post-compat escriuen des de host). Scripts exporten UID/GID.
 
 services:
   brokerage:
-    user: "${UID:-0}:${GID:-0}"
+    user: "${DOCKER_UID:-0}:${DOCKER_GID:-0}"
     environment:
       - DATA_LAYER_ENABLED=1
       - DATA_LAYER_WRITE_MODE=realtime_plus_backfill
@@ -21,6 +21,7 @@ services:
       - DATA_LAYER_STALE_SECONDS=180
       - DATA_LAYER_GATES_MAX_GAP_S=180
       - DATA_LAYER_GATES_MAX_MISSING_PER_24H=1
+      - DATA_LAYER_WARMUP_MINUTES=${DATA_LAYER_WARMUP_MINUTES:-120}
       - DATA_LAYER_STARTUP_GATE=${DATA_LAYER_STARTUP_GATE:-0}
       - OSTIUM_ENABLED=1
       - OSTIUM_SYMBOLS=${OSTIUM_SYMBOLS:-EURUSD,GBPUSD}

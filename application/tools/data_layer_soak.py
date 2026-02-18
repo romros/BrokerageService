@@ -28,7 +28,7 @@ except ImportError:
     print("✗ requests required: pip install requests", file=sys.stderr)
     sys.exit(6)
 
-from application.tools.data_layer_run_eval import eval_data_status
+from application.tools.data_layer_run_eval import eval_data_status, EXIT_WARMING_UP
 
 BROKER_URL = os.getenv("BROKER_URL", "http://localhost:8000")
 POLL_INTERVAL = 60
@@ -55,6 +55,7 @@ def wait_for_data_status_ready(
 ) -> tuple[dict | None, float, str, bool]:
     """
     Poll data_status fins que data_layer_status != initializing o timeout.
+    Accepta warming_up com a ready (200, no 503).
     Retorna (data_status, startup_wait_s, startup_status, startup_timeout).
     """
     start = time.monotonic()
@@ -243,9 +244,12 @@ def main() -> int:
                 syms_summary.append(f"{sym}={s} stale={st} miss={miss}")
         print(f"  [{elapsed}s] {result.verdict} | {' '.join(syms_summary) or 'no symbols'}")
 
-        if result.exit_code != 0:
+        if result.exit_code != 0 and result.exit_code != EXIT_WARMING_UP:
             print(f"\n✗ Soak FAILED: {result.reason}")
             break
+        if result.exit_code == EXIT_WARMING_UP:
+            # Cold start: continuar polling fins coverage >= warmup
+            pass
 
         snapshots.append({"elapsed_s": elapsed, "verdict": result.verdict})
         time.sleep(POLL_INTERVAL)

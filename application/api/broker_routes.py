@@ -550,7 +550,7 @@ async def get_data_status():
 
     # Habilitat però encara sense mètriques (initializing) → 200 amb data_layer_status=initializing
     if metrics is None:
-        if lifecycle_status in ("initializing", "ready", "degraded"):
+        if lifecycle_status in ("initializing", "warming_up", "ready", "degraded"):
             return {
                 "data_layer_status": lifecycle_status,
                 "initializing_reason": lifecycle_reason or "metrics not yet wired",

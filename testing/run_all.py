@@ -302,6 +302,8 @@ def main():
         testing_dir / "unit" / "test_ostium_ingest.py",  # Ostium ingest (0-network)
         testing_dir / "unit" / "test_data_layer_startup_gate.py",  # Startup gate (0 network)
         testing_dir / "unit" / "test_data_layer_run_eval.py",  # run eval exit codes (0 network)
+        testing_dir / "unit" / "test_warmup_suppresses_missing_gate.py",  # warmup window no DEGRADED (0 network)
+        testing_dir / "unit" / "test_docker_user_mapping_config.py",  # run_soak --user (0 network)
         testing_dir / "unit" / "test_compose_profiles.py",  # profiles resolen paths, compose config (0 network)
         testing_dir / "unit" / "test_symbol_selection_soak.py",  # P7c.1 select_soak_symbol (0 network)
         testing_dir / "unit" / "test_p7_mixed_gated_stitching.py",  # P7 Mixed gated stitching (0 network)

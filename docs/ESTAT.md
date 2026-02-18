@@ -42,7 +42,7 @@
 
 **Observabilitat:** `GET /api/v1/broker/data_status` → `symbol_state` + `degrade_reason`.
 
-**Config:** `DATA_LAYER_PREFETCH_MINUTES`, `DATA_LAYER_WRITE_SYMBOLS`, `DATA_LAYER_GATES_MAX_GAP_S`, `DATA_LAYER_GATES_MAX_MISSING_PER_24H`, `DATA_LAYER_STALE_SECONDS`.
+**Config:** `DATA_LAYER_PREFETCH_MINUTES`, `DATA_LAYER_WARMUP_MINUTES` (default 120), `DATA_LAYER_WRITE_SYMBOLS`, `DATA_LAYER_GATES_MAX_GAP_S`, `DATA_LAYER_GATES_MAX_MISSING_PER_24H`, `DATA_LAYER_STALE_SECONDS`.
 
 **symbol_state:** `ACTIVE` | `DEGRADED`. Si DEGRADED → writer aturat per aquell símbol.
 
@@ -72,6 +72,8 @@
 **Permisos (gotcha resolt):** Ostium/data-layer compose usen `user: ${DOCKER_UID}:${DOCKER_GID}` perquè registry i artifacts siguin writable per host. run_smoke.sh i run_soak.sh exporten DOCKER_UID/DOCKER_GID. Si compose manual: `export DOCKER_UID=$(id -u) DOCKER_GID=$(id -g)` abans.
 
 **Execució soak/post-compat:** run_soak data-layer i ostium corre dins Docker (`docker compose run brokerage`) per tenir dukascopy-python i deps (post-compat). run_compat.sh corre al host; si falla import: `pip install dukascopy-python` o executar dins Docker.
+
+**Permisos (user mapping):** Els scripts fan `docker compose run --user "$(id -u):$(id -g)"` per evitar root-owned files a datafiles/compat_reports i artifacts.
 
 **Verdict:** PASS | PARTIAL | FAIL (llindars via `compat_report_service` + constants). PASS → primary allowed; PARTIAL/FAIL → opt-in experimental sense declarar primary.
 
@@ -128,6 +130,8 @@ Llindars via env: `DATA_LAYER_GATES_MAX_GAP_S`, `DATA_LAYER_GATES_MAX_MISSING_PE
 - max_gap_s ≤ 180 (`DATA_LAYER_GATES_MAX_GAP_S`)
 - stale=0 (`DATA_LAYER_STALE_SECONDS`)
 
+**Cold start / warmup:** Mentre `coverage_minutes < DATA_LAYER_WARMUP_MINUTES` (default 120), `data_layer_status=warming_up` i no s'aplica gate missing_24h. Soak en cold start reporta warming_up; no és incident. Un cop superat warmup, gates normals.
+
 **Market-hours aware (Ostium/profile FX):** Si mercat tancat (cap de setmana, fora d'horari), stale no degrada; missing exclou minuts en intervals tancats. `data_status` inclou `market_open` i `market_state_reason` per símbol.
 
 **Gate 1 (serving):** headers X-Data coherents, coverage coherent, read-through funciona.  
@@ -174,6 +178,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-18 | run_all.py | ✅ passa (incl. test_ostium_symbol_allowlist, test_data_status_quarantine_flags) | `./test.sh testing/run_all.py` |
 | 2026-02-18 | Ostium LAB monitor (continuous) | ✅ run_lab.sh ostium-monitor start/stop/status; rotació diària + retenció | `./scripts/run_lab.sh ostium-monitor start` |
 | 2026-02-18 | EURUSD graduation (permisos + run canònic) | ✅ user UID:GID a compose; save_ostium_registry atomic; run_compat/run_soak post-compat escriuen registry | `./scripts/run_soak.sh 2 ostium post-compat` |
+| 2026-02-18 | Cold-start readiness + permisos | ✅ warmup window (DATA_LAYER_WARMUP_MINUTES); warming_up no DEGRADED; --user a docker run; ESTAT+SAFETY_RUNBOOK | soak cold start reporta warming_up; no root-owned files |
 
 **Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 
@@ -217,6 +222,8 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 **Graduation loop Ostium:** `./scripts/run_soak.sh 30 ostium post-compat` — soak + compat automàtic al final. Si no hi ha candles suficients o Dukascopy falta → SKIP (exit 0). Artifact inclou `graduation_summary`. Quan acabi la 24h i Dukascopy tingui delay resolt, correr compat 1440: `run_compat.sh ostium` amb `OSTIUM_COMPAT_WINDOW_MINUTES=1440`.
 
 **Readiness handshake:** `data_status` pot estar `initializing` els primers segons; scripts esperen readiness automàticament (`--wait-timeout` default 120s).
+
+**Cold start / warmup:** Durant arrencada freda (coverage < `DATA_LAYER_WARMUP_MINUTES`), `data_layer_status=warming_up` — no és incident. El soak no falla per missing_24h fins superar warmup. Els scripts `run_soak` i `run_smoke` executen dins Docker amb `--user $(id -u):$(id -g)` per evitar root-owned files a datafiles/.
 
 **Regla:** No crear scripts nous ad-hoc. Lògica a `application/tools/*.py`; wrappers a `scripts/*.sh`.
 

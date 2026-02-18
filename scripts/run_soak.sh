@@ -95,7 +95,9 @@ case "$PROFILE" in
       SOAK_ARGS="$SOAK_ARGS --profile ostium"
     fi
     # Dins Docker: BROKER_URL=brokerage:8000 (xarxa Docker), DATAFILES_ROOT=/datafiles (muntat)
+    # --user host UID:GID per evitar root-owned files a datafiles/compat_reports
     docker compose $COMPOSE_FILES run --rm \
+      --user "$(id -u):$(id -g)" \
       -e BROKER_URL="http://brokerage:8000" \
       -e DATAFILES_ROOT=/datafiles \
       brokerage python3 -m application.tools.data_layer_soak $SOAK_ARGS
@@ -105,7 +107,7 @@ case "$PROFILE" in
     TS=$(date +%Y%m%d_%H%M%S)
     LOG_PATH="/datafiles/ws_soak/${TS}_ws_soak_${MINUTES}m.log"
     WS_URL="${WS_SOAK_URL:-ws://brokerage:8000/api/v1/ws}"
-    docker compose $COMPOSE_FILES run --rm brokerage python3 -m application.tools.ws_soak \
+    docker compose $COMPOSE_FILES run --rm --user "$(id -u):$(id -g)" brokerage python3 -m application.tools.ws_soak \
       --minutes "$MINUTES" \
       --ws-url "$WS_URL" \
       --topic "candle:ETH:1m" \

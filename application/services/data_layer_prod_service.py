@@ -21,6 +21,7 @@ from infrastructure.storage.gap_validator import GapValidator
 from application.data.data_layer_lifecycle import (
     DATA_LAYER_DEGRADED,
     DATA_LAYER_READY,
+    DATA_LAYER_WARMING_UP,
     set_data_layer_status,
 )
 from application.data.data_layer_metrics import (
@@ -37,11 +38,13 @@ from foundation.config.constants import (
     DATA_LAYER_GATES_MAX_MISSING_PER_24H_ENV,
     DATA_LAYER_PREFETCH_MINUTES_ENV,
     DATA_LAYER_STALE_SECONDS_ENV,
+    DATA_LAYER_WARMUP_MINUTES_ENV,
     DATA_LAYER_WRITE_SYMBOLS_ENV,
     DEFAULT_DATA_LAYER_GATES_MAX_GAP_S,
     DEFAULT_DATA_LAYER_GATES_MAX_MISSING_PER_24H,
     DEFAULT_DATA_LAYER_PREFETCH_MINUTES,
     DEFAULT_DATA_LAYER_STALE_SECONDS,
+    DEFAULT_DATA_LAYER_WARMUP_MINUTES,
 )
 
 logger = get_logger(__name__)
@@ -57,6 +60,7 @@ def _get_config() -> dict:
     return {
         "enabled": os.getenv(DATA_LAYER_ENABLED_ENV, "0") == "1",
         "prefetch_minutes": int(os.getenv(DATA_LAYER_PREFETCH_MINUTES_ENV, str(DEFAULT_DATA_LAYER_PREFETCH_MINUTES))),
+        "warmup_minutes": int(os.getenv(DATA_LAYER_WARMUP_MINUTES_ENV, str(DEFAULT_DATA_LAYER_WARMUP_MINUTES))),
         "symbols": symbols,
         "write_mode": write_mode,
         "max_gap_s": int(os.getenv(DATA_LAYER_GATES_MAX_GAP_S_ENV, str(DEFAULT_DATA_LAYER_GATES_MAX_GAP_S))),
@@ -78,6 +82,7 @@ class DataLayerProdService:
         provider: IBackfillProvider,
         symbols: List[str],
         prefetch_minutes: int = 0,
+        warmup_minutes: int = 120,
         max_gap_s: int = 180,
         max_missing_per_24h: int = 1,
         stale_seconds: int = 180,
@@ -88,6 +93,7 @@ class DataLayerProdService:
         self.provider = provider
         self.symbols = symbols
         self.prefetch_minutes = prefetch_minutes
+        self.warmup_minutes = warmup_minutes
         self.max_gap_s = max_gap_s
         self.max_missing_per_24h = max_missing_per_24h
         self.stale_seconds = stale_seconds
@@ -272,6 +278,20 @@ class DataLayerProdService:
             )
         logger.warning("DATA_LAYER_DEGRADED symbol=%s reason=%s", symbol, reason)
 
+    def _coverage_minutes(self, symbol: str) -> int:
+        """Minuts de cobertura (last - first) per símbol. 0 si no dades."""
+        last_ts = self.store.get_last_timestamp(symbol)
+        if last_ts is None:
+            return 0
+        get_first = getattr(self.store, "get_earliest_timestamp", None)
+        if get_first is None:
+            return 0
+        first_ts = get_first(symbol)
+        if first_ts is None:
+            return 0
+        delta = last_ts - first_ts
+        return max(0, int(delta.total_seconds() / 60))
+
     def _update_gate_metrics(self) -> None:
         """Actualitza stale_seconds, missing_minutes_24h, max_gap_s des del store.
         Market-hours aware: si mercat tancat, stale no degrada; missing exclou minuts tancats.
@@ -325,17 +345,25 @@ class DataLayerProdService:
 
             # Gate: si stale > threshold o missing > llindar → DEGRADED
             # (stale només quan market_open; si closed, stale_s=0)
+            # Warmup: durant cold start (coverage < warmup_minutes) no aplicar gate missing_24h
             if symbol not in self._degraded_symbols:
                 if stale_s > self.stale_seconds:
                     self._mark_degraded(symbol, f"stale_seconds={stale_s} > {self.stale_seconds}")
                 elif missing_24h > self.max_missing_per_24h:
-                    self._mark_degraded(symbol, f"missing_minutes_24h={missing_24h} > {self.max_missing_per_24h}")
+                    # Comprovar warmup: coverage_minutes des del store
+                    coverage_minutes = self._coverage_minutes(symbol)
+                    if coverage_minutes >= self.warmup_minutes:
+                        self._mark_degraded(symbol, f"missing_minutes_24h={missing_24h} > {self.max_missing_per_24h}")
 
-        # Lifecycle: ready quan tenim mètriques; degraded si algun símbol DEGRADED
+        # Lifecycle: ready | warming_up | degraded
         if self._degraded_symbols:
             set_data_layer_status(DATA_LAYER_DEGRADED, reason="symbol(s) DEGRADED")
         else:
-            set_data_layer_status(DATA_LAYER_READY)
+            coverage_min = min((self._coverage_minutes(s) for s in self.symbols), default=0)
+            if coverage_min < self.warmup_minutes:
+                set_data_layer_status(DATA_LAYER_WARMING_UP, reason=f"coverage {coverage_min}m < warmup {self.warmup_minutes}m")
+            else:
+                set_data_layer_status(DATA_LAYER_READY)
 
     def run_startup_gate_check(self) -> tuple[bool, str]:
         """

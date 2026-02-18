@@ -18,8 +18,17 @@ cd "$PROJECT_ROOT"
 
 PROFILE=${1:-data-layer}
 # Permisos: data-layer/ostium escriuen datafiles amb UID/GID host (compat_reports writable)
-export UID=${UID:-$(id -u 2>/dev/null || echo 0)}
-export GID=${GID:-$(id -g 2>/dev/null || echo 0)}
+export DOCKER_UID=${DOCKER_UID:-$(id -u 2>/dev/null || echo 0)}
+export DOCKER_GID=${DOCKER_GID:-$(id -g 2>/dev/null || echo 0)}
+# Pre-flight: datafiles/logs han de ser writable quan contenidor corre com a host user
+# (user DOCKER_UID per compat_reports; set_host_readable_permissions fa 0o644/755 per llegir)
+if [ "$DOCKER_UID" != "0" ] 2>/dev/null; then
+  mkdir -p "$PROJECT_ROOT/datafiles" "$PROJECT_ROOT/logs"
+  if [ ! -w "$PROJECT_ROOT/datafiles" ] || [ ! -w "$PROJECT_ROOT/logs" ]; then
+    echo "⚠ datafiles o logs no són writable. Una vegada: sudo chown -R \$(id -u):\$(id -g) datafiles logs"
+    exit 1
+  fi
+fi
 OVERRIDES_DIR="$PROJECT_ROOT/deploy/compose/overrides"
 BROKER_URL="${BROKER_URL:-http://localhost:8000}"
 HEALTH_URL="${BROKER_URL}/api/v1/broker/health"
@@ -79,7 +88,8 @@ case "$PROFILE" in
     TS=$(date +%Y%m%d_%H%M%S)
     LOG_PATH="/datafiles/smoke_runs/soak_${TS}.log"
     mkdir -p "${PROJECT_ROOT}/datafiles/smoke_runs"
-    docker compose $COMPOSE_FILES run --rm brokerage python3 -m application.smoke \
+    # --user host UID:GID per evitar root-owned files
+    docker compose $COMPOSE_FILES run --rm --user "$(id -u):$(id -g)" brokerage python3 -m application.smoke \
       --venue lighter --mode PAPER --seconds "$DURATION" --log-path "$LOG_PATH"
     ;;
   ostium)
