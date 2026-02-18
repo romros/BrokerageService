@@ -20,6 +20,7 @@ import argparse
 import asyncio
 import json
 import os
+import shutil
 import sys
 import time
 from collections import defaultdict
@@ -41,6 +42,8 @@ OSTIUM_PRICE_API_BASE = os.getenv(
 
 DEFAULT_POLL_INTERVAL_S = int(os.getenv("OSTIUM_POLL_INTERVAL_S", "10"))
 DEFAULT_OUTDIR = "lab/out/ostium_prices"
+OSTIUM_LAB_RETENTION_DAYS_ENV = "OSTIUM_LAB_RETENTION_DAYS"
+DEFAULT_RETENTION_DAYS = 14
 
 # Rate limit handling
 MAX_RETRIES = 3
@@ -206,15 +209,30 @@ class CandleBuilder:
 # ============================================================================
 
 class PersistenceManager:
-    """Manages JSONL files + state.json + STATUS.md"""
-    
-    def __init__(self, outdir: Path, run_id: str):
-        self.outdir = outdir / run_id
+    """Manages JSONL files + state.json + STATUS.md. Optional daily rotation + retention."""
+
+    LATEST_RUN_FILENAME = "LATEST_RUN.txt"
+
+    def __init__(
+        self,
+        outdir: Path,
+        run_id: str,
+        enable_daily_rotation: bool = False,
+        retention_days: int = DEFAULT_RETENTION_DAYS,
+    ):
+        self.base_outdir = Path(outdir)
+        self.run_id = run_id
+        self.outdir = self.base_outdir / run_id
         self.outdir.mkdir(parents=True, exist_ok=True)
-        
+
         self.state_file = self.outdir / "state.json"
         self.status_file = self.outdir / "STATUS.md"
-        
+
+        self.enable_daily_rotation = enable_daily_rotation
+        self.retention_days = retention_days
+        self.daily_base = self.base_outdir / "daily"
+        self._current_daily_date: Optional[str] = None
+
         self.state = self.load_state()
         self.stats: Dict[str, Dict] = defaultdict(lambda: {
             "candles": 0,
@@ -235,13 +253,69 @@ class PersistenceManager:
         with open(self.state_file, "w") as f:
             json.dump(self.state, f, indent=2)
     
-    def append_candles(self, symbol: str, candles: List[Candle]):
-        """Append candles to JSONL file"""
+    def _append_to_daily(self, symbol: str, candles: List[Candle], now_ts: int):
+        """Append candles to daily/YYYYMMDD/ (only candles for current day)."""
+        if not self.enable_daily_rotation or not candles:
+            return
+        today_str = datetime.fromtimestamp(now_ts, tz=timezone.utc).strftime("%Y%m%d")
+        day_candles = [c for c in candles if datetime.fromtimestamp(c.ts, tz=timezone.utc).strftime("%Y%m%d") == today_str]
+        if not day_candles:
+            return
+        daily_dir = self.daily_base / today_str
+        daily_dir.mkdir(parents=True, exist_ok=True)
+        jsonl_file = daily_dir / f"{symbol}.jsonl"
+        existing_ts: set = set()
+        if jsonl_file.exists():
+            with open(jsonl_file, "r") as f:
+                for line in f:
+                    try:
+                        data = json.loads(line)
+                        existing_ts.add(data["ts"])
+                    except Exception:
+                        pass
+        with open(jsonl_file, "a") as f:
+            for candle in day_candles:
+                if candle.ts not in existing_ts:
+                    f.write(json.dumps(candle.to_dict()) + "\n")
+                    existing_ts.add(candle.ts)
+        self._update_latest_run(today_str)
+        self._run_retention(now_ts)
+
+    def _update_latest_run(self, date_str: str):
+        """Write daily/LATEST_RUN.txt with path to current day."""
+        self.daily_base.mkdir(parents=True, exist_ok=True)
+        pointer_file = self.daily_base / self.LATEST_RUN_FILENAME
+        with open(pointer_file, "w") as f:
+            f.write(f"daily/{date_str}\n")
+
+    def _run_retention(self, now_ts: int):
+        """Remove daily dirs older than retention_days."""
+        if self.retention_days <= 0:
+            return
+        cutoff = now_ts - (self.retention_days * 86400)
+        if not self.daily_base.exists():
+            return
+        for p in self.daily_base.iterdir():
+            if p.name == self.LATEST_RUN_FILENAME:
+                continue
+            if not p.is_dir():
+                continue
+            try:
+                # Parse YYYYMMDD from dir name
+                dt = datetime.strptime(p.name, "%Y%m%d").replace(tzinfo=timezone.utc)
+                if dt.timestamp() < cutoff:
+                    shutil.rmtree(p, ignore_errors=True)
+            except ValueError:
+                pass
+
+    def append_candles(self, symbol: str, candles: List[Candle], now_ts: Optional[int] = None):
+        """Append candles to JSONL file (continuous). Optionally to daily/YYYYMMDD/."""
         if not candles:
             return
-        
+        now_ts = now_ts or int(time.time())
+
         jsonl_file = self.outdir / f"{symbol}.jsonl"
-        
+
         # Dedup check
         existing_ts = set()
         if jsonl_file.exists():
@@ -250,21 +324,23 @@ class PersistenceManager:
                     try:
                         data = json.loads(line)
                         existing_ts.add(data["ts"])
-                    except:
+                    except Exception:
                         pass
-        
+
         # Append new candles
         with open(jsonl_file, "a") as f:
             for candle in candles:
                 if candle.ts in existing_ts:
                     self.stats[symbol]["duplicates"] += 1
                     continue
-                
+
                 f.write(json.dumps(candle.to_dict()) + "\n")
                 self.stats[symbol]["candles"] += 1
                 self.stats[symbol]["last_ts"] = candle.ts
                 existing_ts.add(candle.ts)
-        
+
+        self._append_to_daily(symbol, candles, now_ts)
+
         # Update state
         self.state[symbol] = {
             "last_ts_written": max(c.ts for c in candles),
@@ -321,12 +397,18 @@ async def run_collector(
     poll_interval_s: int,
     outdir: str,
     resume: bool,
-    forever: bool = False
+    forever: bool = False,
+    enable_daily_rotation: bool = False,
+    retention_days: int = DEFAULT_RETENTION_DAYS,
 ):
     """Main collector loop"""
-    
     run_id = "continuous" if forever else datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
-    pm = PersistenceManager(Path(outdir), run_id)
+    pm = PersistenceManager(
+        Path(outdir),
+        run_id,
+        enable_daily_rotation=enable_daily_rotation and forever,
+        retention_days=retention_days,
+    )
     
     print("=" * 80)
     print("🧪 OSTIUM REST PRICE COLLECTOR")
@@ -383,7 +465,7 @@ async def run_collector(
             for symbol in symbols:
                 candles = builder.flush_candles(symbol, now_ts)
                 if candles:
-                    pm.append_candles(symbol, candles)
+                    pm.append_candles(symbol, candles, now_ts=now_ts)
                     print(f"   ✅ Flushed {len(candles)} candle(s) for {symbol}")
             
             # Update STATUS.md periodically
@@ -406,7 +488,7 @@ async def run_collector(
     for symbol in symbols:
         candles = builder.flush_candles(symbol, now_ts)
         if candles:
-            pm.append_candles(symbol, candles)
+            pm.append_candles(symbol, candles, now_ts=now_ts)
             print(f"   ✅ Final flush: {len(candles)} candle(s) for {symbol}")
     
     # Final status
@@ -474,7 +556,18 @@ def main():
         default=1,
         help="Resume from state.json if exists (0=no, 1=yes, default: 1)"
     )
-    
+    parser.add_argument(
+        "--enable-daily-rotation",
+        action="store_true",
+        help="Enable daily rotation (daily/YYYYMMDD/ + LATEST_RUN.txt + retention)"
+    )
+    parser.add_argument(
+        "--retention-days",
+        type=int,
+        default=None,
+        help=f"Retention days for daily dirs (default: {DEFAULT_RETENTION_DAYS}, env OSTIUM_LAB_RETENTION_DAYS)"
+    )
+
     args = parser.parse_args()
     
     # Handle hours/minutes/forever
@@ -495,14 +588,19 @@ def main():
         forever = True
     
     symbols = [s.strip() for s in args.symbols.split(",")]
-    
+    retention = args.retention_days
+    if retention is None:
+        retention = int(os.getenv(OSTIUM_LAB_RETENTION_DAYS_ENV, str(DEFAULT_RETENTION_DAYS)))
+
     asyncio.run(run_collector(
         symbols=symbols,
         hours=hours,
         poll_interval_s=args.poll_interval_s,
         outdir=args.outdir,
         resume=bool(args.resume),
-        forever=forever
+        forever=forever,
+        enable_daily_rotation=args.enable_daily_rotation,
+        retention_days=retention,
     ))
 
 

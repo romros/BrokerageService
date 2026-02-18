@@ -1,0 +1,33 @@
+# Ostium LAB Continuous Monitor — servei supervisat
+#
+# Ús: ./scripts/run_lab.sh ostium-monitor start|stop|status|logs
+#
+# Escriu a lab/out/ostium_prices/continuous/ i lab/out/ostium_prices/daily/YYYYMMDD/
+# Rotació diària + retenció via OSTIUM_LAB_RETENTION_DAYS.
+#
+# Requereix xarxa per polling Ostium REST API.
+
+services:
+  ostium-monitor:
+    build:
+      context: ../../..
+      dockerfile: Dockerfile
+    image: brokerage-service:latest
+    container_name: ostium-monitor
+    working_dir: /app
+    restart: unless-stopped
+    environment:
+      - TZ=America/New_York
+      - PYTHONPATH=/app
+      - OSTIUM_POLL_INTERVAL_S=${OSTIUM_POLL_INTERVAL_S:-2}
+      - OSTIUM_LAB_SYMBOLS=${OSTIUM_LAB_SYMBOLS:-EURUSD,XAUUSD,GBPJPY}
+      - OSTIUM_LAB_RETENTION_DAYS=${OSTIUM_LAB_RETENTION_DAYS:-14}
+    volumes:
+      - ../../..:/app
+    command: >
+      python3 lab/ostium/scripts/rest_price_collector.py
+      --poll-interval-s ${OSTIUM_POLL_INTERVAL_S:-2}
+      --outdir lab/out/ostium_prices
+      --forever
+      --enable-daily-rotation
+      --symbols ${OSTIUM_LAB_SYMBOLS:-EURUSD,XAUUSD,GBPJPY}

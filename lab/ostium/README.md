@@ -66,12 +66,31 @@ python3 scripts/test_full_cycle_no_subgraph.py
 
 ### Price Monitoring
 
-```bash
-# 1. Captura (3 assets, continu indefinit — default)
-tmux new -d -s ostium_24h \
-  "python3 scripts/rest_price_collector.py --poll-interval-s 2"
+**Canònic (recomanat):** servei supervisat amb restart policy
 
-# 2. Check progrés
+```bash
+# 1. Start monitor (restart unless-stopped, rotació diària, retenció 14 dies)
+./scripts/run_lab.sh ostium-monitor start
+
+# 2. Status (last_ts per símbol, gaps, dupes, market_open)
+./scripts/run_lab.sh ostium-monitor status
+
+# 3. Logs
+./scripts/run_lab.sh ostium-monitor logs
+
+# 4. Stop
+./scripts/run_lab.sh ostium-monitor stop
+```
+
+**Fallback (tmux manual):**
+
+```bash
+tmux new -d -s ostium_24h \
+  "python3 scripts/rest_price_collector.py --poll-interval-s 2 --forever --enable-daily-rotation"
+```
+
+**Check progrés (manual):**
+```bash
 ./scripts/check_24h_progress.sh
 
 # 3. Comparació Dukascopy (Docker)
@@ -144,8 +163,10 @@ lab/ostium/
 | Assets | EURUSD, XAUUSD, GBPJPY |
 | Mode | Indefinit (append a `continuous/`) |
 | Poll | 2s (1.5 req/s) |
-| Tmux | ostium_24h |
-| Output | `lab/out/ostium_prices/continuous/` |
+| Servei | `./scripts/run_lab.sh ostium-monitor start` (canònic) |
+| Output | `lab/out/ostium_prices/continuous/` + `daily/YYYYMMDD/` |
+| Rotació | Diària; `daily/LATEST_RUN.txt` pointer |
+| Retenció | `OSTIUM_LAB_RETENTION_DAYS=14` (default) |
 | Compat Dukascopy | EURUSD, XAUUSD (GBPJPY no suportat per Dukascopy) |
 
 **Nota:** Dukascopy només suporta EURUSD i XAUUSD. GBPJPY es recull per mostra addicional.

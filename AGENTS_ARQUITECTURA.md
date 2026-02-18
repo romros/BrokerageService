@@ -288,6 +288,8 @@ Per fonts de dades (ex. Ostium):
 
 **Regla:** `docs/ESTAT.md` és la font d'operativa diària; `AGENTS_ARQUITECTURA.md` reflecteix l'estat de graduació (LAB / prod-ish opt-in / primary).
 
+**Regla (LAB monitors):** Els monitors LAB s'executen via `scripts/run_lab.sh <monitor> start|stop|status|logs` i viuen sota `deploy/compose/lab/`. No tmux manual per defecte.
+
 ---
 
 ## 9) Wiring i DI (minimalista)

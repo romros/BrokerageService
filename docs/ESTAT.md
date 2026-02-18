@@ -22,7 +22,7 @@
 - ✅ **Broker API** `/api/v1/broker/*` (POST body únic)
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - ⛔ **Backtest** pendent
-- 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md)
+- 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 
 > **Focus 48h:** Data Layer en producció (prefetch + gates + observability).
 
@@ -154,6 +154,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-18 | Data Layer readiness handshake | ✅ data_status 200 amb initializing; soak wait_for_ready; startup_wait_s a artifact | `./scripts/run_soak.sh 2 ostium post-compat` sense 503 |
 | 2026-02-17 | Ostium allowlist + quarantine v1 | ✅ OSTIUM_SYMBOLS, OSTIUM_QUARANTINE_SYMBOLS; EURUSD primary allowed; XAUUSD quarantined | run_soak ostium usa llista canònica |
 | 2026-02-18 | run_all.py | ✅ passa (incl. test_ostium_symbol_allowlist, test_data_status_quarantine_flags) | `./test.sh testing/run_all.py` |
+| 2026-02-18 | Ostium LAB monitor (continuous) | ✅ run_lab.sh ostium-monitor start/stop/status; rotació diària + retenció | `./scripts/run_lab.sh ostium-monitor start` |
 
 **Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 
@@ -202,6 +203,22 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 
 ---
 
+## Ostium LAB monitor (continuous)
+
+**Comandes:** `./scripts/run_lab.sh ostium-monitor start|stop|status|logs`
+
+**Rotació diària:** `lab/out/ostium_prices/daily/YYYYMMDD/` + `daily/LATEST_RUN.txt`  
+**Retenció:** `OSTIUM_LAB_RETENTION_DAYS=14` (neteja dirs antics)
+
+**Smoke local (documentat, no automatitzat):**
+```bash
+./scripts/run_lab.sh ostium-monitor start
+# esperar 10–20s
+./scripts/run_lab.sh ostium-monitor status   # ha de mostrar last_ts per símbol
+```
+
+---
+
 ## Comandes ràpides
 
 ```bash
@@ -212,6 +229,8 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 ./scripts/run_soak.sh 30 data-layer
 ./scripts/run_soak.sh 30 ostium
 ./scripts/run_soak.sh 30 ostium post-compat   # soak + compat automàtic (graduation loop)
+./scripts/run_lab.sh ostium-monitor start     # LAB Ostium continuous
+./scripts/run_lab.sh ostium-monitor status    # last_ts per símbol
 curl -s http://localhost:8000/api/v1/broker/data_status
 curl -s "http://localhost:8000/api/v1/broker/coverage?symbol=ETH&resolution=1m"
 curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-Data
