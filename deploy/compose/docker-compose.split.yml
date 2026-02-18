@@ -16,11 +16,11 @@ services:
     container_name: realtime-datalayer
     working_dir: /app
     ports:
-      - "8001:8001"
+      - "${REALTIME_PORT:-8081}:${REALTIME_PORT:-8081}"
     environment:
       - TZ=America/New_York
       - PYTHONPATH=/app
-      - PORT=8001
+      - PORT=${REALTIME_PORT:-8081}
       - HOST=0.0.0.0
       - MODE=${MODE:-backtest}
       - DATAFILES_ROOT=/datafiles
@@ -36,7 +36,7 @@ services:
       - OSTIUM_TICK_RECORDER_OUTDIR=/datafiles/realtime_datalayer/ticks
       - OSTIUM_SYMBOLS=${OSTIUM_SYMBOLS:-EURUSD,GBPUSD}
       - OSTIUM_QUARANTINE_SYMBOLS=${OSTIUM_QUARANTINE_SYMBOLS:-XAUUSD,XAU}
-      - BROKER_URL=http://realtime_datalayer:8001
+      - BROKER_URL=http://realtime_datalayer:8081
       - SERVICE_ROLE=realtime_datalayer
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
@@ -44,7 +44,7 @@ services:
       - ./logs:/app/logs
     networks:
       - trading
-    command: ["python3", "-m", "uvicorn", "apps.realtime_datalayer.app:app", "--host", "0.0.0.0", "--port", "8001"]
+    command: ["python3", "-m", "uvicorn", "apps.realtime_datalayer.app:app", "--host", "0.0.0.0", "--port", "8081"]
 
   historical_datalayer:
     build:
@@ -94,8 +94,8 @@ services:
       - VENUE=${VENUE:-paper}
       - DATAFILES_ROOT=/datafiles
       - CANONICAL_TZ=America/New_York
-      - BROKER_URL=http://realtime_datalayer:8001
-      - REALTIME_DATALAYER_BASE_URL=http://realtime_datalayer:8001
+      - BROKER_URL=http://realtime_datalayer:8081
+      - REALTIME_DATALAYER_BASE_URL=http://realtime_datalayer:8081
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LIGHTER_BASE_URL=${LIGHTER_BASE_URL:-}
       - LIGHTER_L1_ADDRESS=${LIGHTER_L1_ADDRESS:-}

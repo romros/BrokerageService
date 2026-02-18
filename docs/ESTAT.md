@@ -51,8 +51,8 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 
 # Realtime DataLayer v1 (servei sol)
 docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml up -d realtime_datalayer
-curl -s http://localhost:8001/health
-curl -s http://localhost:8001/status
+curl -s http://localhost:8081/health
+curl -s http://localhost:8081/status
 
 # Rebuild (si has canviat codi)
 docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml build realtime_datalayer
@@ -250,9 +250,9 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-18 | Split vNext scaffold | ✅ apps/, packages/, plantilla_tasca.md, docker-compose.split.yml; AGENTS+ESTAT actualitzats | `docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml config` |
 | 2026-02-18 | Split vNext Phase 1 | ✅ SERVICE_ROLE, entrypoints reals, create_app(role), role boundaries; test_service_role_wiring | `./test.sh testing/unit/test_service_role_wiring.py` |
 | 2026-02-18 | Split vNext Phase 2 | ✅ trading_service consumeix realtime_datalayer via HTTP (contracte mínim); RealtimeDataLayerClient (packages/shared); IDataLayerReader; REALTIME_DATALAYER_BASE_URL | `./scripts/run_tests.sh trading_service`; `curl -s http://localhost:8010/api/v1/broker/data_status` |
-| 2026-02-18 | Realtime DataLayer v1 | ✅ servei autònom; GET /health, /status; storage datafiles/realtime_datalayer/; tests curts run_realtime.py | `./test.sh testing/run_realtime.py`; `curl -s http://localhost:8001/status` |
-| 2026-02-18 | Realtime hot-reload | ✅ GET/PUT /symbols; config persistent symbols.json; instrument resolution (spot/perp); add/remove símbols sense restart | `curl -X PUT http://localhost:8001/symbols -d '{"symbols":["EURUSD","XAUUSD"],"apply_mode":"replace"}'` |
-| 2026-02-18 | Realtime UI + smoke | ✅ /docs, /openapi.json, /ui (dashboard); smoke canònic `./scripts/run_smoke.sh realtime_datalayer`; artifact runs/ | http://localhost:8001/ui ; http://localhost:8001/docs |
+| 2026-02-18 | Realtime DataLayer v1 | ✅ servei autònom; GET /health, /status; storage datafiles/realtime_datalayer/; tests curts run_realtime.py | `./test.sh testing/run_realtime.py`; `curl -s http://localhost:8081/status` |
+| 2026-02-18 | Realtime hot-reload | ✅ GET/PUT /symbols; config persistent symbols.json; instrument resolution (spot/perp); add/remove símbols sense restart | `curl -X PUT http://localhost:8081/symbols -d '{"symbols":["EURUSD","XAUUSD"],"apply_mode":"replace"}'` |
+| 2026-02-18 | Realtime UI + smoke | ✅ /docs, /openapi.json, /ui (dashboard); smoke canònic `./scripts/run_smoke.sh realtime_datalayer`; artifact runs/ | http://localhost:8081/ui ; http://localhost:8081/docs |
 
 **Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 

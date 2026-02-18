@@ -14,6 +14,7 @@
 | GET/PUT /symbols | ✅ | Hot-reload símbols sense restart |
 | Instrument resolution | ✅ | spot/perp, override a config |
 | Ostium ingest 24/7 | ✅ | OstiumCandleIngestService |
+| Sense Dukascopy | ✅ | NullBackfillProvider; independent (AGENTS_ARQUITECTURA) |
 | Tick recorder | ✅ | OstiumTickRecorder (opt-in) |
 | Storage candles | ✅ | datafiles/realtime_datalayer/candles (configurable) |
 | Storage ticks | ✅ | lab/out/ostium_forensics o REALTIME_DATALAYER_ROOT/ticks |
@@ -29,20 +30,20 @@
 docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml up -d realtime_datalayer
 
 # Verificar
-curl -s http://localhost:8001/health
-curl -s http://localhost:8001/status
-curl -s http://localhost:8001/symbols
-curl -s http://localhost:8001/api/v1/broker/data_status
+curl -s http://localhost:8081/health
+curl -s http://localhost:8081/status
+curl -s http://localhost:8081/symbols
+curl -s http://localhost:8081/api/v1/broker/data_status
 
-# UI i docs (túnel: ssh -L 8001:localhost:8001 user@host)
-# Obrir al navegador: http://localhost:8001/ui  i  http://localhost:8001/docs
+# UI i docs (túnel: ssh -L 8081:localhost:8081 user@host)
+# Obrir al navegador: http://localhost:8081/ui  i  http://localhost:8081/docs
 
 # Canviar símbols sense restart (hot-reload)
-curl -X PUT http://localhost:8001/symbols -H "Content-Type: application/json" \
+curl -X PUT http://localhost:8081/symbols -H "Content-Type: application/json" \
   -d '{"symbols": ["EURUSD","USDJPY","XAUUSD","GBPUSD"], "apply_mode": "replace"}'
 
 # Afegir símbols (diff)
-curl -X PUT http://localhost:8001/symbols -H "Content-Type: application/json" \
+curl -X PUT http://localhost:8081/symbols -H "Content-Type: application/json" \
   -d '{"symbols": ["GOOGUSD"], "apply_mode": "diff"}'
 
 # Rebuild (si has canviat codi)
@@ -55,7 +56,7 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 
 ## Canviar símbols des del web
 
-1. Obrir http://localhost:8001/ui
+1. Obrir http://localhost:8081/ui
 2. Editar el textarea (JSON array de símbols)
 3. Triar apply_mode: replace o diff
 4. Clic "PUT /symbols"

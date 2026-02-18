@@ -26,7 +26,7 @@ export DOCKER_GID=${DOCKER_GID:-$(id -g 2>/dev/null || echo 0)}
 # Pre-flight: datafiles/logs han de ser writable quan contenidor corre com a host user
 # (user DOCKER_UID per compat_reports; set_host_readable_permissions fa 0o644/755 per llegir)
 if [ "$DOCKER_UID" != "0" ] 2>/dev/null; then
-  mkdir -p "$PROJECT_ROOT/datafiles" "$PROJECT_ROOT/logs" "$PROJECT_ROOT/datafiles/realtime_datalayer/runs"
+  mkdir -p "$PROJECT_ROOT/datafiles" "$PROJECT_ROOT/logs"
   if [ ! -w "$PROJECT_ROOT/datafiles" ] || [ ! -w "$PROJECT_ROOT/logs" ]; then
     echo "⚠ datafiles o logs no són writable. Una vegada: sudo chown -R \$(id -u):\$(id -g) datafiles logs"
     exit 1
@@ -60,7 +60,7 @@ esac
 
 if [ "$REALTIME_SMOKE" -eq 1 ]; then
   # Smoke Realtime DataLayer (split compose)
-  REALTIME_URL="${REALTIME_URL:-http://localhost:8001}"
+  REALTIME_URL="${REALTIME_URL:-http://localhost:8081}"
   echo "Smoke realtime_datalayer"
   echo "  Build + up..."
   docker compose -f docker-compose.yml -f "$OVERRIDE" build realtime_datalayer 2>/dev/null || true

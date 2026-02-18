@@ -257,12 +257,21 @@ def create_app(role: str | None = None) -> FastAPI:
             try:
                 from application.services.data_layer_prod_service import DataLayerProdService, _get_config
                 cfg = _get_config()
-                # historical: backfill_only + Dukascopy; realtime: Ostium ingest + Dukascopy backfill
+                # historical: backfill_only + Dukascopy
+                # realtime_datalayer: Ostium només (independent de Dukascopy, AGENTS_ARQUITECTURA)
                 if role == "historical_datalayer":
                     cfg["write_mode"] = "backfill_only"
                     from infrastructure.venues.dukascopy.dukascopy_backfill_provider import DukascopyBackfillProvider
                     provider = DukascopyBackfillProvider(cache_root=config["datafiles_root"])
                     cfg["symbols"] = cfg.get("symbols") or [s.strip() for s in os.getenv("SYMBOLS", "EURUSD,GBPUSD").split(",") if s.strip()]
+                elif role == "realtime_datalayer":
+                    cfg["write_mode"] = os.getenv("DATA_LAYER_WRITE_MODE", "realtime_only").lower()
+                    if cfg["write_mode"] not in ("realtime_only", "realtime_plus_backfill", "backfill_only"):
+                        cfg["write_mode"] = "realtime_only"
+                    from apps.realtime_datalayer.symbol_config import get_desired_symbols
+                    cfg["symbols"] = get_desired_symbols()
+                    from infrastructure.data.null_backfill_provider import NullBackfillProvider
+                    provider = NullBackfillProvider()
                 elif ostium_enabled:
                     cfg["write_mode"] = os.getenv("DATA_LAYER_WRITE_MODE", "realtime_plus_backfill").lower()
                     if cfg["write_mode"] not in ("realtime_only", "realtime_plus_backfill", "backfill_only"):
@@ -464,8 +473,10 @@ def create_app(role: str | None = None) -> FastAPI:
             from application.data.data_layer_lifecycle import get_data_layer_status
             from application.data.data_layer_metrics import get_data_layer_metrics, SYMBOL_STATE_DEGRADED
             status, _ = get_data_layer_status()
-            if status in ("initializing", "warming_up"):
+            if status == "initializing":
                 return {"status": "initializing"}
+            if status == "warming_up":
+                return {"status": "ok"}  # warming_up = operatiu (cold start)
             metrics = get_data_layer_metrics()
             if metrics:
                 snapshot = metrics.snapshot()

@@ -119,7 +119,15 @@ class DataLayerProdService:
 
         self._running = True
 
-        if not await self.provider.is_available():
+        provider_ok = await self.provider.is_available()
+        if not provider_ok:
+            if self.write_mode in ("realtime_only", "realtime_plus_backfill"):
+                logger.info(
+                    "DataLayerProdService: provider not available, starting gate metrics only (Ostium writes)"
+                )
+                self._task = asyncio.create_task(self._gate_metrics_loop())
+                logger.info("DataLayerProdService started write_mode=%s (gate metrics only)", self.write_mode)
+                return
             logger.warning("DataLayerProdService: provider not available, skipping")
             self._running = False
             return
@@ -212,12 +220,11 @@ class DataLayerProdService:
                 await asyncio.sleep(10)
 
     async def _gate_metrics_loop(self) -> None:
-        """Loop només per actualitzar gate metrics (backfill_only mode)."""
+        """Loop només per actualitzar gate metrics (backfill_only / realtime_only mode)."""
         while self._running:
             try:
+                self._update_gate_metrics()
                 await asyncio.sleep(self.writer_interval_seconds)
-                if self._running:
-                    self._update_gate_metrics()
             except asyncio.CancelledError:
                 break
             except Exception as e:

@@ -93,7 +93,7 @@
 - **GET /openapi.json** — Especificació OpenAPI.
 - **GET /ui** — Mini dashboard HTML: health, status, symbols (desired/active/by_symbol) + formulari PUT /symbols (diff/replace). Preset d’assets, refresh, copy curl.
 
-Via túnel SSH: `ssh -L 8001:localhost:8001 user@host` → obrir http://localhost:8001/ui i http://localhost:8001/docs.
+Via túnel SSH: `ssh -L 8081:localhost:8081 user@host` → obrir http://localhost:8081/ui i http://localhost:8081/docs.
 
 ---
 
