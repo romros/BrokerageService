@@ -69,7 +69,9 @@
 
 **Registry:** `datafiles/compat_reports/ostium_compat_registry.json` — font de veritat per `get_ostium_primary_allowed(symbol)`.
 
-**Permisos (gotcha resolt):** Ostium/data-layer compose usen `user: ${UID}:${GID}` perquè registry i artifacts siguin writable per host. run_smoke.sh i run_soak.sh exporten UID/GID. Si compose manual: `export UID=$(id -u) GID=$(id -g)` abans.
+**Permisos (gotcha resolt):** Ostium/data-layer compose usen `user: ${DOCKER_UID}:${DOCKER_GID}` perquè registry i artifacts siguin writable per host. run_smoke.sh i run_soak.sh exporten DOCKER_UID/DOCKER_GID. Si compose manual: `export DOCKER_UID=$(id -u) DOCKER_GID=$(id -g)` abans.
+
+**Execució soak/post-compat:** run_soak data-layer i ostium corre dins Docker (`docker compose run brokerage`) per tenir dukascopy-python i deps (post-compat). run_compat.sh corre al host; si falla import: `pip install dukascopy-python` o executar dins Docker.
 
 **Verdict:** PASS | PARTIAL | FAIL (llindars via `compat_report_service` + constants). PASS → primary allowed; PARTIAL/FAIL → opt-in experimental sense declarar primary.
 

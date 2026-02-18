@@ -21,8 +21,17 @@ MINUTES=${1:-30}
 PROFILE=${2:-data-layer}
 POST_COMPAT=${3:-}
 # Permisos: data-layer/ostium escriuen datafiles amb UID/GID host (compat_reports writable)
-export UID=${UID:-$(id -u 2>/dev/null || echo 0)}
-export GID=${GID:-$(id -g 2>/dev/null || echo 0)}
+export DOCKER_UID=${DOCKER_UID:-$(id -u 2>/dev/null || echo 0)}
+export DOCKER_GID=${DOCKER_GID:-$(id -g 2>/dev/null || echo 0)}
+# Pre-flight: datafiles/logs han de ser writable quan contenidor corre com a host user
+# (user DOCKER_UID per compat_reports; set_host_readable_permissions fa 0o644/755 per llegir)
+if [ "$DOCKER_UID" != "0" ] 2>/dev/null; then
+  mkdir -p "$PROJECT_ROOT/datafiles" "$PROJECT_ROOT/logs"
+  if [ ! -w "$PROJECT_ROOT/datafiles" ] || [ ! -w "$PROJECT_ROOT/logs" ]; then
+    echo "⚠ datafiles o logs no són writable. Una vegada: sudo chown -R \$(id -u):\$(id -g) datafiles logs"
+    exit 1
+  fi
+fi
 OVERRIDES_DIR="$PROJECT_ROOT/deploy/compose/overrides"
 BROKER_URL="${BROKER_URL:-http://localhost:8000}"
 HEALTH_URL="${BROKER_URL}/api/v1/broker/health"
@@ -71,6 +80,8 @@ if ! curl -sf "$HEALTH_URL" >/dev/null 2>&1; then
 fi
 
 echo ""
+# data-layer/ostium: corre dins Docker per tenir dukascopy-python i deps (post-compat)
+# BROKER_URL dins xarxa Docker = brokerage:8000
 export BROKER_URL
 export PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 
@@ -83,7 +94,11 @@ case "$PROFILE" in
     if [ "$PROFILE" = "ostium" ]; then
       SOAK_ARGS="$SOAK_ARGS --profile ostium"
     fi
-    python3 -m application.tools.data_layer_soak $SOAK_ARGS
+    # Dins Docker: BROKER_URL=brokerage:8000 (xarxa Docker), DATAFILES_ROOT=/datafiles (muntat)
+    docker compose $COMPOSE_FILES run --rm \
+      -e BROKER_URL="http://brokerage:8000" \
+      -e DATAFILES_ROOT=/datafiles \
+      brokerage python3 -m application.tools.data_layer_soak $SOAK_ARGS
     ;;
   ws)
     MINUTES=$((MINUTES < 1 ? 1 : MINUTES))

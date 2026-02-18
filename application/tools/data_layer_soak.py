@@ -86,12 +86,12 @@ def _run_post_compat(
     """
     try:
         from application.tools.ostium_compat_report import run_compat
-    except ImportError:
+    except ImportError as e:
         return {
             "symbol": compat_symbol,
             "verdict": "SKIP",
             "ostium_primary_allowed": False,
-            "reason": "ostium_compat_report not available",
+            "reason": f"ostium_compat_report not available: {e}",
             "skipped": True,
         }
 
