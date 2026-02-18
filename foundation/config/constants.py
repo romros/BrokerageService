@@ -186,3 +186,16 @@ DEFAULT_OSTIUM_SYMBOLS = "EURUSD,GBPUSD"  # Allowlist: FX per defecte
 DEFAULT_OSTIUM_QUARANTINE_SYMBOLS = "XAUUSD,XAU"  # Quarantine: no primary, no ingest per defecte
 DEFAULT_OSTIUM_POLL_S = 2
 DEFAULT_OSTIUM_PRICE_API_BASE = "https://metadata-backend.ostium.io"
+
+# Split vNext: SERVICE_ROLE per entrypoint (realtime_datalayer | historical_datalayer | trading_service)
+SERVICE_ROLE_ENV = "SERVICE_ROLE"
+VALID_SERVICE_ROLES = ("realtime_datalayer", "historical_datalayer", "trading_service")
+DEFAULT_SERVICE_ROLE = None  # None = monolithic (legacy)
+
+
+# Ostium tick recorder (forense, lab)
+OSTIUM_TICK_RECORDER_ENABLED_ENV = "OSTIUM_TICK_RECORDER_ENABLED"
+OSTIUM_TICK_RECORDER_OUTDIR_ENV = "OSTIUM_TICK_RECORDER_OUTDIR"
+OSTIUM_TICK_RETENTION_DAYS_ENV = "OSTIUM_TICK_RETENTION_DAYS"
+DEFAULT_OSTIUM_TICK_RECORDER_OUTDIR = "lab/out/ostium_forensics"
+DEFAULT_OSTIUM_TICK_RETENTION_DAYS = 7

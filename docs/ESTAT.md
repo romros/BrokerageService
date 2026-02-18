@@ -30,20 +30,27 @@
 
 ## Arquitectura split vNext — estat de migració
 
-**Estat:** scaffold. Encara no s'ha migrat codi; és estructura + docs + compose.
+**Estat Phase 1:** Entrypoints reals per servei. Cada servei arrenca només el que li toca (role boundaries).
 
 **Serveis:** `realtime_datalayer`, `historical_datalayer`, `trading_service`. Veure `AGENTS_ARQUITECTURA.md` § Split vNext.
 
-**Comandes canòniques (placeholders):**
+**Què garanteix Phase 1:**
+- Cada servei té entrypoint propi: `apps/<servei>/app.py`
+- `SERVICE_ROLE` (env) determina què wireja: realtime (ingest), historical (backfill), trading (adapter)
+- realtime_datalayer: només data routes (health, data_status, ohlcv, candles); sense /orders
+- trading_service: data + trading; sense Ostium ingest ni Data Layer writer
+- data_status mai 503 en initializing (realtime)
+
+**Comandes canòniques:**
 ```bash
 # Validar compose split
 docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml config
 
-# Aixecar els 3 serveis (reutilitzen mateixa imatge; ports diferents)
+# Aixecar els 3 serveis (entrypoints: apps.realtime_datalayer.app, etc.)
 docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml up -d realtime_datalayer historical_datalayer trading_service
 ```
 
-**Estructura:** `apps/realtime_datalayer/`, `apps/historical_datalayer/`, `apps/trading_service/`, `packages/shared/`. README curt per servei.
+**Estructura:** `apps/<servei>/app.py` (entrypoint), `application/app_factory.py` (create_app role-aware), `packages/shared/` (placeholder).
 
 ---
 
@@ -202,6 +209,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-18 | Cold-start readiness + permisos | ✅ warmup window (DATA_LAYER_WARMUP_MINUTES); warming_up no DEGRADED; --user a docker run; ESTAT+SAFETY_RUNBOOK | soak cold start reporta warming_up; no root-owned files |
 | 2026-02-18 | Warmup basat en cobertura recent 24h | ✅ observed_open_minutes_24h (no span històric); prefetch no falsa warmup; startup gate ignora missing en warmup; warming_up→exit 0 | data_status expected/observed_open_minutes_24h |
 | 2026-02-18 | Split vNext scaffold | ✅ apps/, packages/, plantilla_tasca.md, docker-compose.split.yml; AGENTS+ESTAT actualitzats | `docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml config` |
+| 2026-02-18 | Split vNext Phase 1 | ✅ SERVICE_ROLE, entrypoints reals, create_app(role), role boundaries; test_service_role_wiring | `./test.sh testing/unit/test_service_role_wiring.py` |
 
 **Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 

@@ -63,7 +63,29 @@ from foundation.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Split vNext: data_router (health, data_status, candles, etc.) | trading_router (orders, balance, etc.)
+data_router = APIRouter()
+trading_router = APIRouter()
+
+# Combined router (backward compat + monolithic). include_router al final del fitxer (després dels decorators)
 router = APIRouter(prefix="/api/v1/broker", tags=["broker"])
+_data_only_router = APIRouter(prefix="/api/v1/broker", tags=["broker"])
+
+
+def get_routers_for_role(role: str | None) -> list:
+    """Routers per SERVICE_ROLE. realtime/historical: només data. trading/legacy: data + trading."""
+    if role in (None, "trading_service"):
+        return [router]
+    if role in ("realtime_datalayer", "historical_datalayer"):
+        return [_data_only_router]
+    return [router]
+
+
+def _build_routers() -> None:
+    """Crida al final del mòdul, després que tots els decorators hagin registrat les rutes."""
+    router.include_router(data_router)
+    router.include_router(trading_router)
+    _data_only_router.include_router(data_router)
 
 _UNSET = object()
 
@@ -221,7 +243,7 @@ class OrderCloseResponse(BaseModel):
 # ============ Core ============
 
 
-@router.get("/health", response_model=HealthResponse)
+@data_router.get("/health", response_model=HealthResponse)
 async def get_health():
     """Health check. status=degraded si DATA_LAYER_STARTUP_GATE=1 i Data Layer té símbol DEGRADED."""
     status = "ok"
@@ -242,7 +264,7 @@ async def get_health():
     )
 
 
-@router.get("/mode", response_model=ModeResponse)
+@data_router.get("/mode", response_model=ModeResponse)
 async def get_mode():
     """Mode actual."""
     return ModeResponse(
@@ -259,7 +281,7 @@ async def get_mode():
 # ============ Market data ============
 
 
-@router.get("/venues")
+@data_router.get("/venues")
 async def get_venues():
     """Llista venues realment disponibles segons config/wiring actual."""
     venues = _get_available_venues()
@@ -268,7 +290,7 @@ async def get_venues():
     return {"venues": venues}
 
 
-@router.get("/pairs", response_model=PairsResponse)
+@trading_router.get("/pairs", response_model=PairsResponse)
 async def get_pairs(venue: str = Query(..., description="Venue (lighter)")):
     """Llista de pairs per venue."""
     adapter = _get_adapter_or_http_error(venue)
@@ -292,7 +314,7 @@ async def get_pairs(venue: str = Query(..., description="Venue (lighter)")):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/price/latest", response_model=PriceLatestResponse)
+@trading_router.get("/price/latest", response_model=PriceLatestResponse)
 async def get_price_latest(
     venue: str = Query(...),
     symbol: str = Query(...),
@@ -469,7 +491,7 @@ async def _read_candles_response(
     return JSONResponse(content=resp.model_dump(mode="json"), headers=headers)
 
 
-@router.get("/ohlcv/{symbol}")
+@data_router.get("/ohlcv/{symbol}")
 async def get_ohlcv(
     symbol: str,
     tf: str = Query(default=SUPPORTED_TIMEFRAME),
@@ -489,7 +511,7 @@ async def get_ohlcv(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/coverage")
+@data_router.get("/coverage")
 async def get_coverage(
     symbol: str = Query(..., description="Symbol (e.g. EURUSD)"),
     resolution: str = Query(default="1m", description="Resolution (only 1m supported)"),
@@ -535,7 +557,7 @@ async def get_coverage(
     }
 
 
-@router.get("/data_status")
+@data_router.get("/data_status")
 async def get_data_status():
     """
     P7c: Data Layer telemetria (counters, last_ts per símbol).
@@ -632,10 +654,14 @@ async def get_data_status():
         result["primary_allowed_by_symbol"] = primary_by_symbol if primary_by_symbol else {
             sym: s.get("primary_eligible", False) for sym, s in symbols_data.items()
         }
+    # Tick recorder (forense): enabled, outdir, last_tick_ts, lines_written, dupes_detected
+    from application.services.ostium_tick_recorder import get_ostium_tick_recorder  # lazy
+    tick_rec = get_ostium_tick_recorder()
+    result["tick_recorder"] = tick_rec.get_status() if tick_rec else {"enabled": False}
     return result
 
 
-@router.get("/candles")
+@data_router.get("/candles")
 async def get_candles(
     symbol: str = Query(...),
     timeframe: str = Query(default=SUPPORTED_TIMEFRAME),
@@ -658,7 +684,7 @@ async def get_candles(
 # ============ Trading ============
 
 
-@router.get("/balance", response_model=BalanceResponse)
+@trading_router.get("/balance", response_model=BalanceResponse)
 async def get_balance(venue: str = Query(...)):
     """Balance compte."""
     adapter = _get_adapter_or_http_error(venue)
@@ -670,7 +696,7 @@ async def get_balance(venue: str = Query(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/positions", response_model=PositionsResponse)
+@trading_router.get("/positions", response_model=PositionsResponse)
 async def get_positions(venue: str = Query(...)):
     """Posicions obertes amb mark_price i unrealized_pnl."""
     adapter = _get_adapter_or_http_error(venue)
@@ -696,7 +722,7 @@ async def get_positions(venue: str = Query(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/trades", response_model=TradesResponse)
+@trading_router.get("/trades", response_model=TradesResponse)
 async def get_trades(
     venue: str = Query(..., description="Venue (lighter)"),
     symbol: Optional[str] = Query(None, description="Filter per symbol"),
@@ -789,13 +815,13 @@ async def _do_order_close(req: OrderCloseRequest) -> OrderCloseResponse:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/orders/open", response_model=OrderOpenResponse)
+@trading_router.post("/orders/open", response_model=OrderOpenResponse)
 async def order_open(body: OrderOpenRequest = Body(...)):
     """Obrir posició. JSON body. side: long|short."""
     return await _do_order_open(body)
 
 
-@router.post("/orders/close", response_model=OrderCloseResponse)
+@trading_router.post("/orders/close", response_model=OrderCloseResponse)
 async def order_close(body: OrderCloseRequest = Body(...)):
     """Tancar posició. JSON body. percent dins (0, 100]."""
     return await _do_order_close(body)
@@ -913,4 +939,8 @@ def _map_positions_response(
                 liquidation_price=liq_price,
             )
         )
-    return PositionsResponse(positions=items)
+        return PositionsResponse(positions=items)
+
+
+# Registrar rutes (després que els decorators @data_router / @trading_router hagin executat)
+_build_routers()

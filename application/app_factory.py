@@ -1,0 +1,415 @@
+"""
+App factory — create_app(role) per Split vNext.
+
+SERVICE_ROLE: realtime_datalayer | historical_datalayer | trading_service | None (monolithic).
+Cada rol wireja només els components que li toquen.
+"""
+
+import asyncio
+from contextlib import asynccontextmanager
+import os
+import threading
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from application.api.broker_routes import get_routers_for_role, set_broker_deps
+from application.api.ws_routes import router as ws_router
+from foundation.config.constants import (
+    BROKER_DIAG_ENV,
+    DATA_LAYER_ENABLED_ENV,
+    DATA_LAYER_STARTUP_GATE_ENV,
+    HEARTBEAT_INTERVAL_S,
+    OSTIUM_ENABLED_ENV,
+    TESTING_ENV,
+    USE_FAKE_PRICE_FEED_ENV,
+)
+from foundation.config.service_role import get_service_role
+from foundation.logging import get_logger
+from infrastructure.storage.csv_store import CSVCandleStore
+
+logger = get_logger(__name__)
+
+
+def _load_config() -> dict:
+    """Load configuration from environment."""
+    market_data_env = os.getenv("MARKET_DATA_ENV", "mainnet").lower()
+    if market_data_env not in ("mainnet", "testnet"):
+        market_data_env = "mainnet"
+    return {
+        "mode": os.getenv("MODE", "paper"),
+        "venue": os.getenv("VENUE", ""),
+        "datafiles_root": os.getenv("DATAFILES_ROOT", "/datafiles"),
+        "canonical_tz": os.getenv("CANONICAL_TZ", "America/New_York"),
+        "symbols": os.getenv("SYMBOLS", "XAUUSD,EURUSD").split(","),
+        "host": os.getenv("HOST", "0.0.0.0"),
+        "port": int(os.getenv("PORT", "8000")),
+        "market_data_env": market_data_env,
+        "enable_live_trading": os.getenv("ENABLE_LIVE_TRADING", "0") == "1",
+    }
+
+
+def _role_starts_adapter(role: str | None) -> bool:
+    """Trading service (o monolithic) arrenca adapter."""
+    return role in (None, "trading_service")
+
+
+def _role_starts_ingest_or_writer(role: str | None) -> bool:
+    """Realtime (Ostium ingest) o historical (Data Layer backfill) arrenquen writer."""
+    return role in ("realtime_datalayer", "historical_datalayer", None)
+
+
+def _role_starts_ostium_ingest(role: str | None) -> bool:
+    """Només realtime_datalayer (o monolithic) arrenca Ostium ingest."""
+    return role in ("realtime_datalayer", None)
+
+
+def _role_starts_market_data_pipeline(role: str | None) -> bool:
+    """Trading (paper/Lighter) o monolithic: market data pipeline."""
+    return role in (None, "trading_service")
+
+
+def _role_starts_backfill_service(role: str | None) -> bool:
+    """BackfillService (Lighter) només per monolithic/trading amb pipeline."""
+    return role in (None, "trading_service")
+
+
+def create_app(role: str | None = None) -> FastAPI:
+    """
+    Crea FastAPI app amb wiring role-aware.
+
+    role: realtime_datalayer | historical_datalayer | trading_service | None (monolithic).
+    Si None, llegeix SERVICE_ROLE des de env.
+    """
+    if role is None:
+        role = get_service_role()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        logger.info("🚀 Starting BrokerageService (role=%s)...", role or "monolithic")
+
+        config = _load_config()
+        venue = config["venue"] or ""
+        candle_store = CSVCandleStore(
+            root_path=config["datafiles_root"],
+            broker=venue or "gtrade",
+            canonical_tz=config["canonical_tz"],
+        )
+
+        fallback_provider = None
+        try:
+            from infrastructure.venues.dukascopy.dukascopy_backfill_provider import DukascopyBackfillProvider
+            fallback_provider = DukascopyBackfillProvider(cache_root=config["datafiles_root"])
+        except Exception as e:
+            logger.debug("P7 fallback provider not available: %s", e)
+
+        adapter = None
+        market_data_service = None
+        backfill_service = None
+        data_layer_prod_service = None
+        ostium_ingest_service = None
+
+        use_fake_feed = os.getenv(USE_FAKE_PRICE_FEED_ENV, "").strip() == "1"
+        enable_live = config["enable_live_trading"]
+        mode_lower = (config["mode"] or "").lower()
+        use_paper_execution = (mode_lower == "paper" or not enable_live) and venue in ("", "lighter", "paper")
+
+        # --- Adapter + market data (només trading / monolithic) ---
+        if _role_starts_adapter(role):
+            from infrastructure.builders.lighter_di import build_lighter_paper_market_data
+            from infrastructure.venues.lighter.config import get_lighter_symbols_from_env, get_lighter_tick_interval_ms
+
+            if use_paper_execution:
+                symbols = get_lighter_symbols_from_env()
+                _, market_data_service = build_lighter_paper_market_data(
+                    candle_store=candle_store,
+                    canonical_tz=config["canonical_tz"],
+                )
+                await market_data_service.start()
+                source = "fake" if use_fake_feed else "real"
+                logger.info("execution_mode=paper_simulated market_data_env=%s source=%s", config["market_data_env"], source)
+
+                async def _get_price(sym: str):
+                    from domain.models import PriceData
+                    from datetime import datetime, timezone
+                    p = market_data_service.get_latest_price(sym)
+                    ts = datetime.now(timezone.utc)
+                    if p is None:
+                        return PriceData(symbol=sym, bid=0, ask=0, mid=0, timestamp=ts)
+                    return PriceData(symbol=sym, bid=p, ask=p, mid=p, timestamp=ts)
+
+                from infrastructure.venues.paper.paper_venue_adapter import PaperVenueAdapter
+                paper_adapter = PaperVenueAdapter(get_price=_get_price, symbols=symbols)
+                await paper_adapter.start()
+                adapter = paper_adapter
+                set_broker_deps(
+                    candle_store=candle_store,
+                    adapter_factory=lambda v: paper_adapter if v == "paper" else None,
+                    mode=config["mode"],
+                    venue="paper",
+                    market_data_env=config["market_data_env"],
+                    market_data_source=source,
+                    fallback_provider=fallback_provider,
+                )
+            elif venue == "lighter":
+                from infrastructure.builders.lighter_di import build_lighter_paper_adapter, build_lighter_paper_market_data
+                from infrastructure.venues.lighter.config import get_lighter_symbols_from_env, get_lighter_tick_interval_ms, get_price_cache_ttl_s
+                from infrastructure.venues.lighter.price_cache import PriceSnapshotCache
+
+                source = "fake" if use_fake_feed else "real"
+                shared_price_cache = PriceSnapshotCache(ttl_s=get_price_cache_ttl_s())
+                if use_fake_feed:
+                    adapter = None
+                    set_broker_deps(
+                        candle_store=candle_store,
+                        adapter_factory=lambda v: None,
+                        mode=config["mode"],
+                        venue=venue,
+                        market_data_env=config["market_data_env"],
+                        market_data_source=source,
+                        fallback_provider=fallback_provider,
+                    )
+                else:
+                    adapter_mode = "live" if config["enable_live_trading"] else "paper"
+                    adapter = build_lighter_paper_adapter(mode=adapter_mode, price_cache=shared_price_cache)
+                    await adapter.start()
+                    set_broker_deps(
+                        candle_store=candle_store,
+                        adapter_factory=lambda v: adapter if v == "lighter" else None,
+                        mode=config["mode"],
+                        venue=venue,
+                        market_data_env=config["market_data_env"],
+                        market_data_source=source,
+                        fallback_provider=fallback_provider,
+                    )
+
+                if mode_lower in ("paper", "live"):
+                    symbols = get_lighter_symbols_from_env()
+                    tick_interval_ms = get_lighter_tick_interval_ms()
+                    _, market_data_service = build_lighter_paper_market_data(
+                        candle_store=candle_store,
+                        canonical_tz=config["canonical_tz"],
+                        price_cache=shared_price_cache,
+                    )
+                    await market_data_service.start()
+                    logger.info("MARKETDATA_START venue=%s source=%s symbols=%s", venue, source, symbols)
+            else:
+                set_broker_deps(
+                    candle_store=candle_store,
+                    adapter_factory=None,
+                    mode=config["mode"],
+                    venue=venue,
+                    market_data_env=config["market_data_env"],
+                    market_data_source="n/a",
+                    fallback_provider=fallback_provider,
+                )
+        else:
+            # realtime / historical: sense adapter
+            set_broker_deps(
+                candle_store=candle_store,
+                adapter_factory=None,
+                mode=config["mode"],
+                venue=venue or "gtrade",
+                market_data_env=config["market_data_env"],
+                market_data_source="n/a",
+                fallback_provider=fallback_provider,
+            )
+
+        logger.info("✓ BrokerageService ready (role=%s)", role or "monolithic")
+
+        # --- Data Layer prod + Ostium ingest (realtime, historical, monolithic) ---
+        # Realtime/historical: sempre init metrics perquè data_status retorni 200 (mai 503 en initializing)
+        if _role_starts_ingest_or_writer(role):
+            from application.data.data_layer_lifecycle import DATA_LAYER_INITIALIZING, set_data_layer_status
+            from application.data.data_layer_metrics import DataLayerMetrics, set_data_layer_metrics
+            set_data_layer_metrics(DataLayerMetrics())
+            set_data_layer_status(DATA_LAYER_INITIALIZING, reason="Data Layer startup")
+
+        if _role_starts_ingest_or_writer(role) and os.getenv(DATA_LAYER_ENABLED_ENV, "0") == "1":
+
+            ostium_enabled = os.getenv(OSTIUM_ENABLED_ENV, "0") == "1"
+            cfg = {}
+            try:
+                from application.services.data_layer_prod_service import DataLayerProdService, _get_config
+                cfg = _get_config()
+                # historical: backfill_only + Dukascopy; realtime: Ostium ingest + Dukascopy backfill
+                if role == "historical_datalayer":
+                    cfg["write_mode"] = "backfill_only"
+                    from infrastructure.venues.dukascopy.dukascopy_backfill_provider import DukascopyBackfillProvider
+                    provider = DukascopyBackfillProvider(cache_root=config["datafiles_root"])
+                    cfg["symbols"] = cfg.get("symbols") or [s.strip() for s in os.getenv("SYMBOLS", "EURUSD,GBPUSD").split(",") if s.strip()]
+                elif ostium_enabled:
+                    cfg["write_mode"] = os.getenv("DATA_LAYER_WRITE_MODE", "realtime_plus_backfill").lower()
+                    if cfg["write_mode"] not in ("realtime_only", "realtime_plus_backfill", "backfill_only"):
+                        cfg["write_mode"] = "realtime_plus_backfill"
+                    from application.data.ostium_symbol_policy import get_ostium_ingest_symbols
+                    cfg["symbols"] = list(get_ostium_ingest_symbols())
+                    from infrastructure.venues.dukascopy.dukascopy_backfill_provider import DukascopyBackfillProvider
+                    provider = DukascopyBackfillProvider(cache_root=config["datafiles_root"])
+                else:
+                    from infrastructure.venues.lighter.lighter_candlestick_backfill_provider import LighterCandlestickBackfillProvider
+                    provider = LighterCandlestickBackfillProvider()
+                if cfg["symbols"]:
+                    data_layer_prod_service = DataLayerProdService(
+                        store=candle_store,
+                        provider=provider,
+                        symbols=cfg["symbols"],
+                        prefetch_minutes=cfg["prefetch_minutes"],
+                        warmup_minutes=cfg.get("warmup_minutes", 120),
+                        max_gap_s=cfg["max_gap_s"],
+                        max_missing_per_24h=cfg["max_missing_per_24h"],
+                        stale_seconds=cfg["stale_seconds"],
+                        write_mode=cfg.get("write_mode", "realtime"),
+                    )
+                    await data_layer_prod_service.start()
+                    logger.info("Data Layer prod v0 started symbols=%s", cfg["symbols"])
+                    set_broker_deps(data_layer_write_mode=cfg.get("write_mode", "realtime"))
+                    if os.getenv(DATA_LAYER_STARTUP_GATE_ENV, "0") == "1":
+                        ok, reason = data_layer_prod_service.run_startup_gate_check()
+                        if not ok:
+                            raise RuntimeError(f"DATA_LAYER_STARTUP_GATE failed: {reason}")
+            except Exception as e:
+                logger.warning("Data Layer prod v0 not started: %s", e)
+
+            # Ostium ingest: només realtime (o monolithic)
+            if _role_starts_ostium_ingest(role) and ostium_enabled:
+                from application.data.ostium_symbol_policy import get_ostium_ingest_symbols
+                ostium_symbols = list(get_ostium_ingest_symbols())
+                _write_mode = cfg.get("write_mode", os.getenv("DATA_LAYER_WRITE_MODE", "realtime_plus_backfill"))
+                _write_mode = str(_write_mode).lower()
+                ostium_ingest_allowed = _write_mode in ("realtime_only", "realtime_plus_backfill")
+                if ostium_symbols and ostium_ingest_allowed:
+                    try:
+                        from application.services.ostium_candle_ingest_service import OstiumCandleIngestService
+                        from foundation.config.constants import (
+                            OSTIUM_POLL_S_ENV, DEFAULT_OSTIUM_POLL_S,
+                            DATA_LAYER_GATES_MAX_GAP_S_ENV, DATA_LAYER_GATES_MAX_MISSING_PER_24H_ENV,
+                            DATA_LAYER_STALE_SECONDS_ENV, DATA_LAYER_WARMUP_MINUTES_ENV,
+                            OSTIUM_TICK_RECORDER_ENABLED_ENV, OSTIUM_TICK_RECORDER_OUTDIR_ENV,
+                            OSTIUM_TICK_RETENTION_DAYS_ENV,
+                            DEFAULT_DATA_LAYER_GATES_MAX_GAP_S, DEFAULT_DATA_LAYER_GATES_MAX_MISSING_PER_24H,
+                            DEFAULT_DATA_LAYER_STALE_SECONDS, DEFAULT_DATA_LAYER_WARMUP_MINUTES,
+                            DEFAULT_OSTIUM_TICK_RECORDER_OUTDIR, DEFAULT_OSTIUM_TICK_RETENTION_DAYS,
+                        )
+                        tick_recorder = None
+                        if os.getenv(OSTIUM_TICK_RECORDER_ENABLED_ENV, "").strip().lower() in ("1", "true", "yes"):
+                            from application.services.ostium_tick_recorder import OstiumTickRecorder
+                            tick_recorder = OstiumTickRecorder(
+                                outdir=os.getenv(OSTIUM_TICK_RECORDER_OUTDIR_ENV, DEFAULT_OSTIUM_TICK_RECORDER_OUTDIR),
+                                retention_days=int(os.getenv(OSTIUM_TICK_RETENTION_DAYS_ENV, str(DEFAULT_OSTIUM_TICK_RETENTION_DAYS))),
+                            )
+                        ostium_ingest_service = OstiumCandleIngestService(
+                            store=candle_store,
+                            symbols=ostium_symbols,
+                            poll_interval_s=int(os.getenv(OSTIUM_POLL_S_ENV, str(DEFAULT_OSTIUM_POLL_S))),
+                            warmup_minutes=int(os.getenv(DATA_LAYER_WARMUP_MINUTES_ENV, "120")),
+                            max_gap_s=int(os.getenv(DATA_LAYER_GATES_MAX_GAP_S_ENV, str(DEFAULT_DATA_LAYER_GATES_MAX_GAP_S))),
+                            max_missing_per_24h=int(os.getenv(DATA_LAYER_GATES_MAX_MISSING_PER_24H_ENV, str(DEFAULT_DATA_LAYER_GATES_MAX_MISSING_PER_24H))),
+                            stale_seconds=int(os.getenv(DATA_LAYER_STALE_SECONDS_ENV, str(DEFAULT_DATA_LAYER_STALE_SECONDS))),
+                            tick_recorder=tick_recorder,
+                        )
+                        await ostium_ingest_service.start()
+                        logger.info("OstiumCandleIngestService started symbols=%s", ostium_symbols)
+                        set_broker_deps(data_layer_write_mode=_write_mode, ostium_ingest_enabled=True)
+                    except Exception as e:
+                        logger.warning("OstiumCandleIngestService not started: %s", e)
+
+        # BackfillService (Lighter) — només trading / monolithic
+        if _role_starts_backfill_service(role) and market_data_service is not None:
+            try:
+                from application.services.backfill_service import BackfillService
+                from infrastructure.venues.lighter.lighter_candlestick_backfill_provider import LighterCandlestickBackfillProvider
+                backfill_symbols = [s.strip() for s in os.getenv("BACKFILL_SYMBOLS", "EURUSD,XAUUSD").split(",") if s.strip()]
+                if backfill_symbols:
+                    backfill_provider = LighterCandlestickBackfillProvider()
+                    backfill_service = BackfillService(
+                        store=candle_store,
+                        provider=backfill_provider,
+                        symbols=backfill_symbols,
+                        corrective_window_minutes=int(os.getenv("CORRECTIVE_WINDOW_MINUTES", "60")),
+                        interval_seconds=int(os.getenv("BACKFILL_INTERVAL_SECONDS", "600")),
+                    )
+                    await backfill_service.start()
+                    set_broker_deps(primary_backfill_provider=backfill_provider)
+            except Exception as e:
+                logger.warning("BackfillService not started: %s", e)
+
+        heartbeat_task = None
+        if os.getenv(TESTING_ENV, "").strip() == "1" or os.getenv(BROKER_DIAG_ENV, "").strip() == "1":
+            async def _heartbeat_loop():
+                while True:
+                    await asyncio.sleep(HEARTBEAT_INTERVAL_S)
+                    logger.info("heartbeat alive pending_tasks=%d", len(asyncio.all_tasks()))
+            heartbeat_task = asyncio.create_task(_heartbeat_loop())
+
+        yield
+
+        if heartbeat_task:
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
+
+        logger.info("🛑 Shutting down BrokerageService (role=%s)...", role or "monolithic")
+        if data_layer_prod_service:
+            try:
+                await data_layer_prod_service.stop()
+            except Exception as e:
+                logger.error("DataLayerProdService stop error: %s", e)
+        if ostium_ingest_service:
+            try:
+                await ostium_ingest_service.stop()
+            except Exception as e:
+                logger.error("OstiumCandleIngestService stop error: %s", e)
+        if backfill_service:
+            try:
+                await backfill_service.stop()
+            except Exception as e:
+                logger.error("BackfillService stop error: %s", e)
+        if market_data_service:
+            try:
+                await market_data_service.stop()
+            except Exception as e:
+                logger.error("MARKETDATA_STOP error: %s", e)
+        if adapter:
+            await adapter.stop()
+
+    app = FastAPI(
+        title="BrokerageService",
+        description="Trading brokerage service (role=%s)" % (role or "monolithic"),
+        version="0.1.0",
+        lifespan=lifespan,
+    )
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request, exc):
+        if isinstance(exc.detail, dict) and "code" in exc.detail:
+            return JSONResponse(status_code=exc.status_code, content=exc.detail)
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    for r in get_routers_for_role(role):
+        app.include_router(r)
+
+    if _role_starts_adapter(role):
+        app.include_router(ws_router, prefix="/api/v1")
+
+    @app.get("/")
+    async def root():
+        return {
+            "service": "BrokerageService",
+            "role": role or "monolithic",
+            "version": "0.1.0",
+            "docs": "/docs",
+        }
+
+    return app

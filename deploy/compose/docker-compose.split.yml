@@ -32,6 +32,7 @@ services:
       - OSTIUM_SYMBOLS=${OSTIUM_SYMBOLS:-EURUSD,GBPUSD}
       - OSTIUM_QUARANTINE_SYMBOLS=${OSTIUM_QUARANTINE_SYMBOLS:-XAUUSD,XAU}
       - BROKER_URL=http://realtime_datalayer:8001
+      - SERVICE_ROLE=realtime_datalayer
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ./datafiles:/datafiles
@@ -39,7 +40,7 @@ services:
       - ./lab/out:/app/lab/out
     networks:
       - trading
-    command: ["python3", "-m", "uvicorn", "application.main:app", "--host", "0.0.0.0", "--port", "8001"]
+    command: ["python3", "-m", "uvicorn", "apps.realtime_datalayer.app:app", "--host", "0.0.0.0", "--port", "8001"]
 
   historical_datalayer:
     build:
@@ -62,6 +63,7 @@ services:
       - DATA_LAYER_WRITE_MODE=backfill_only
       - OSTIUM_ENABLED=0
       - BROKER_URL=http://historical_datalayer:8002
+      - SERVICE_ROLE=historical_datalayer
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ./datafiles:/datafiles
@@ -69,7 +71,7 @@ services:
       - ./lab/out:/app/lab/out
     networks:
       - trading
-    command: ["python3", "-m", "uvicorn", "application.main:app", "--host", "0.0.0.0", "--port", "8002"]
+    command: ["python3", "-m", "uvicorn", "apps.historical_datalayer.app:app", "--host", "0.0.0.0", "--port", "8002"]
 
   trading_service:
     build:
@@ -84,8 +86,8 @@ services:
       - PYTHONPATH=/app
       - PORT=8010
       - HOST=0.0.0.0
-      - MODE=${MODE:-backtest}
-      - VENUE=${VENUE:-gtrade}
+      - MODE=${MODE:-paper}
+      - VENUE=${VENUE:-paper}
       - DATAFILES_ROOT=/datafiles
       - CANONICAL_TZ=America/New_York
       - BROKER_URL=http://realtime_datalayer:8001
@@ -96,9 +98,10 @@ services:
       - LIGHTER_ACCOUNT_INDEX=${LIGHTER_ACCOUNT_INDEX:-}
       - LIGHTER_API_KEY_INDEX=${LIGHTER_API_KEY_INDEX:-}
       - LIGHTER_API_PRIVATE_KEY=${LIGHTER_API_PRIVATE_KEY:-}
+      - SERVICE_ROLE=trading_service
     volumes:
       - ./datafiles:/datafiles
       - ./logs:/app/logs
     networks:
       - trading
-    command: ["python3", "-m", "uvicorn", "application.main:app", "--host", "0.0.0.0", "--port", "8010"]
+    command: ["python3", "-m", "uvicorn", "apps.trading_service.app:app", "--host", "0.0.0.0", "--port", "8010"]

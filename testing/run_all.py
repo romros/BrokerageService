@@ -318,6 +318,8 @@ def main():
         testing_dir / "unit" / "test_ostium_symbol_allowlist.py",  # Ostium allowlist + quarantine (0 network)
         testing_dir / "unit" / "test_data_status_quarantine_flags.py",  # data_status quarantine flags (0 network)
         testing_dir / "unit" / "test_ostium_lab_monitor_status.py",  # Ostium LAB monitor parser + rotation + retention (0 network)
+        testing_dir / "unit" / "test_ostium_tick_recorder.py",  # Ostium tick recorder forense (0 network)
+        testing_dir / "unit" / "test_service_role_wiring.py",  # Split vNext Phase 1 role boundaries (0 network)
         testing_dir / "unit" / "test_headers_reflect_primary_ostium.py",  # Headers ostium_recorded (0 network)
         testing_dir / "unit" / "test_mixed_denied_when_not_pass.py",  # Mixed denied sense PASS (0 network)
         testing_dir / "unit" / "test_market_hours_fx_closed_weekend.py",  # Market hours FX 24/5 (0 network)

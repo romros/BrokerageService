@@ -51,7 +51,17 @@
 | broker_routes, IVenueAdapter | trading_service |
 | `foundation/`, `domain/` | `packages/shared/` (compartit) |
 
-**Nota:** Encara no s'ha migrat codi; és scaffold. Estructura a `apps/`, `packages/`, compose split a `deploy/compose/docker-compose.split.yml`.
+### Role boundaries (Phase 1)
+
+- **realtime_datalayer:** Ostium ingest + Data Layer prod; NO adapter, NO trading routes
+- **historical_datalayer:** Data Layer backfill_only (Dukascopy); NO Ostium ingest, NO adapter
+- **trading_service:** adapter + trading routes; NO ingest, NO Data Layer writer
+
+### Phase 2 (futur)
+
+- Migració de paquets/codi a `apps/*`
+- Refactor de `foundation/`, `domain/` → `packages/shared/`
+- No inclòs en Phase 1
 
 ---
 
@@ -437,6 +447,7 @@ Decisió de "venue principal" sempre és en 2 eixos:
 
 ## 15) Changelog
 
+- **2026-02-18** — Split vNext Phase 1: SERVICE_ROLE, entrypoints per servei (apps/*/app.py), create_app(role), role boundaries, compose amb entrypoints reals.
 - **2026-02-18** — Split vNext: scaffold monorepo (apps/, packages/), compose 3 serveis, plantilla_tasca.md, mapping actual→vNext.
 - **2026-02-17** — Ostium prod-ish opt-in: graduation path (§8.4); Ostium integrat com a recorder opt-in (no primary fins gates). Data Layer canònic; fallback Dukascopy; exec desacoblat. Normes (§6), Testing sense pytest (§7), LAB (§8), Docker (§11).
 - **2026-02-14** — API canònica `/api/v1/broker/*`, candles sense venue, semàntica 1m (UTC start-of-minute).
