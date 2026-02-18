@@ -48,11 +48,15 @@ def load_ostium_registry(registry_path: str | Path | None = None) -> dict:
 
 def get_ostium_primary_allowed(symbol: str, registry_path: str | Path | None = None) -> bool:
     """
-    Retorna True només si compat PASS per aquell símbol.
+    Retorna True només si compat PASS per aquell símbol i no està quarantined.
 
     Returns:
-        True si status=PASS i ostium_primary_allowed=true; False altrament.
+        True si status=PASS, ostium_primary_allowed=true i symbol no és quarantined; False altrament.
     """
+    from application.data.ostium_symbol_policy import is_ostium_quarantined
+
+    if is_ostium_quarantined(symbol):
+        return False
     data = load_ostium_registry(registry_path)
     entry = data.get(symbol.upper())
     if not isinstance(entry, dict):

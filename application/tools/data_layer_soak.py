@@ -142,6 +142,8 @@ def main() -> int:
     parser.add_argument("--compat-symbol", default=os.getenv("OSTIUM_COMPAT_SYMBOL", "EURUSD"), help="Symbol for compat")
     parser.add_argument("--compat-candles", type=int, default=int(os.getenv("OSTIUM_COMPAT_WINDOW_MINUTES", "650")), help="Window minutes for compat")
     parser.add_argument("--wait-timeout", type=int, default=DEFAULT_WAIT_READY_TIMEOUT_S, help="Seconds to wait for data_status ready")
+    parser.add_argument("--profile", default="", help="Profile: ostium = use canonical symbols from data_status")
+    parser.add_argument("--symbols", default="", help="Comma-separated symbols (quarantined filtered + warned)")
     args = parser.parse_args()
 
     minutes = max(1, min(120, args.minutes))
@@ -151,8 +153,10 @@ def main() -> int:
 
     base = BROKER_URL.rstrip("/")
     data_status_url = f"{base}/api/v1/broker/data_status"
-    symbols_raw = os.getenv("DATA_LAYER_WRITE_SYMBOLS", os.getenv("SYMBOLS", "XAUUSD,EURUSD"))
-    symbols = [s.strip() for s in symbols_raw.split(",") if s.strip()]
+
+    # Symbols: --symbols > env > data_status (ostium profile) > default
+    symbols_raw = args.symbols or os.getenv("DATA_LAYER_WRITE_SYMBOLS", os.getenv("SYMBOLS", "EURUSD,GBPUSD"))
+    symbols = [s.strip().upper() for s in symbols_raw.split(",") if s.strip()]
     sym_str = "_".join(symbols[:3])
 
     print("Data Layer soak")
@@ -169,6 +173,27 @@ def main() -> int:
         data_status_url, timeout_s=args.wait_timeout, poll_s=1
     )
     print(f"  Ready in {startup_wait_s:.0f}s (status={startup_status}, timeout={startup_timeout})")
+
+    # Ostium profile: use canonical symbols from data_status (allowlist - quarantine)
+    if args.profile == "ostium" and data_status:
+        ds_symbols = list((data_status.get("symbols") or {}).keys())
+        if ds_symbols:
+            symbols = sorted(ds_symbols)
+            sym_str = "_".join(symbols[:3])
+            print(f"  Ostium profile: using canonical symbols from data_status: {symbols}")
+    # --symbols provided: filter quarantined and warn
+    elif args.symbols and data_status:
+        syms_data = data_status.get("symbols") or {}
+        allowed = []
+        for s in symbols:
+            m = syms_data.get(s, {})
+            if m.get("quarantined"):
+                print(f"  WARNING: symbol {s} is quarantined ({m.get('quarantine_reason', '?')}) — ignoring")
+            else:
+                allowed.append(s)
+        symbols = allowed
+        sym_str = "_".join(symbols[:3]) if symbols else "none"
+
     if startup_timeout:
         print(f"\n✗ Soak FAILED: data_status still initializing after {args.wait_timeout}s")
         datafiles_root = Path(os.getenv("DATAFILES_ROOT", str(ROOT / "datafiles")))

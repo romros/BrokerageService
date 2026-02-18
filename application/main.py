@@ -257,8 +257,8 @@ async def lifespan(app: FastAPI):
                 cfg["write_mode"] = os.getenv("DATA_LAYER_WRITE_MODE", "realtime_plus_backfill").lower()
                 if cfg["write_mode"] not in ("realtime_only", "realtime_plus_backfill", "backfill_only"):
                     cfg["write_mode"] = "realtime_plus_backfill"
-                ostium_symbols = os.getenv("OSTIUM_SYMBOLS", os.getenv("SYMBOLS", "EURUSD,XAUUSD")).split(",")
-                cfg["symbols"] = [s.strip() for s in ostium_symbols if s.strip()]
+                from application.data.ostium_symbol_policy import get_ostium_ingest_symbols
+                cfg["symbols"] = list(get_ostium_ingest_symbols())
                 from infrastructure.venues.dukascopy.dukascopy_backfill_provider import DukascopyBackfillProvider  # lazy
                 provider = DukascopyBackfillProvider(cache_root=config["datafiles_root"])
             else:
@@ -288,8 +288,13 @@ async def lifespan(app: FastAPI):
             logger.warning("Data Layer prod v0 not started: %s", e)
 
     # Ostium realtime writer (OSTIUM_ENABLED=1 + write_mode permet ingest)
+    # ingest_symbols = allowlist - quarantine (per defecte EURUSD,GBPUSD; XAUUSD,XAU quarantined)
     ostium_ingest_service = None
-    ostium_symbols = [s.strip() for s in os.getenv("OSTIUM_SYMBOLS", os.getenv("SYMBOLS", "EURUSD,XAUUSD")).split(",") if s.strip()]
+    if ostium_enabled:
+        from application.data.ostium_symbol_policy import get_ostium_ingest_symbols
+        ostium_symbols = list(get_ostium_ingest_symbols())
+    else:
+        ostium_symbols = []
     _write_mode = (cfg.get("write_mode", os.getenv("DATA_LAYER_WRITE_MODE", "realtime_plus_backfill")) if ostium_enabled else "realtime")
     _write_mode = str(_write_mode).lower()
     ostium_ingest_allowed = _write_mode in ("realtime_only", "realtime_plus_backfill")

@@ -77,6 +77,9 @@ case "$PROFILE" in
     if [ "$POST_COMPAT" = "post-compat" ] && [ "$PROFILE" = "ostium" ]; then
       SOAK_ARGS="$SOAK_ARGS --post-compat 1"
     fi
+    if [ "$PROFILE" = "ostium" ]; then
+      SOAK_ARGS="$SOAK_ARGS --profile ostium"
+    fi
     python3 -m application.tools.data_layer_soak $SOAK_ARGS
     ;;
   ws)

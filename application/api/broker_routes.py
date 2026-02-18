@@ -567,9 +567,55 @@ async def get_data_status():
         _http_error(503, DATA_STATUS_NOT_AVAILABLE, "Data Layer metrics not available (no pipeline)")
 
     snapshot = metrics.snapshot()
+    symbols_data = dict(snapshot["symbols"])
+
+    # Enriquir per símbol: ingest_allowed, primary_eligible, quarantined, quarantine_reason
+    if _ostium_ingest_enabled:
+        from application.data.ostium_compat_registry import get_ostium_primary_allowed
+        from application.data.ostium_symbol_policy import (
+            get_ostium_ingest_symbols,
+            get_ostium_quarantine,
+            is_ostium_quarantined,
+        )
+        ingest_symbols = set(get_ostium_ingest_symbols())
+        quarantine_symbols = get_ostium_quarantine()
+        primary_by_symbol = {}
+        for sym, m in list(symbols_data.items()):
+            config_quarantine = sym in quarantine_symbols
+            degraded = m.get("symbol_state") == "DEGRADED"
+            dupes = m.get("duplicates", 0) or m.get("ts_step_errors", 0)
+            runtime_quarantine = degraded and dupes > 0
+            quarantined = config_quarantine or runtime_quarantine
+            if config_quarantine:
+                reason = "config"
+            elif runtime_quarantine:
+                reason = m.get("degrade_reason") or "DEGRADED"
+            else:
+                reason = ""
+            m["ingest_allowed"] = sym in ingest_symbols and not config_quarantine
+            m["primary_eligible"] = get_ostium_primary_allowed(sym)
+            m["quarantined"] = quarantined
+            m["quarantine_reason"] = reason
+            primary_by_symbol[sym] = m["primary_eligible"]
+        # Afegir símbols quarantined (config) que no estan al snapshot
+        for sym in sorted(quarantine_symbols):
+            if sym not in symbols_data:
+                symbols_data[sym] = {
+                    "ingest_allowed": False,
+                    "primary_eligible": False,
+                    "quarantined": True,
+                    "quarantine_reason": "config",
+                }
+            else:
+                symbols_data[sym]["ingest_allowed"] = False
+                symbols_data[sym]["primary_eligible"] = False
+                symbols_data[sym]["quarantined"] = True
+                symbols_data[sym]["quarantine_reason"] = symbols_data[sym].get("quarantine_reason") or "config"
+            primary_by_symbol[sym] = False
+
     result = {
         "data_layer_status": lifecycle_status,
-        "symbols": snapshot["symbols"],
+        "symbols": symbols_data,
         "ws_reconnects": snapshot["ws_reconnects"],
         "server_time": datetime.now(timezone.utc).isoformat(),
         "canonical_tz": CANONICAL_TIMEZONE_NAME,
@@ -583,11 +629,9 @@ async def get_data_status():
         result["initializing_reason"] = lifecycle_reason
     if _ostium_ingest_enabled:
         result["ingest_source"] = "ostium_realtime"
-        from application.data.ostium_compat_registry import get_ostium_primary_allowed
-        primary_by_symbol = {
-            sym: get_ostium_primary_allowed(sym) for sym in snapshot["symbols"]
+        result["primary_allowed_by_symbol"] = primary_by_symbol if primary_by_symbol else {
+            sym: s.get("primary_eligible", False) for sym, s in symbols_data.items()
         }
-        result["primary_allowed_by_symbol"] = primary_by_symbol
     return result
 
 

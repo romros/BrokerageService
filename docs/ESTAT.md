@@ -1,6 +1,6 @@
 # ESTAT DEL PROJECTE — BrokerageService
 
-**Data:** 2026-02-17  
+**Data:** 2026-02-18  
 **Repo/Path:** `/mnt/volume-SQ/dev/BrokerageService`  
 **Venues:** **Lighter (principal — MVP 100%)** · gTrade (futur)  
 **TZ canònica (config):** `CANONICAL_TZ=America/New_York`  
@@ -48,6 +48,12 @@
 
 **Perfil Ostium:** `OSTIUM_ENABLED=1` + `DATA_LAYER_WRITE_MODE=realtime_plus_backfill`. Realtime: OstiumCandleIngestService (polling REST); històric/gaps: DukascopyBackfillProvider. `backfill_only` = ingest OFF. Gates market-hours aware: soak en cap de setmana no DEGRADED per stale. `./scripts/run_smoke.sh ostium`, `./scripts/run_soak.sh 30 ostium`.
 
+**Allowlist + Quarantine (Ostium prod-ish v1):**
+- `OSTIUM_SYMBOLS` (default: EURUSD,GBPUSD): allowlist canònica — símbols que Ostium pot ingerir.
+- `OSTIUM_QUARANTINE_SYMBOLS` (default: XAUUSD,XAU): símbols en quarantine — no ingest, no primary.
+- `ingest_symbols = allowlist - quarantine`. Primary eligibility: `get_ostium_primary_allowed(symbol)` retorna `false` si quarantined (abans de mirar registry).
+- `data_status` per símbol: `ingest_allowed`, `primary_eligible`, `quarantined`, `quarantine_reason`.
+
 ---
 
 ## Ostium ↔ Dukascopy compat (graduation gate)
@@ -66,6 +72,13 @@
 **Verdict:** PASS | PARTIAL | FAIL (llindars via `compat_report_service` + constants). PASS → primary allowed; PARTIAL/FAIL → opt-in experimental sense declarar primary.
 
 **PASS ⇒ primary (detall explícit):** Quan `ostium_primary_allowed(symbol)=true` → `primary_source=ostium_recorded`, `mixed_allowed=true`. Headers OHLCV: `X-Data-Source=ostium_recorded` (o `mixed` si rang travessa cutover), `X-Data-Primary-Source=ostium_recorded`. Coverage retorna `source=ostium_recorded`. data_status inclou `primary_allowed_by_symbol[symbol]=true`.
+
+**Estat per símbol (prod-ish v1):**
+
+| Símbol | Compat | Primary allowed | Quarantined |
+|--------|--------|-----------------|-------------|
+| EURUSD | PASS   | ✅ true         | No          |
+| XAUUSD | FAIL   | ❌ false        | Sí (config) |
 
 **Què canvia quan PASS → primary (mini-taula):**
 
@@ -139,6 +152,8 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-17 | Market-hours aware gates | ✅ is_market_open, closed_intervals; stale/missing ajustats; data_status market_open | soak cap de setmana no DEGRADED |
 | 2026-02-17 | Ostium Graduation Loop v1 | ✅ run_soak.sh 30 ostium post-compat; SKIP si no candles; graduation_summary a artifact | `./scripts/run_soak.sh 2 ostium post-compat` (SKIP per falta Dukascopy) |
 | 2026-02-18 | Data Layer readiness handshake | ✅ data_status 200 amb initializing; soak wait_for_ready; startup_wait_s a artifact | `./scripts/run_soak.sh 2 ostium post-compat` sense 503 |
+| 2026-02-17 | Ostium allowlist + quarantine v1 | ✅ OSTIUM_SYMBOLS, OSTIUM_QUARANTINE_SYMBOLS; EURUSD primary allowed; XAUUSD quarantined | run_soak ostium usa llista canònica |
+| 2026-02-18 | run_all.py | ✅ passa (incl. test_ostium_symbol_allowlist, test_data_status_quarantine_flags) | `./test.sh testing/run_all.py` |
 
 **Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 
