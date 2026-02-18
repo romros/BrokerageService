@@ -1,10 +1,16 @@
 #!/bin/bash
 # Quick check script per veure el progrés de la captura 24h
 
-RUN_DIR="lab/out/ostium_prices/20260217_080232"
+# Prefer continuous/ (--forever mode), else most recent run
+if [ -d "lab/out/ostium_prices/continuous" ]; then
+    RUN_DIR="lab/out/ostium_prices/continuous"
+else
+    RUN_DIR="lab/out/ostium_prices/$(ls -1t lab/out/ostium_prices 2>/dev/null | grep -E '^[0-9]{8}_[0-9]{6}$' | head -1)"
+fi
+[ -z "$RUN_DIR" ] || [ ! -d "$RUN_DIR" ] && RUN_DIR="lab/out/ostium_prices/continuous"
 
 echo "=================================="
-echo "🔍 OSTIUM 24H COLLECTION PROGRESS"
+echo "🔍 OSTIUM COLLECTION PROGRESS"
 echo "=================================="
 echo ""
 
@@ -20,7 +26,7 @@ echo ""
 
 # Candles count per symbol
 echo "📊 Candles capturades per símbol:"
-for symbol in EURUSD XAUUSD GBPUSD; do
+for symbol in EURUSD XAUUSD GBPJPY; do
     if [ -f "$RUN_DIR/${symbol}.jsonl" ]; then
         CANDLES=$(wc -l < "$RUN_DIR/${symbol}.jsonl")
         echo "   ${symbol}: $CANDLES / ~1440 ($(echo "scale=1; $CANDLES * 100 / 1440" | bc)%)"
@@ -41,7 +47,7 @@ echo ""
 
 # Last candles per symbol
 echo "📈 Últimes candles:"
-for symbol in EURUSD XAUUSD GBPUSD; do
+for symbol in EURUSD XAUUSD GBPJPY; do
     if [ -f "$RUN_DIR/${symbol}.jsonl" ] && [ -s "$RUN_DIR/${symbol}.jsonl" ]; then
         echo "   ${symbol}:"
         tail -1 "$RUN_DIR/${symbol}.jsonl" | jq -c '.' | sed 's/^/     /'

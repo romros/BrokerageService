@@ -40,19 +40,19 @@ cd /mnt/volume-SQ/dev/BrokerageService
 # EUR/USD
 python3 lab/ostium/scripts/rest_price_probe.py \
   --symbol EURUSD \
-  --indir lab/out/ostium_prices/20260217_080232 \
+  --indir lab/out/ostium_prices/continuous \
   --check-trading-hours
 
 # XAU/USD (or)
 python3 lab/ostium/scripts/rest_price_probe.py \
   --symbol XAUUSD \
-  --indir lab/out/ostium_prices/20260217_080232 \
+  --indir lab/out/ostium_prices/continuous \
   --check-trading-hours
 
-# GBP/USD
+# GBP/JPY
 python3 lab/ostium/scripts/rest_price_probe.py \
-  --symbol GBPUSD \
-  --indir lab/out/ostium_prices/20260217_080232 \
+  --symbol GBPJPY \
+  --indir lab/out/ostium_prices/continuous \
   --check-trading-hours
 ```
 
@@ -77,13 +77,13 @@ cd /mnt/volume-SQ/dev/BrokerageService
 # EUR/USD (prioritari)
 python3 lab/ostium/scripts/ostium_vs_dukascopy_compat.py \
   --symbol EURUSD \
-  --ostium-dir lab/out/ostium_prices/20260217_080232 \
+  --ostium-dir lab/out/ostium_prices/continuous \
   --minutes 1440
 
 # XAU/USD (si Dukascopy el suporta)
 python3 lab/ostium/scripts/ostium_vs_dukascopy_compat.py \
   --symbol XAUUSD \
-  --ostium-dir lab/out/ostium_prices/20260217_080232 \
+  --ostium-dir lab/out/ostium_prices/continuous \
   --minutes 1440
 ```
 
@@ -114,7 +114,7 @@ Aquest script:
 
 ### Probes Qualitat (08:00-10:00)
 
-**EURUSD, XAUUSD, GBPUSD:**
+**EURUSD, XAUUSD, GBPJPY:**
 - Candles: ~1440 per símbol
 - Missing minutes: ≤2
 - Duplicates: 0
@@ -142,13 +142,13 @@ Després d'executar tot:
 
 ```
 lab/out/
-├── ostium_prices/20260217_080232/
+├── ostium_prices/continuous/
 │   ├── EURUSD.jsonl
 │   ├── XAUUSD.jsonl
-│   └── GBPUSD.jsonl
+│   └── GBPJPY.jsonl
 ├── ostium_price_probe_EURUSD.json
 ├── ostium_price_probe_XAUUSD.json
-├── ostium_price_probe_GBPUSD.json
+├── ostium_price_probe_GBPJPY.json
 ├── ostium_compat_EURUSD_1440m.json ⭐
 └── ostium_compat_XAUUSD_1440m.json
 ```

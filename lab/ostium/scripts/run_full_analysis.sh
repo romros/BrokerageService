@@ -4,27 +4,31 @@
 # Pas 1 (Demà 08:00-10:00 UTC): Probes qualitat Ostium
 # Pas 2 (Demà 12:00+ UTC): Compat vs Dukascopy
 
-RUN_DIR="lab/out/ostium_prices/20260217_080232"
+# Prefer continuous/, else most recent run, else default
+if [ -d "lab/out/ostium_prices/continuous" ]; then
+    RUN_DIR="lab/out/ostium_prices/continuous"
+elif [ -n "$1" ] && [ -d "$1" ]; then
+    RUN_DIR="$1"
+else
+    RUN_DIR="lab/out/ostium_prices/$(ls -1t lab/out/ostium_prices 2>/dev/null | grep -E '^[0-9]{8}_[0-9]{6}$' | head -1)"
+fi
+[ -z "$RUN_DIR" ] || [ ! -d "$RUN_DIR" ] && RUN_DIR="lab/out/ostium_prices/continuous"
 
 echo "=========================================="
 echo "🔬 OSTIUM FULL ANALYSIS"
 echo "=========================================="
 echo ""
 
-# Check if collection is complete
 if tmux has-session -t ostium_24h 2>/dev/null; then
-    echo "⚠️  ATENCIÓ: Collector encara està corrent!"
-    echo "   Espera que finalitzi abans d'executar aquest script."
-    echo "   Check: tmux attach -t ostium_24h"
-    exit 1
+    echo "⚠️  Collector encara actiu (mode --forever). Analitzant dades actuals a $RUN_DIR"
+else
+    echo "✅ Analitzant $RUN_DIR"
 fi
-
-echo "✅ Collector finalitzat. Començant anàlisi..."
 echo ""
 
 # Check candles count
 echo "📊 Comptant candles capturades..."
-for symbol in EURUSD XAUUSD GBPUSD; do
+for symbol in EURUSD XAUUSD GBPJPY; do
     if [ -f "$RUN_DIR/${symbol}.jsonl" ]; then
         COUNT=$(wc -l < "$RUN_DIR/${symbol}.jsonl")
         echo "   ${symbol}: $COUNT candles"
@@ -46,7 +50,7 @@ echo "PHASE 1: OSTIUM QUALITY PROBES"
 echo "=========================================="
 echo ""
 
-for symbol in EURUSD XAUUSD GBPUSD; do
+for symbol in EURUSD XAUUSD GBPJPY; do
     echo "🔍 Probe $symbol..."
     python3 lab/ostium/scripts/rest_price_probe.py \
         --symbol $symbol \

@@ -2,7 +2,7 @@
 # Simple compatibility check: Ostium (6h) vs expectativa
 # Sense dependencies Python pesades
 
-OSTIUM_DIR="lab/out/ostium_prices/20260217_080232"
+OSTIUM_DIR="${1:-lab/out/ostium_prices/continuous}"
 
 echo ""
 echo "════════════════════════════════════════════════════════"
@@ -10,7 +10,7 @@ echo "🔬 OSTIUM 6H — QUALITY CHECK"
 echo "════════════════════════════════════════════════════════"
 echo ""
 
-for SYMBOL in EURUSD XAUUSD GBPUSD; do
+for SYMBOL in EURUSD XAUUSD GBPJPY; do
     FILE="$OSTIUM_DIR/${SYMBOL}.jsonl"
     
     if [ ! -f "$FILE" ]; then

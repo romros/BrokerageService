@@ -33,7 +33,7 @@ def is_trading_hour(ts: int, symbol: str) -> bool:
     
     Simplified: Only checks weekends. Holidays NOT included.
     """
-    if symbol not in ["EURUSD", "XAUUSD", "GBPUSD"]:
+    if symbol not in ["EURUSD", "XAUUSD", "GBPUSD", "GBPJPY"]:
         # Crypto pairs are 24/7
         return True
     

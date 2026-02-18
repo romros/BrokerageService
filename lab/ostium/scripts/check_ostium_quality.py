@@ -112,8 +112,8 @@ def main():
     
     if len(sys.argv) < 2:
         # Default to current run
-        run_dir = "lab/out/ostium_prices/20260217_080232"
-        symbols = ["EURUSD", "XAUUSD", "GBPUSD"]
+        run_dir = "lab/out/ostium_prices/continuous"
+        symbols = ["EURUSD", "XAUUSD", "GBPJPY"]
     else:
         run_dir = sys.argv[1]
         symbols = sys.argv[2:] if len(sys.argv) > 2 else ["EURUSD"]

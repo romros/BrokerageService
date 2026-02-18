@@ -5,17 +5,16 @@
 ╚═══════════════════════════════════════════════════════════════════════════╝
 
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ 🏃 COLLECTOR EN MARXA (24h)                                             │
+│ 🏃 COLLECTOR EN MARXA (continu)                                        │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
-│  Assets:    🇪🇺 EURUSD    🥇 XAUUSD    🇬🇧 GBPUSD                       │
+│  Assets:    🇪🇺 EURUSD    🥇 XAUUSD    🇬🇧 GBPJPY                       │
 │  Interval:  2 segons per asset (1.5 req/s total)                        │
 │  Timezone:  NY time (ET, UTC-5)                                         │
-│  Inici:     2026-02-17 08:02 UTC (03:02 ET)                             │
-│  Fi:        2026-02-18 08:02 UTC (03:02 ET)                             │
+│  Mode:      Indefinit (append a continuous/)                           │
 │                                                                          │
 │  Tmux:      ostium_24h                                                  │
-│  Output:    lab/out/ostium_prices/20260217_080232/                      │
+│  Output:    lab/out/ostium_prices/continuous/                           │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
 
@@ -25,7 +24,7 @@
 │                                                                          │
 │  EURUSD:  ▓░░░░░░░░░░░░░░░░░░░  ~10 / 1440 candles (0.6%)             │
 │  XAUUSD:  ▓░░░░░░░░░░░░░░░░░░░  ~10 / 1440 candles (0.6%)             │
-│  GBPUSD:  ▓░░░░░░░░░░░░░░░░░░░  ~10 / 1440 candles (0.6%)             │
+│  GBPJPY:  ▓░░░░░░░░░░░░░░░░░░░  ~10 / 1440 candles (0.6%)             │
 │                                                                          │
 │  Status:  ✅ OK (0 gaps, 0 duplicats)                                   │
 │                                                                          │
@@ -110,7 +109,7 @@
 │  XAUUSD: {"ts": 1771315860, "o": 4923.09, "h": 4923.09,                │
 │           "l": 4921.81, "c": 4922.75, "v": 0}                           │
 │                                                                          │
-│  GBPUSD: {"ts": 1771315860, "o": 1.35729, "h": 1.35742,                │
+│  GBPJPY: {"ts": 1771315860, "o": 1.35729, "h": 1.35742,                │
 │           "l": 1.35709, "c": 1.35742, "v": 0}                           │
 │                                                                          │
 │  Format: ts=epoch UTC, o/h/l/c=preus, v=0 (N/A per polling)            │
@@ -121,8 +120,8 @@
 ║                           TOT LLEST! 🎯                                   ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
 
-  El collector seguirà automàticament durant 24h.
-  Demà executa les comandes de COMANDES_DEMA.md o CHECKLIST_DEMA.txt.
+  El collector seguirà indefinidament (append a continuous/).
+  Executa les comandes de COMANDES_DEMA.md quan calgui.
   
   Check progrés quan vulguis: ./lab/ostium/scripts/check_24h_progress.sh
 

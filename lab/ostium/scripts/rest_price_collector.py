@@ -5,8 +5,13 @@ Ostium REST Price Collector — Mainnet Price Monitoring
 Captura preus via polling REST /latest-price i construeix candles 1m.
 Restartable, multi-symbol, persisteix a JSONL.
 
+Default: run indefinit (--forever), append a continuous/, símbols EURUSD,XAUUSD,GBPJPY.
+Dukascopy només suporta EURUSD i XAUUSD per compat; GBPJPY per mostra addicional.
+
 Usage:
-    python3 rest_price_collector.py --symbols EURUSD,XAUUSD --hours 72
+    python3 rest_price_collector.py                    # indefinit (default)
+    python3 rest_price_collector.py --hours 72         # limitat a 72h
+    python3 rest_price_collector.py --symbols EURUSD,XAUUSD  # només compat
 
 Similar a ws_candle_collector.py (Lighter) però per REST polling.
 """
@@ -267,14 +272,18 @@ class PersistenceManager:
         }
         self.save_state()
     
-    def update_status(self, symbols: List[str], elapsed_s: int, target_s: int):
+    def update_status(self, symbols: List[str], elapsed_s: int, target_s: int, forever: bool = False):
         """Write STATUS.md with progress table"""
+        if forever or target_s <= 0:
+            elapsed_str = f"{elapsed_s}s (continuous)"
+        else:
+            elapsed_str = f"{elapsed_s}s / {target_s}s ({elapsed_s / target_s * 100:.1f}%)"
         lines = [
             "# Ostium REST Price Collector — Status",
             "",
             f"**Run ID:** {self.outdir.name}",
             f"**Started:** {datetime.now(tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
-            f"**Elapsed:** {elapsed_s}s / {target_s}s ({elapsed_s / target_s * 100:.1f}%)",
+            f"**Elapsed:** {elapsed_str}",
             "",
             "## Progress",
             "",
@@ -311,11 +320,12 @@ async def run_collector(
     hours: float,
     poll_interval_s: int,
     outdir: str,
-    resume: bool
+    resume: bool,
+    forever: bool = False
 ):
     """Main collector loop"""
     
-    run_id = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
+    run_id = "continuous" if forever else datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
     pm = PersistenceManager(Path(outdir), run_id)
     
     print("=" * 80)
@@ -323,7 +333,7 @@ async def run_collector(
     print("=" * 80)
     print()
     print(f"Symbols:        {', '.join(symbols)}")
-    print(f"Duration:       {hours}h ({hours * 3600}s)")
+    print(f"Duration:       {'continuous (--forever)' if forever else f'{hours}h ({hours * 3600}s)'}")
     print(f"Poll interval:  {poll_interval_s}s")
     print(f"Output dir:     {pm.outdir}")
     print(f"Resume:         {'Yes' if resume else 'No'}")
@@ -340,7 +350,7 @@ async def run_collector(
     builder = CandleBuilder()
     
     start_time = time.time()
-    target_duration_s = hours * 3600
+    target_duration_s = hours * 3600 if not forever else 0
     last_status_update = time.time()
     status_update_interval = 30  # Update STATUS.md every 30s
     
@@ -348,7 +358,7 @@ async def run_collector(
         while True:
             elapsed = time.time() - start_time
             
-            if elapsed >= target_duration_s:
+            if not forever and elapsed >= target_duration_s:
                 print(f"\n✅ Target duration {hours}h reached. Stopping.")
                 break
             
@@ -378,7 +388,7 @@ async def run_collector(
             
             # Update STATUS.md periodically
             if time.time() - last_status_update >= status_update_interval:
-                pm.update_status(symbols, int(elapsed), target_duration_s)
+                pm.update_status(symbols, int(elapsed), target_duration_s, forever=forever)
                 last_status_update = time.time()
             
             # Sleep until next poll
@@ -400,7 +410,7 @@ async def run_collector(
             print(f"   ✅ Final flush: {len(candles)} candle(s) for {symbol}")
     
     # Final status
-    pm.update_status(symbols, int(time.time() - start_time), target_duration_s)
+    pm.update_status(symbols, int(time.time() - start_time), target_duration_s, forever=forever)
     
     print()
     print("=" * 80)
@@ -429,18 +439,23 @@ def main():
     )
     parser.add_argument(
         "--symbols",
-        required=True,
-        help="Comma-separated symbols (e.g. EURUSD,XAUUSD)"
+        default="EURUSD,XAUUSD,GBPJPY",
+        help="Comma-separated symbols (default: EURUSD,XAUUSD,GBPJPY)"
+    )
+    parser.add_argument(
+        "--forever",
+        action="store_true",
+        help="Run indefinitely (default when no --hours/--minutes)"
     )
     parser.add_argument(
         "--hours",
         type=int,
-        help="Duration in hours (mutually exclusive with --minutes)"
+        help="Duration in hours (mutually exclusive with --minutes and --forever)"
     )
     parser.add_argument(
         "--minutes",
         type=int,
-        help="Duration in minutes (mutually exclusive with --hours)"
+        help="Duration in minutes (mutually exclusive with --hours and --forever)"
     )
     parser.add_argument(
         "--poll-interval-s",
@@ -462,15 +477,22 @@ def main():
     
     args = parser.parse_args()
     
-    # Handle hours/minutes
-    if args.hours and args.minutes:
-        parser.error("Cannot specify both --hours and --minutes")
-    elif args.minutes:
+    # Handle hours/minutes/forever
+    if sum([bool(args.hours), bool(args.minutes), args.forever]) > 1:
+        parser.error("Cannot specify both --hours, --minutes and --forever")
+    if args.minutes:
         hours = args.minutes / 60.0
+        forever = False
     elif args.hours:
         hours = args.hours
+        forever = False
+    elif args.forever:
+        hours = 0
+        forever = True
     else:
-        hours = 3  # default
+        # Default: run indefinit per acumular mostra (no sabem quan caldrà aturar)
+        hours = 0
+        forever = True
     
     symbols = [s.strip() for s in args.symbols.split(",")]
     
@@ -479,7 +501,8 @@ def main():
         hours=hours,
         poll_interval_s=args.poll_interval_s,
         outdir=args.outdir,
-        resume=bool(args.resume)
+        resume=bool(args.resume),
+        forever=forever
     ))
 
 

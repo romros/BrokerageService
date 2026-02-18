@@ -25,7 +25,7 @@
 
 | Script | Funció | Status |
 |--------|--------|--------|
-| `rest_price_collector.py` | Polling REST, build candles 1m | ✅ 24h EN MARXA |
+| `rest_price_collector.py` | Polling REST, build candles 1m | ✅ Continu (default --forever) |
 | `rest_price_probe.py` | Valida qualitat (gaps, coverage) | ✅ |
 | `ostium_vs_dukascopy_compat_v2.py` | Compara Ostium vs Dukascopy | ✅ |
 | `check_24h_progress.sh` | Check progrés | ✅ |
@@ -67,10 +67,9 @@ python3 scripts/test_full_cycle_no_subgraph.py
 ### Price Monitoring
 
 ```bash
-# 1. Captura (3 assets, 2s)
+# 1. Captura (3 assets, continu indefinit — default)
 tmux new -d -s ostium_24h \
-  "python3 scripts/rest_price_collector.py \
-   --symbols EURUSD,XAUUSD,GBPUSD --hours 24 --poll-interval-s 2"
+  "python3 scripts/rest_price_collector.py --poll-interval-s 2"
 
 # 2. Check progrés
 ./scripts/check_24h_progress.sh
@@ -81,7 +80,7 @@ docker run --rm -v $(pwd):/workspace -w /workspace \
   -e PYTHONPATH=/workspace ostium_analysis \
   python3 lab/ostium/scripts/ostium_vs_dukascopy_compat_v2.py \
     --symbol EURUSD \
-    --ostium-dir lab/out/ostium_prices/20260217_080232 \
+    --ostium-dir lab/out/ostium_prices/continuous \
     --candles 1440
 ```
 
@@ -138,21 +137,18 @@ lab/ostium/
 
 ---
 
-## Captura Actual (2026-02-17)
+## Captura Actual (continu)
 
 | Paràmetre | Valor |
 |-----------|-------|
-| Assets | EURUSD, XAUUSD, GBPUSD |
-| Inici | 2026-02-17 08:02 UTC |
-| Fi | 2026-02-18 08:02 UTC |
+| Assets | EURUSD, XAUUSD, GBPJPY |
+| Mode | Indefinit (append a `continuous/`) |
 | Poll | 2s (1.5 req/s) |
 | Tmux | ostium_24h |
-| Output | `lab/out/ostium_prices/20260217_080232/` |
-| Progrés | 393 candles (27%), qualitat excel·lent |
+| Output | `lab/out/ostium_prices/continuous/` |
+| Compat Dukascopy | EURUSD, XAUUSD (GBPJPY no suportat per Dukascopy) |
 
-**Anàlisi:**
-- Demà 08:00 UTC: probes qualitat
-- Demà 12:00+ UTC: compat full (1440c)
+**Nota:** Dukascopy només suporta EURUSD i XAUUSD. GBPJPY es recull per mostra addicional.
 
 ---
 
@@ -185,5 +181,5 @@ lab/ostium/
 
 ---
 
-**Última actualització:** 2026-02-17 15:00 UTC  
-**Status:** LAB — Captura 24h en curs (393/1440 candles)
+**Última actualització:** 2026-02-18  
+**Status:** LAB — Captura continua (EURUSD, XAUUSD, GBPJPY → continuous/)
