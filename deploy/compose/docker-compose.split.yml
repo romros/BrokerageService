@@ -24,11 +24,16 @@ services:
       - HOST=0.0.0.0
       - MODE=${MODE:-backtest}
       - DATAFILES_ROOT=/datafiles
+      - REALTIME_DATALAYER_ROOT=/datafiles/realtime_datalayer
+      - REALTIME_CANDLES_MAX_HOURS=${REALTIME_CANDLES_MAX_HOURS:-168}
+      - REALTIME_TICKS_MAX_HOURS=${REALTIME_TICKS_MAX_HOURS:-72}
       - CANONICAL_TZ=America/New_York
       - SYMBOLS=${SYMBOLS:-XAUUSD,EURUSD}
       - DATA_LAYER_ENABLED=1
       - DATA_LAYER_WRITE_MODE=realtime_plus_backfill
       - OSTIUM_ENABLED=1
+      - OSTIUM_TICK_RECORDER_ENABLED=1
+      - OSTIUM_TICK_RECORDER_OUTDIR=/datafiles/realtime_datalayer/ticks
       - OSTIUM_SYMBOLS=${OSTIUM_SYMBOLS:-EURUSD,GBPUSD}
       - OSTIUM_QUARANTINE_SYMBOLS=${OSTIUM_QUARANTINE_SYMBOLS:-XAUUSD,XAU}
       - BROKER_URL=http://realtime_datalayer:8001
@@ -37,7 +42,6 @@ services:
     volumes:
       - ./datafiles:/datafiles
       - ./logs:/app/logs
-      - ./lab/out:/app/lab/out
     networks:
       - trading
     command: ["python3", "-m", "uvicorn", "apps.realtime_datalayer.app:app", "--host", "0.0.0.0", "--port", "8001"]

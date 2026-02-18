@@ -2,6 +2,7 @@
 Entrypoint realtime_datalayer — Ostium recorder 24/7 + serve candles/ticks recents.
 
 SERVICE_ROLE=realtime_datalayer. Només Data Layer + Ostium ingest + endpoints de dades.
+GET /health i GET /status registrats a create_app quan role=realtime_datalayer.
 """
 
 import os

@@ -1,4 +1,9 @@
 # realtime_datalayer — Data Layer + Ostium ingest + market_hours (0-network)
+# Realtime DataLayer v1 (curts)
+testing/realtime_datalayer/test_status_contract.py
+testing/realtime_datalayer/test_health_states.py
+testing/realtime_datalayer/test_candle_builder_from_ticks.py
+testing/realtime_datalayer/test_retention_pruning.py
 testing/apps/core/test_candle_store.py
 testing/unit/test_data_layer_prod_service.py
 testing/apps/realtime_datalayer/test_ostium_ingest.py

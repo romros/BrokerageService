@@ -23,6 +23,7 @@ from foundation.config.constants import (
     HEARTBEAT_INTERVAL_S,
     OSTIUM_ENABLED_ENV,
     REALTIME_DATALAYER_BASE_URL_ENV,
+    REALTIME_DATALAYER_ROOT_ENV,
     TESTING_ENV,
     USE_FAKE_PRICE_FEED_ENV,
 )
@@ -92,11 +93,22 @@ def create_app(role: str | None = None) -> FastAPI:
 
         config = _load_config()
         venue = config["venue"] or ""
-        candle_store = CSVCandleStore(
-            root_path=config["datafiles_root"],
-            broker=venue or "gtrade",
-            canonical_tz=config["canonical_tz"],
-        )
+        # Realtime DataLayer v1: storage dedicat datafiles/realtime_datalayer/candles
+        if role == "realtime_datalayer":
+            realtime_root = os.getenv(REALTIME_DATALAYER_ROOT_ENV, "").strip()
+            if not realtime_root:
+                realtime_root = os.path.join(config["datafiles_root"], "realtime_datalayer")
+            candle_store = CSVCandleStore(
+                root_path=realtime_root,
+                broker="candles",
+                canonical_tz=config["canonical_tz"],
+            )
+        else:
+            candle_store = CSVCandleStore(
+                root_path=config["datafiles_root"],
+                broker=venue or "gtrade",
+                canonical_tz=config["canonical_tz"],
+            )
 
         fallback_provider = None
         try:
@@ -421,5 +433,60 @@ def create_app(role: str | None = None) -> FastAPI:
             "version": "0.1.0",
             "docs": "/docs",
         }
+
+    # Realtime DataLayer v1: /health i /status (root)
+    if role == "realtime_datalayer":
+        import time
+        _realtime_start = time.time()
+
+        @app.get("/health")
+        async def _realtime_health():
+            from application.data.data_layer_lifecycle import get_data_layer_status
+            from application.data.data_layer_metrics import get_data_layer_metrics, SYMBOL_STATE_DEGRADED
+            status, _ = get_data_layer_status()
+            if status in ("initializing", "warming_up"):
+                return {"status": "initializing"}
+            metrics = get_data_layer_metrics()
+            if metrics:
+                snapshot = metrics.snapshot()
+                for sym_data in snapshot.get("symbols", {}).values():
+                    if sym_data.get("symbol_state") == SYMBOL_STATE_DEGRADED:
+                        return {"status": "degraded"}
+            return {"status": "ok"}
+
+        @app.get("/status")
+        async def _realtime_status():
+            from application.data.data_layer_metrics import get_data_layer_metrics
+            from application.services.ostium_tick_recorder import get_ostium_tick_recorder
+            metrics = get_data_layer_metrics()
+            tick_rec = get_ostium_tick_recorder()
+            symbols_data = {}
+            if metrics:
+                snapshot = metrics.snapshot()
+                for sym, m in snapshot.get("symbols", {}).items():
+                    tick_info = {}
+                    if tick_rec and tick_rec.get_status().get("symbols", {}).get(sym):
+                        tick_info = tick_rec.get_status()["symbols"][sym]
+                    symbols_data[sym] = {
+                        "last_candle_ts": m.get("last_candle_ts"),
+                        "last_tick_ts": tick_info.get("last_tick_ts"),
+                        "candles_written": m.get("candles_written", 0),
+                        "duplicates": m.get("duplicates", 0),
+                        "gaps_detected": m.get("gaps_detected", 0),
+                        "symbol_state": m.get("symbol_state", "ACTIVE"),
+                        "lines_written_ticks": tick_info.get("lines_written", 0),
+                        "dupes_detected_ticks": tick_info.get("dupes_detected", 0),
+                    }
+            retention = {
+                "candles_max_hours": int(os.getenv("REALTIME_CANDLES_MAX_HOURS", "168")),
+                "ticks_max_hours": int(os.getenv("REALTIME_TICKS_MAX_HOURS", "72")),
+            }
+            return {
+                "symbols": symbols_data,
+                "retention": retention,
+                "uptime_s": int(time.time() - _realtime_start),
+                "ingest_state": "running" if metrics else "initializing",
+                "tick_recorder_enabled": tick_rec is not None,
+            }
 
     return app

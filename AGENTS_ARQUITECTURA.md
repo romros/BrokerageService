@@ -57,6 +57,14 @@
 - **historical_datalayer:** Data Layer backfill_only (Dukascopy); NO Ostium ingest, NO adapter
 - **trading_service:** adapter + trading routes; NO ingest, NO Data Layer writer
 
+### Realtime DataLayer v1 (runtime)
+
+- Servei autònom: `docker compose -f ... up -d realtime_datalayer`
+- Storage: `datafiles/realtime_datalayer/candles/`, `ticks/`
+- API: GET /health, GET /status, /api/v1/broker/ohlcv, data_status, coverage
+- Docs: `apps/realtime_datalayer/realtime_datalayer_arquitectura.md`, `realtime_datalayer_estat.md`
+- Tests curts: `./test.sh testing/run_realtime.py`
+
 ### Phase 2 (futur)
 
 - Migració de paquets/codi a `apps/*`

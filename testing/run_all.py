@@ -302,6 +302,10 @@ def main():
         testing_dir / "unit" / "test_broker_api_trades.py",  # P1 GET /trades
         testing_dir / "unit" / "test_p5_ohlcv_headers_coverage.py",  # P5 Data Observability v0
         testing_dir / "unit" / "test_data_layer_prod_service.py",  # Data Layer prod v0 (prefetch, writer, gates)
+        testing_dir / "realtime_datalayer" / "test_status_contract.py",  # Realtime DataLayer v1 /status
+        testing_dir / "realtime_datalayer" / "test_health_states.py",  # Realtime DataLayer v1 /health
+        testing_dir / "realtime_datalayer" / "test_candle_builder_from_ticks.py",  # Ostium aggregate
+        testing_dir / "realtime_datalayer" / "test_retention_pruning.py",  # Tick recorder retention
         testing_dir / "apps" / "realtime_datalayer" / "test_ostium_ingest.py",  # Ostium ingest (0-network)
         testing_dir / "unit" / "test_data_layer_startup_gate.py",  # Startup gate (0 network)
         testing_dir / "unit" / "test_data_layer_run_eval.py",  # run eval exit codes (0 network)
