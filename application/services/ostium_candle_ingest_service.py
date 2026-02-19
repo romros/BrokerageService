@@ -10,7 +10,7 @@ import os
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from domain.interfaces import ICandleStore
 from domain.models import Candle
@@ -37,6 +37,10 @@ from foundation.config.constants import (
     DATA_LAYER_GATES_MAX_MISSING_PER_24H_ENV,
     DATA_LAYER_STALE_SECONDS_ENV,
     DATA_LAYER_WARMUP_MINUTES_ENV,
+    OSTIUM_DEGRADED_BACKOFF_BASE_S_ENV,
+    OSTIUM_DEGRADED_BACKOFF_MAX_S_ENV,
+    DEFAULT_OSTIUM_DEGRADED_BACKOFF_BASE_S,
+    DEFAULT_OSTIUM_DEGRADED_BACKOFF_MAX_S,
     DEFAULT_DATA_LAYER_GATES_MAX_GAP_S,
     DEFAULT_DATA_LAYER_GATES_MAX_MISSING_PER_24H,
     DEFAULT_DATA_LAYER_STALE_SECONDS,
@@ -90,6 +94,8 @@ class OstiumCandleIngestService:
         stale_seconds: int = 180,
         tick_recorder: Optional[Any] = None,
         symbol_to_ostium_asset: Optional[Dict[str, str]] = None,
+        market_hours_fn: Optional[Callable[[str, int], tuple[bool, str]]] = None,
+        market_hours_full_fn: Optional[Callable[[str, int], Any]] = None,
     ):
         self.store = store
         self.symbols = list(symbols)
@@ -106,12 +112,18 @@ class OstiumCandleIngestService:
         self._task: Optional[asyncio.Task] = None
         self._ticks: Dict[str, Dict[int, List[_Tick]]] = defaultdict(lambda: defaultdict(list))
         self._degraded_symbols: set = set()
+        self._degraded_reason: Dict[str, str] = {}
+        self._symbol_backoff_until: Dict[str, int] = {}
+        self._backoff_base_s = int(os.getenv(OSTIUM_DEGRADED_BACKOFF_BASE_S_ENV, str(DEFAULT_OSTIUM_DEGRADED_BACKOFF_BASE_S)))
+        self._backoff_max_s = int(os.getenv(OSTIUM_DEGRADED_BACKOFF_MAX_S_ENV, str(DEFAULT_OSTIUM_DEGRADED_BACKOFF_MAX_S)))
         self._stopped_symbols: set = set()
         self._ticks_seen: Dict[str, int] = defaultdict(int)
         self._ticks_last_ts: Dict[str, int] = {}
         self._last_price: Dict[str, float] = {}
         self._errors_count: Dict[str, int] = defaultdict(int)
         self._last_error: Dict[str, str] = {}
+        self._market_hours_fn = market_hours_fn
+        self._market_hours_full_fn = market_hours_full_fn
 
         logger.info(
             "OstiumCandleIngestService initialized: symbols=%s poll_s=%s",
@@ -173,8 +185,9 @@ class OstiumCandleIngestService:
         snapshot = metrics.snapshot() if metrics else {}
         symbols_data = snapshot.get("symbols", {})
         result = {}
+        get_state = self._market_hours_fn or (lambda s, t: get_market_state(s, t))
         for symbol in set(self.symbols) | self._stopped_symbols:
-            market_open, market_state_reason = get_market_state(symbol, now_ts)
+            market_open, market_state_reason = get_state(symbol, now_ts)
             m = symbols_data.get(symbol, {})
             m_open = m.get("market_open", market_open)
             m_reason = m.get("market_state_reason", market_state_reason)
@@ -184,14 +197,14 @@ class OstiumCandleIngestService:
             elif symbol in self._degraded_symbols:
                 state = "degraded"
             elif symbol in self._paused_symbols:
-                state = "closed"
+                state = "paused_closed"
             elif market_state == "unknown" and self._ticks_seen.get(symbol, 0) == 0:
                 state = "warning"
             elif self._ticks_seen.get(symbol, 0) > 0 and m.get("candles_written", 0) == 0:
                 state = "warming"
             else:
                 state = "running"
-            result[symbol] = {
+            row: Dict[str, Any] = {
                 "ticks_seen": self._ticks_seen.get(symbol, 0),
                 "ticks_last_ts": self._ticks_last_ts.get(symbol),
                 "last_price": self._last_price.get(symbol),
@@ -203,7 +216,16 @@ class OstiumCandleIngestService:
                 "market_state": market_state,
                 "market_open": m_open,
                 "market_state_reason": m_reason,
+                "degrade_reason": self._degraded_reason.get(symbol),
+                "next_poll_in_s": max(0, self._symbol_backoff_until.get(symbol, 0) - now_ts) if symbol in self._degraded_symbols else None,
             }
+            if self._market_hours_full_fn:
+                try:
+                    full = self._market_hours_full_fn(symbol, now_ts)
+                    row["next_open_local"] = getattr(full, "next_open_local", None)
+                except Exception:
+                    row["next_open_local"] = None
+            result[symbol] = row
         return result
 
     def _ostium_asset(self, symbol: str) -> str:
@@ -218,32 +240,45 @@ class OstiumCandleIngestService:
                 current_minute = (now_ts // 60) * 60
                 active_symbols = [s for s in self.symbols if s not in self._stopped_symbols]
 
-                # Actualitzar paused: market_closed → no fer calls Ostium
+                # Actualitzar paused: només market_closed (degraded continua amb backoff)
                 prev_paused = set(self._paused_symbols)
-                self._paused_symbols = {s for s in active_symbols if s not in self._degraded_symbols and not get_market_state(s, now_ts)[0]}
+                get_state = self._market_hours_fn or (lambda s, t: get_market_state(s, t))
+                self._paused_symbols = {s for s in active_symbols if not get_state(s, now_ts)[0]}
                 for s in self._paused_symbols - prev_paused:
                     logger.info("paused ingest for %s: market_closed", s)
                 for s in prev_paused - self._paused_symbols:
                     logger.info("resumed ingest for %s: market_open", s)
 
-                poll_symbols = [s for s in active_symbols if s not in self._paused_symbols and s not in self._degraded_symbols]
+                # Degraded NO bloqueja: inclou amb backoff. Paused_closed exclou.
+                poll_symbols = [
+                    s for s in active_symbols
+                    if s not in self._paused_symbols
+                    and (s not in self._degraded_symbols or now_ts >= self._symbol_backoff_until.get(s, 0))
+                ]
 
                 for symbol in poll_symbols:
                     ostium_asset = self._ostium_asset(symbol)
                     result = await loop.run_in_executor(None, fetch_latest_price, ostium_asset)
                     if result:
+                        prev_ticks = self._ticks_seen.get(symbol, 0)
                         self._ticks_seen[symbol] += 1
                         self._ticks_last_ts[symbol] = result["timestamp"]
                         self._last_price[symbol] = result["price"]
                         tick = _Tick(ts=result["timestamp"], price=result["price"])
                         minute_start = (tick.ts // 60) * 60
                         self._ticks[symbol][minute_start].append(tick)
+                        if symbol in self._degraded_symbols:
+                            self._autorecover(symbol)
                         if self.tick_recorder:
                             self.tick_recorder.record_tick(
                                 symbol, result["timestamp"], result["price"]
                             )
+                    elif symbol in self._degraded_symbols:
+                        get_state = self._market_hours_fn or (lambda s, t: get_market_state(s, t))
+                        if get_state(symbol, now_ts)[0]:
+                            self._increase_backoff(symbol, now_ts)
 
-                # Flush closed minutes (només per símbols actius no paused)
+                # Flush closed minutes (inclou degraded si ha passat backoff)
                 for symbol in poll_symbols:
                     await self._flush_closed_minutes(symbol, current_minute)
 
@@ -311,8 +346,11 @@ class OstiumCandleIngestService:
         duplicates: int = 0,
         ts_step_errors: int = 0,
     ) -> None:
-        """Marca símbol com DEGRADED."""
+        """Marca símbol com DEGRADED (non-blocking: continua amb backoff)."""
         self._degraded_symbols.add(symbol)
+        self._degraded_reason[symbol] = reason
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        self._symbol_backoff_until[symbol] = now_ts + self._backoff_base_s
         metrics = get_data_layer_metrics()
         if metrics:
             metrics.set_symbol_state(
@@ -322,7 +360,24 @@ class OstiumCandleIngestService:
                 duplicates=duplicates,
                 ts_step_errors=ts_step_errors,
             )
-        logger.warning("OSTIUM_DEGRADED symbol=%s reason=%s", symbol, reason)
+        logger.warning("OSTIUM_DEGRADED symbol=%s reason=%s (backoff %ss)", symbol, reason, self._backoff_base_s)
+
+    def _autorecover(self, symbol: str) -> None:
+        """Nou tick/candle → running."""
+        self._degraded_symbols.discard(symbol)
+        self._degraded_reason.pop(symbol, None)
+        self._symbol_backoff_until.pop(symbol, None)
+        metrics = get_data_layer_metrics()
+        if metrics:
+            metrics.set_symbol_state(symbol, SYMBOL_STATE_ACTIVE)
+        logger.info("OSTIUM_AUTORECOVER symbol=%s", symbol)
+
+    def _increase_backoff(self, symbol: str, now_ts: int) -> None:
+        """Sense progrés → augmenta backoff."""
+        current = self._symbol_backoff_until.get(symbol, 0)
+        remaining = max(0, current - now_ts)
+        new_backoff = min(max(remaining, self._backoff_base_s) * 2, self._backoff_max_s)
+        self._symbol_backoff_until[symbol] = now_ts + new_backoff
 
     def _update_gate_metrics(self) -> None:
         """Actualitza stale_seconds, missing_minutes_24h, max_gap_s, observed_open_minutes_24h.
@@ -335,15 +390,22 @@ class OstiumCandleIngestService:
         metrics = get_data_layer_metrics()
         if not metrics:
             return
+        snapshot = metrics.snapshot()
+        symbols_snapshot = snapshot.get("symbols", {})
 
         for symbol in self.symbols:
             last_ts = self.store.get_last_timestamp(symbol)
             if last_ts is None:
                 continue
             last_ts_int = int(last_ts.timestamp())
-            market_open, market_state_reason = get_market_state(symbol, now_ts)
+            get_state = self._market_hours_fn or (lambda s, t: get_market_state(s, t))
+            market_open, market_state_reason = get_state(symbol, now_ts)
             # stale_s: si market closed/unknown, no penalitzar (0 per gates)
-            if stale_degradation_applies(symbol, now_ts):
+            if self._market_hours_fn:
+                stale_applies = market_open and market_state_reason == "open"
+            else:
+                stale_applies = stale_degradation_applies(symbol, now_ts)
+            if stale_applies:
                 stale_s = max(0, now_ts - last_ts_int - 60)
             else:
                 stale_s = 0
@@ -370,9 +432,11 @@ class OstiumCandleIngestService:
                 observed_open_minutes_24h=observed_open_minutes_24h,
             )
             in_warmup = observed_open_minutes_24h < self.warmup_minutes
+            candles_written_this_run = symbols_snapshot.get(symbol, {}).get("candles_written", 0)
             if symbol not in self._degraded_symbols:
-                if stale_degradation_applies(symbol, now_ts) and stale_s > self.stale_seconds:
-                    self._mark_degraded(symbol, f"stale_seconds={stale_s} > {self.stale_seconds}")
+                if stale_applies and stale_s > self.stale_seconds:
+                    if candles_written_this_run > 0:
+                        self._mark_degraded(symbol, f"stale_seconds={stale_s} > {self.stale_seconds}")
                 elif missing_24h > self.max_missing_per_24h and not in_warmup:
                     self._mark_degraded(
                         symbol,

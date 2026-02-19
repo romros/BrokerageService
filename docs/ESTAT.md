@@ -256,8 +256,10 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-18 | Realtime market-hours aware | ✅ market_closed no degrada; ingest pausat per símbol; /symbols market_open, market_state_reason, state; dashboard badges+taula; tests test_market_closed_not_degraded, test_pause_resume, test_dashboard_renders_states | `./test.sh testing/run_realtime.py`; XAU closed cap de setmana = OK |
 | 2026-02-18 | Realtime Dashboard v2 | ✅ last_price, market_state (open|closed|unknown), state (running|closed|warning|degraded); /status effective_tz, now_utc, now_local; filtres, ordenació, presets FX; test_status_includes_timezone_fields | http://localhost:8081/ui |
 | 2026-02-18 | Imports AGENTS compliance | ✅ app_factory: stdlib (datetime, zoneinfo, subprocess, time) a capçalera; lazy imports documentats; tests realtime_datalayer imports a capçalera | AGENTS_ARQUITECTURA.md §6.1 |
+| 2026-02-18 | Realtime v2.1 Market-hours Ostium (NY) | ✅ perfils XAU break 16:59–18:10, indices 16:59–18:00, NVDA RTH 09:31–15:59; paused_closed; health no penalitza closed; ages com deltes; next_open_local | apps/realtime_datalayer/market_hours/ |
+| 2026-02-18 | Degraded non-blocking + autorecover | ✅ degraded continua polling amb backoff (2s–60s); autorecover quan tick nou; pause només paused_closed; /symbols next_poll_in_s, degrade_reason; UI mostra; tests test_degraded_does_not_stop_polling, test_autorecover_on_new_tick | `./test.sh testing/run_realtime.py` |
 
-**DEGRADED vs CLOSED vs WARNING:** `closed` = mercat tancat (cap de setmana FX/XAU); no és incident. `warning` = market_state=unknown sense dades; no és degraded. `DEGRADED` = errors reals (duplicates, ts_step_errors, stale quan market_open).
+**DEGRADED vs CLOSED vs WARNING:** `closed` = mercat tancat (cap de setmana FX/XAU); no és incident. `warning` = market_state=unknown sense dades; no és degraded. `DEGRADED` = errors reals (duplicates, ts_step_errors, stale quan market_open). **Degraded és non-blocking:** continua polling amb backoff (base 2s, max 60s); autorecover quan arriba tick nou; pause només per `paused_closed` (market_closed). `/symbols` inclou `next_poll_in_s`, `degrade_reason`.
 
 **Detall històric:** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 

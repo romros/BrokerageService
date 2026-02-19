@@ -65,14 +65,25 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 
 ## Per què pots veure closed / warning i és OK
 
-- **market_state=closed:** Mercat tancat (cap de setmana FX/XAU). `state=closed`; no és incident. Ingest pausat; es repren quan obre.
-- **market_state=unknown:** Calendari no fiable (indices/equities). `state=warning` si no hi ha dades; no és degraded.
-- **DEGRADED** només per errors reals (duplicates, ts_step_errors, stale quan market_open).
+- **market_state=closed / state=paused_closed:** Mercat tancat (break diari XAU/DAX/SPX, RTH tancat NVDA, cap de setmana FX). No és incident. Ingest pausat; es repren quan obre.
+- **market_state=unknown:** Calendari no fiable (GOOGUSD). `state=warning` si no hi ha dades; no és degraded.
+- **DEGRADED** només per errors reals durant market_open. Degraded és **non-blocking**: continua polling amb backoff (base 2s, max 60s); autorecover quan arriba tick nou; pause només per `paused_closed`. `/symbols` inclou `next_poll_in_s`, `degrade_reason`.
+
+## Override horaris (symbols.json)
+
+```json
+{
+  "symbols": ["EURUSD", "XAUUSD", "NVDAUSD"],
+  "market_hours_overrides": {"NVDAUSD": "ostium_rth_equities"}
+}
+```
 
 ## Llista d'assets (exemple)
 
 EURUSD, USDJPY, XAUUSD (prefer perp), GBPUSD, GOOGUSD, NVDAUSD, DAXEUR, SPXUSD.
 Config guardada a `{REALTIME_DATALAYER_ROOT}/config/symbols.json`; recarregada en reinici.
+
+**Per què alguns tenen poques candles:** NVDA té horari curt (09:31–15:59 NY). Si el servei corre fora d'aquest horari, no rep ticks i no escriu candles. XAU/DAX/SPX tenen break diari 16:59–18:00 NY. Tots els actius es guarden; el nombre de candles depèn del temps que el mercat ha estat obert des de l'arrencada.
 
 ---
 

@@ -343,6 +343,12 @@ def create_app(role: str | None = None) -> FastAPI:
                                 outdir=os.getenv(OSTIUM_TICK_RECORDER_OUTDIR_ENV, DEFAULT_OSTIUM_TICK_RECORDER_OUTDIR),
                                 retention_days=int(os.getenv(OSTIUM_TICK_RETENTION_DAYS_ENV, str(DEFAULT_OSTIUM_TICK_RETENTION_DAYS))),
                             )
+                        market_hours_fn = None
+                        market_hours_full_fn = None
+                        if role == "realtime_datalayer":
+                            from apps.realtime_datalayer.market_hours import get_market_state_for_ingest, get_market_state_full
+                            market_hours_fn = get_market_state_for_ingest
+                            market_hours_full_fn = get_market_state_full
                         ostium_ingest_service = OstiumCandleIngestService(
                             store=candle_store,
                             symbols=ostium_symbols,
@@ -353,6 +359,8 @@ def create_app(role: str | None = None) -> FastAPI:
                             stale_seconds=int(os.getenv(DATA_LAYER_STALE_SECONDS_ENV, str(DEFAULT_DATA_LAYER_STALE_SECONDS))),
                             tick_recorder=tick_recorder,
                             symbol_to_ostium_asset=symbol_to_ostium_asset,
+                            market_hours_fn=market_hours_fn,
+                            market_hours_full_fn=market_hours_full_fn,
                         )
                         await ostium_ingest_service.start()
                         logger.info("OstiumCandleIngestService started symbols=%s", ostium_symbols)
@@ -485,7 +493,7 @@ def create_app(role: str | None = None) -> FastAPI:
             if metrics:
                 snapshot = metrics.snapshot()
                 for sym_data in snapshot.get("symbols", {}).values():
-                    if sym_data.get("symbol_state") == SYMBOL_STATE_DEGRADED:
+                    if sym_data.get("market_open") and sym_data.get("symbol_state") == SYMBOL_STATE_DEGRADED:
                         return {"status": "degraded"}
             return {"status": "ok"}
 
@@ -553,10 +561,15 @@ def create_app(role: str | None = None) -> FastAPI:
                 all_symbols |= ingest._stopped_symbols
             resolved = resolve_all(list(all_symbols))
             per_symbol_stats = ingest.get_symbol_stats() if ingest else {}
+            now_ts = int(datetime.now(timezone.utc).timestamp())
             by_symbol = {}
             for sym in all_symbols:
                 r = resolved.get(sym, {"ostium_asset": sym, "kind": "unknown", "resolution_source": "auto"})
                 stats = per_symbol_stats.get(sym, {})
+                tick_ts = stats.get("ticks_last_ts")
+                candle_ts = stats.get("candle_last_ts")
+                last_tick_age_s = (now_ts - tick_ts) if tick_ts else None
+                last_candle_age_s = (now_ts - candle_ts) if candle_ts else None
                 by_symbol[sym] = {
                     "ostium_asset": r.get("ostium_asset", sym),
                     "kind": r.get("kind", "unknown"),
@@ -564,14 +577,19 @@ def create_app(role: str | None = None) -> FastAPI:
                     "market_state": stats.get("market_state", "open"),
                     "market_open": stats.get("market_open", True),
                     "market_state_reason": stats.get("market_state_reason", "open"),
+                    "next_open_local": stats.get("next_open_local"),
                     "last_price": stats.get("last_price"),
                     "ticks_seen": stats.get("ticks_seen", 0),
                     "ticks_last_ts": stats.get("ticks_last_ts"),
+                    "last_tick_age_s": last_tick_age_s,
                     "candles_written": stats.get("candles_written", 0),
                     "candle_last_ts": stats.get("candle_last_ts"),
+                    "last_candle_age_s": last_candle_age_s,
                     "errors_count": stats.get("errors_count", 0),
                     "last_error": stats.get("last_error"),
                     "state": stats.get("state", "stopped" if sym not in active else "running"),
+                    "degrade_reason": stats.get("degrade_reason"),
+                    "next_poll_in_s": stats.get("next_poll_in_s"),
                 }
             return {
                 "desired": desired,

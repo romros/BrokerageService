@@ -30,7 +30,7 @@
     textarea { width: 100%; min-height: 70px; font-family: inherit; font-size: 0.9rem; padding: 0.5rem; border: 1px solid #475569; border-radius: 4px; background: #1e293b; color: #e2e8f0; }
     .badge { display: inline-block; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.75rem; font-weight: 500; }
     .badge.ok { background: #166534; color: #fff; }
-    .badge.closed { background: #475569; color: #e2e8f0; }
+    .badge.closed, .badge.paused_closed { background: #475569; color: #e2e8f0; }
     .badge.unknown { background: #854d0e; color: #fef08a; }
     .badge.degraded { background: #7f1d1d; color: #fca5a5; }
     .badge.warming { background: #9a3412; color: #fed7aa; }
@@ -187,7 +187,7 @@
 
     function badgeClass(state) {
       if (state === 'running') return 'ok';
-      if (state === 'closed') return 'closed';
+      if (state === 'closed' || state === 'paused_closed') return 'closed';
       if (state === 'degraded') return 'degraded';
       if (state === 'warming') return 'warming';
       if (state === 'warning') return 'warning';
@@ -208,17 +208,17 @@
 
       let entries = Object.entries(by);
       if (filterDegraded) entries = entries.filter(([, i]) => i.state === 'degraded' || i.state === 'warning');
-      if (filterHideClosed) entries = entries.filter(([, i]) => i.state !== 'closed');
+      if (filterHideClosed) entries = entries.filter(([, i]) => i.state !== 'closed' && i.state !== 'paused_closed');
 
-      const order = { running: 0, warming: 1, closed: 2, warning: 3, degraded: 4, stopped: 5 };
+      const order = { running: 0, warming: 1, closed: 2, paused_closed: 2, warning: 3, degraded: 4, stopped: 5 };
       entries.sort((a, b) => {
         if (sortBy === 'state') {
           const ao = order[a[1].state] ?? 6;
           const bo = order[b[1].state] ?? 6;
           if (ao !== bo) return ao - bo;
         } else if (sortBy === 'last_tick_age_s') {
-          const aa = ageSeconds(a[1].ticks_last_ts ?? a[1].last_tick_ts) ?? 999999;
-          const ab = ageSeconds(b[1].ticks_last_ts ?? b[1].last_tick_ts) ?? 999999;
+          const aa = a[1].last_tick_age_s ?? ageSeconds(a[1].ticks_last_ts ?? a[1].last_tick_ts) ?? 999999;
+          const ab = b[1].last_tick_age_s ?? ageSeconds(b[1].ticks_last_ts ?? b[1].last_tick_ts) ?? 999999;
           return aa - ab;
         } else if (sortBy === 'ticks') return (b[1].ticks_seen ?? 0) - (a[1].ticks_seen ?? 0);
         else if (sortBy === 'candles') return (b[1].candles_written ?? 0) - (a[1].candles_written ?? 0);
@@ -230,7 +230,7 @@
       Object.values(by).forEach(info => {
         if (info.state === 'degraded') degradedCount++;
         else if (info.state === 'warning') warningCount++;
-        else if (info.state === 'closed') closedCount++;
+        else if (info.state === 'closed' || info.state === 'paused_closed') closedCount++;
         else if (info.market_state === 'unknown') unknownCount++;
         else if (info.state === 'running' || info.state === 'warming') openCount++;
       });
@@ -241,17 +241,20 @@
         const candles = info.candles_written ?? 0;
         const warming = ticks > 0 && candles === 0;
         const state = warming ? 'warming' : (info.state || '—');
-        const lastTick = info.ticks_last_ts || info.last_tick_ts;
-        const lastCandle = info.candle_last_ts || info.last_candle_ts;
-        const tickAge = ageSeconds(lastTick);
-        const candleAge = ageSeconds(lastCandle);
+        const tickAge = info.last_tick_age_s ?? (info.ticks_last_ts || info.last_tick_ts ? ageSeconds(info.ticks_last_ts || info.last_tick_ts) : null);
+        const candleAge = info.last_candle_age_s ?? (info.candle_last_ts || info.last_candle_ts ? ageSeconds(info.candle_last_ts || info.last_candle_ts) : null);
         const marketState = info.market_state || (info.market_open ? 'open' : 'closed');
+        const reasonText = info.market_state_reason ? ` (${info.market_state_reason})` : '';
+        const nextOpen = info.next_open_local ? ` → ${info.next_open_local}` : '';
+        const degradeInfo = state === 'degraded' && (info.degrade_reason || info.next_poll_in_s != null)
+          ? ` <span class="help">${info.degrade_reason || ''}${info.next_poll_in_s != null ? ` · next ${info.next_poll_in_s}s` : ''}</span>`
+          : '';
         return `<tr>
           <td><b>${sym}</b></td>
           <td>${info.ostium_asset}</td>
           <td>${info.kind}</td>
-          <td><span class="badge ${marketState === 'open' ? 'ok' : (marketState === 'closed' ? 'closed' : 'unknown')}">${marketState}</span></td>
-          <td><span class="badge ${badgeClass(state)}">${state}</span></td>
+          <td><span class="badge ${marketState === 'open' ? 'ok' : (marketState === 'closed' ? 'closed' : 'unknown')}">${marketState}${reasonText}${nextOpen}</span></td>
+          <td><span class="badge ${badgeClass(state)}">${state}</span>${degradeInfo}</td>
           <td>${fmtPrice(info.last_price)}</td>
           <td>${ticks}</td>
           <td>${candles}</td>

@@ -48,7 +48,7 @@ def test_symbols_get_contract():
                 assert "kind" in info
                 assert "resolution_source" in info
                 assert "state" in info
-                assert info["state"] in ("running", "stopped", "degraded")
+                assert info["state"] in ("running", "stopped", "degraded", "warming", "warning", "paused_closed")
         finally:
             os.environ.pop("REALTIME_DATALAYER_ROOT", None)
             os.environ.pop("DATA_LAYER_ENABLED", None)

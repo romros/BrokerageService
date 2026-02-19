@@ -45,7 +45,7 @@
 ### GET /symbols
 - `desired`: llista desitjada (config)
 - `active`: símbols actualment en ingest (no stopped)
-- `by_symbol`: per cada símbol: ostium_asset, kind (perp|spot|unknown), resolution_source (auto|override), **market_state** (open|closed|unknown), market_open, market_state_reason, **last_price**, ticks_seen, ticks_last_ts, candles_written, candle_last_ts, errors_count, last_error, **state** (running|closed|warming|warning|degraded|stopped)
+- `by_symbol`: per cada símbol: ostium_asset, kind (perp|spot|unknown), resolution_source (auto|override), **market_state** (open|closed|unknown), market_open, market_state_reason, **last_price**, ticks_seen, ticks_last_ts, candles_written, candle_last_ts, errors_count, last_error, **state** (running|closed|warming|warning|degraded|stopped), degrade_reason, next_poll_in_s
 
 ### PUT /symbols
 - Body: `{"symbols": ["EURUSD","USDJPY",...], "apply_mode": "diff"|"replace"}`
@@ -102,11 +102,21 @@ Via túnel SSH: `ssh -L 8081:localhost:8081 user@host` → obrir http://localhos
 
 ---
 
-## Market hours
+## Market hours (v2.1 — America/New_York)
 
-- **FX/XAU 24/5:** Diumenge 22:00 UTC – Divendres 22:00 UTC. Fora d'horari → `market_closed`, ingest pausat.
-- **Indices/equities (GOOGUSD, NVDAUSD, DAXEUR, SPXUSD):** `market_state_reason=unknown`; no degradar per stale (només per errors reals).
-- Quan `market_closed` → open: ingest es repren automàticament.
+Perfils Ostium (timezone: America/New_York):
+
+| Perfil | Símbols | Horari |
+|--------|---------|--------|
+| ostium_xau_break | XAUUSD | Open 00:00–16:59, break 16:59–18:10, open 18:10–24:00 |
+| ostium_indices_break | DAXEUR, SPXUSD | Open 00:00–16:59, break 16:59–18:00, open 18:00–24:00 |
+| ostium_rth_equities | NVDAUSD | Open 09:31–15:59 (RTH) |
+| fx_24_5 | EURUSD, GBPUSD, USDJPY, AUDUSD | Diumenge 22:00 UTC – Divendres 22:00 UTC |
+| unknown | GOOGUSD, altres | No pause; no degradar per stale |
+
+- **paused_closed:** Quan `market_closed` o `daily_break` → ingest pausat (sense borrar dades).
+- **Health:** closed no penalitza; només símbols OPEN degradats compten.
+- **Override:** `symbols.json` → `market_hours_overrides: {"SYMBOL": "profile"}`.
 
 ## Boundaries
 
