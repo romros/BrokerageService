@@ -45,6 +45,8 @@ from foundation.config.constants import (
     DEFAULT_DATA_LAYER_GATES_MAX_MISSING_PER_24H,
     DEFAULT_DATA_LAYER_STALE_SECONDS,
     DEFAULT_DATA_LAYER_WARMUP_MINUTES,
+    OSTIUM_CLOSED_HEARTBEAT_S_ENV,
+    DEFAULT_OSTIUM_CLOSED_HEARTBEAT_S,
 )
 
 logger = get_logger(__name__)
@@ -102,7 +104,9 @@ class OstiumCandleIngestService:
         self._symbol_to_ostium_asset = symbol_to_ostium_asset or {s: s for s in symbols}
         self.tick_recorder = tick_recorder
         self.poll_interval_s = poll_interval_s
-        self._paused_symbols: set = set()  # market_closed → pause ingest
+        self.heartbeat_interval_s = int(os.getenv(OSTIUM_CLOSED_HEARTBEAT_S_ENV, str(DEFAULT_OSTIUM_CLOSED_HEARTBEAT_S)))
+        self._paused_symbols: set = set()  # market_closed → heartbeat mode
+        self._heartbeat_last_poll: Dict[str, int] = {}  # últim heartbeat poll per símbol
         self.warmup_minutes = warmup_minutes
         self.max_gap_s = max_gap_s
         self.max_missing_per_24h = max_missing_per_24h
@@ -247,7 +251,10 @@ class OstiumCandleIngestService:
         return self._symbol_to_ostium_asset.get(symbol, symbol)
 
     async def _poll_loop(self) -> None:
-        """Loop: poll Ostium, aggregate, write closed minutes. Pausa per símbol quan market_closed."""
+        """Loop: poll Ostium, aggregate, write closed minutes.
+        market_closed → heartbeat mode (poll reduït, sense escriure candles).
+        market_open → poll normal amb flush i gate metrics.
+        """
         loop = asyncio.get_event_loop()
         while self._running:
             try:
@@ -255,27 +262,33 @@ class OstiumCandleIngestService:
                 current_minute = (now_ts // 60) * 60
                 active_symbols = [s for s in self.symbols if s not in self._stopped_symbols]
 
-                # Actualitzar paused: només market_closed (degraded continua amb backoff)
+                # Actualitzar paused: market_closed → heartbeat (no stop total)
                 prev_paused = set(self._paused_symbols)
                 get_state = self._market_hours_fn or (lambda s, t: get_market_state(s, t))
                 self._paused_symbols = {s for s in active_symbols if not get_state(s, now_ts)[0]}
                 for s in self._paused_symbols - prev_paused:
-                    logger.info("paused ingest for %s: market_closed", s)
+                    logger.info("paused ingest for %s: market_closed (heartbeat mode %ss)", s, self.heartbeat_interval_s)
                 for s in prev_paused - self._paused_symbols:
                     logger.info("resumed ingest for %s: market_open", s)
 
-                # Degraded NO bloqueja: inclou amb backoff. Paused_closed exclou.
+                # Degraded NO bloqueja: inclou amb backoff.
                 poll_symbols = [
                     s for s in active_symbols
                     if s not in self._paused_symbols
                     and (s not in self._degraded_symbols or now_ts >= self._symbol_backoff_until.get(s, 0))
                 ]
 
+                # Heartbeat symbols: market_closed → poll reduït, sense flush candles
+                heartbeat_symbols = [
+                    s for s in active_symbols
+                    if s in self._paused_symbols
+                    and now_ts >= self._heartbeat_last_poll.get(s, 0) + self.heartbeat_interval_s
+                ]
+
                 for symbol in poll_symbols:
                     ostium_asset = self._ostium_asset(symbol)
                     result = await loop.run_in_executor(None, fetch_latest_price, ostium_asset)
                     if result:
-                        prev_ticks = self._ticks_seen.get(symbol, 0)
                         self._ticks_seen[symbol] += 1
                         self._ticks_last_ts[symbol] = result["timestamp"]
                         self._last_price[symbol] = result["price"]
@@ -295,7 +308,17 @@ class OstiumCandleIngestService:
                         if get_state(symbol, now_ts)[0]:
                             self._increase_backoff(symbol, now_ts)
 
-                # Flush closed minutes (inclou degraded si ha passat backoff)
+                # Heartbeat poll: actualitza last_price sense escriure candles
+                for symbol in heartbeat_symbols:
+                    ostium_asset = self._ostium_asset(symbol)
+                    result = await loop.run_in_executor(None, fetch_latest_price, ostium_asset)
+                    self._heartbeat_last_poll[symbol] = now_ts
+                    if result:
+                        self._last_price[symbol] = result["price"]
+                        self._ticks_last_ts[symbol] = result["timestamp"]
+                        logger.debug("heartbeat tick %s price=%.5f", symbol, result["price"])
+
+                # Flush closed minutes (només per poll_symbols, no heartbeat)
                 for symbol in poll_symbols:
                     await self._flush_closed_minutes(symbol, current_minute)
 

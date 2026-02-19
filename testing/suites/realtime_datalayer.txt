@@ -1,5 +1,5 @@
-# realtime_datalayer — Data Layer + Ostium ingest + market_hours (0-network)
-# Realtime DataLayer v1 (curts)
+# realtime_datalayer — Data Layer + Ostium ingest + market_hours + Phase 3 heartbeat (0-network)
+# Realtime DataLayer v1 + Phase 3: Symbol Supervisor + Market-Hours-Aware Polling
 testing/realtime_datalayer/test_market_hours_xau_break_ny.py
 testing/realtime_datalayer/test_market_hours_indices_break_ny.py
 testing/realtime_datalayer/test_market_hours_nvda_rth_ny.py
@@ -17,6 +17,12 @@ testing/realtime_datalayer/test_ui_endpoint.py
 testing/realtime_datalayer/test_symbols_api_contract.py
 testing/realtime_datalayer/test_symbol_supervisor_hot_reload.py
 testing/realtime_datalayer/test_instrument_resolution_override.py
+testing/realtime_datalayer/test_pause_resume_ingest_by_market_hours.py
+testing/realtime_datalayer/test_market_closed_not_degraded.py
+testing/realtime_datalayer/test_autorecover_on_new_tick.py
+testing/realtime_datalayer/test_degraded_does_not_stop_polling.py
+testing/realtime_datalayer/test_status_includes_timezone_fields.py
+testing/realtime_datalayer/test_heartbeat_when_closed.py
 testing/apps/core/test_candle_store.py
 testing/unit/test_data_layer_prod_service.py
 testing/apps/realtime_datalayer/test_ostium_ingest.py

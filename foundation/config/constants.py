@@ -209,6 +209,11 @@ OSTIUM_DEGRADED_BACKOFF_MAX_S_ENV = "OSTIUM_DEGRADED_BACKOFF_MAX_S"
 DEFAULT_OSTIUM_DEGRADED_BACKOFF_BASE_S = 2
 DEFAULT_OSTIUM_DEGRADED_BACKOFF_MAX_S = 60
 
+# Market-hours heartbeat (Phase 3: no stop total quan mercat tancat)
+# Quan market_closed, el símbol fa poll a interval reduït (heartbeat) sense escriure candles.
+OSTIUM_CLOSED_HEARTBEAT_S_ENV = "OSTIUM_CLOSED_HEARTBEAT_S"
+DEFAULT_OSTIUM_CLOSED_HEARTBEAT_S = 60  # 60s heartbeat quan mercat tancat
+
 
 # Ostium tick recorder (forense, lab)
 OSTIUM_TICK_RECORDER_ENABLED_ENV = "OSTIUM_TICK_RECORDER_ENABLED"

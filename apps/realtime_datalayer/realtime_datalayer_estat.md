@@ -10,12 +10,13 @@
 |---------|-------|-------|
 | Servei autònom | ✅ | `docker compose -f ... up -d realtime_datalayer` |
 | GET /health | ✅ | Via broker routes /api/v1/broker/health |
-| GET /status | ✅ | stats, retention, uptime |
+| GET /status | ✅ | stats, retention, uptime, timezone fields |
 | GET/PUT /symbols | ✅ | Hot-reload símbols sense restart |
 | Instrument resolution | ✅ | spot/perp, override a config |
 | Ostium ingest 24/7 | ✅ | OstiumCandleIngestService |
 | Sense Dukascopy | ✅ | NullBackfillProvider; independent (AGENTS_ARQUITECTURA) |
-| Market-hours aware | ✅ | market_closed no degrada; ingest pausat per símbol quan closed |
+| Market-hours aware | ✅ | market_closed no degrada; heartbeat mode (Phase 3) |
+| **Phase 3: Heartbeat mode** | ✅ | market_closed → poll reduït (OSTIUM_CLOSED_HEARTBEAT_S, default 60s) |
 | Tick recorder | ✅ | OstiumTickRecorder (opt-in) |
 | Storage candles | ✅ | datafiles/realtime_datalayer/candles (configurable) |
 | Storage ticks | ✅ | lab/out/ostium_forensics o REALTIME_DATALAYER_ROOT/ticks |
@@ -65,7 +66,7 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 
 ## Per què pots veure closed / warning i és OK
 
-- **market_state=closed / state=paused_closed:** Mercat tancat (break diari XAU/DAX/SPX, RTH tancat NVDA, cap de setmana FX). No és incident. Ingest pausat; es repren quan obre.
+- **market_state=closed / state=paused_closed:** Mercat tancat (break diari XAU/DAX/SPX, RTH tancat NVDA, cap de setmana FX). No és incident. **Phase 3:** heartbeat poll cada `OSTIUM_CLOSED_HEARTBEAT_S` (default 60s) — no stop total. Actualitza `last_price` però NO escriu candles. Es repren ingest normal quan obre.
 - **market_state=unknown:** Símbol sense perfil d'horaris conegut (ara tots els símbols per defecte tenen perfil). `state=warning` si no hi ha dades.
 - **GOOGUSD → us_equities_ny:** RTH 09:30–16:00 NY. Fora d'horari: `paused_closed` + `next_open_local`. (Abans era `unknown`.)
 - **WARMUP:** Durant arrencada (`symbol_uptime_s < warmup_minutes`), `missing_minutes_24h` no pot degradar. `coverage_*` es mostren com a mètrica informativa però no governen `state`.
