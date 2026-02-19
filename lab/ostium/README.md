@@ -123,21 +123,43 @@ docker run --rm -v $(pwd):/workspace -w /workspace \
 
 ---
 
-## Estructura
+## Estructura i inventari de scripts
 
 ```
 lab/ostium/
-├── README.md
+├── README.md                              (aquest fitxer)
 ├── RESULTS.md                             (trading validació)
-├── Dockerfile, docker-compose.yml
-├── Dockerfile.analysis                    (comparació compat)
+├── COMANDES_DEMA.md                       (workflow anàlisi)
+├── Dockerfile, docker-compose.yml         (entorn trading)
+├── Dockerfile.analysis                    (entorn comparació compat)
 └── scripts/
-    ├── test_full_cycle_no_subgraph.py     (trading)
-    ├── test_multicall_optimized.py        (optimization)
-    ├── rest_price_collector.py            (monitoring)
-    ├── rest_price_probe.py
-    ├── ostium_vs_dukascopy_compat_v2.py   (comparació)
-    └── check_24h_progress.sh
+    │
+    │  — PRICE MONITORING —
+    ├── rest_price_collector.py            ✅ Polling REST, build candles 1m (--forever, rotació diària)
+    ├── rest_price_probe.py                ✅ Valida qualitat dades (gaps, coverage, dupes)
+    ├── check_24h_progress.sh             ✅ Check ràpid progrés captura 24h
+    ├── monitor_status.py                  ✅ Estat monitor (last_ts, gaps, market_open per símbol)
+    │
+    │  — COMPAT (Ostium vs Dukascopy) —
+    ├── ostium_vs_dukascopy_compat_v2.py   ✅ Comparació completa (corr, dir_agree, max_diff)
+    ├── ostium_vs_dukascopy_compat.py      ⚠️  Versió anterior (obsoleta; usar v2)
+    ├── compat_partial_simple.py           ✅ Compat parcial (menys candles, debug ràpid)
+    ├── quick_compat_check.py              ✅ Compat exprés (sense Docker, local)
+    ├── check_ostium_quality.py            ✅ Qualitat dades Ostium (noise, outliers)
+    ├── run_full_analysis.sh               ✅ Pipeline compat complet (captura + comparació)
+    ├── run_compat_tomorrow.sh             ✅ Programa compat per demà
+    ├── simple_compat_6h.sh                ✅ Compat ràpid 6h (sense esperar 24h)
+    │
+    │  — TRADING (Testnet) —
+    ├── test_full_cycle_no_subgraph.py     ✅ Open/close sense subgraph (workaround brute force)
+    ├── test_full_cycle_multicall.py       ✅ Full cycle amb Multicall3 (optimitzat)
+    ├── test_full_cycle.py                 ✅ Full cycle bàsic
+    ├── test_multicall_optimized.py        ✅ Multicall3: 1 RPC vs 10 (9.6× ràpid)
+    ├── test_market_fees.py                ✅ Fees ~$0.56/RT (45× més barat que gTrade)
+    ├── test_limit_with_abi.py             ✅ Test limit orders via ABI
+    ├── test_subgraph_quick.py             ✅ Subgraph consulta ràpida
+    ├── test_subgraph_historical.py        ✅ Subgraph historial (buit → workaround)
+    └── test_subgraph_mainnet_deep.py      ✅ Subgraph mainnet deep scan
 ```
 
 ---
@@ -207,5 +229,6 @@ lab/ostium/
 
 ---
 
-**Última actualització:** 2026-02-18  
+**Última actualització:** 2026-02-19
 **Status:** LAB — Captura continua (EURUSD, XAUUSD, GBPJPY → continuous/)
+**Índex global:** [docs/INDEX.md](../../docs/INDEX.md)

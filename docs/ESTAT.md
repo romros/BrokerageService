@@ -1,12 +1,13 @@
 # ESTAT DEL PROJECTE — BrokerageService
 
-**Data:** 2026-02-18  
-**Repo/Path:** `/mnt/volume-SQ/dev/BrokerageService`  
-**Venues:** **Lighter (principal — MVP 100%)** · gTrade (futur)  
-**TZ canònica (config):** `CANONICAL_TZ=America/New_York`  
-**TZ container (runtime/logs):** `TZ=America/New_York`  
-**Doc referència:** [AGENTS_ARQUITECTURA.md](../AGENTS_ARQUITECTURA.md)  
-**Runbook operatiu curt:** [SAFETY_RUNBOOK.md](SAFETY_RUNBOOK.md)  
+**Data:** 2026-02-19
+**Repo/Path:** `/mnt/volume-SQ/dev/BrokerageService`
+**Venues:** **Lighter (principal — MVP 100%)** · gTrade (futur)
+**TZ canònica (config):** `CANONICAL_TZ=America/New_York`
+**TZ container (runtime/logs):** `TZ=America/New_York`
+**Índex docs:** [docs/INDEX.md](INDEX.md) ← navegació centralitzada
+**Doc referència:** [AGENTS_ARQUITECTURA.md](../AGENTS_ARQUITECTURA.md)
+**Runbook operatiu curt:** [SAFETY_RUNBOOK.md](SAFETY_RUNBOOK.md)
 **Històric (read-only):** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
 
 **Recorda Docker:** Si has canviat codi, reconstruir abans: `docker compose build brokerage`. Vegeu AGENTS §11.
@@ -66,11 +67,19 @@ curl -s "http://localhost:8010/api/v1/broker/ohlcv/EURUSD?tf=1m&limit=5"
 
 **Estructura:** `apps/<servei>/app.py` (entrypoint), `application/app_factory.py` (create_app role-aware), `packages/shared/realtime_datalayer_client.py` (Phase 2).
 
+**Docs per subprojecte:**
+
+| Servei | Arquitectura | Estat |
+|--------|-------------|-------|
+| realtime_datalayer | [arquitectura](../apps/realtime_datalayer/realtime_datalayer_arquitectura.md) | [estat](../apps/realtime_datalayer/realtime_datalayer_estat.md) |
+| historical_datalayer | [arquitectura](../apps/historical_datalayer/historical_datalayer_arquitectura.md) | [estat](../apps/historical_datalayer/historical_datalayer_estat.md) |
+| trading_service | [arquitectura](../apps/trading_service/trading_service_arquitectura.md) | [estat](../apps/trading_service/trading_service_estat.md) |
+
 **Realtime DataLayer v1 (servei independent):**
 - Storage: `datafiles/realtime_datalayer/candles/`, `datafiles/realtime_datalayer/ticks/`
 - Retenció: `REALTIME_CANDLES_MAX_HOURS`, `REALTIME_TICKS_MAX_HOURS`
 - Docs: `apps/realtime_datalayer/realtime_datalayer_arquitectura.md`, `realtime_datalayer_estat.md`
-- Tests curts: `./test.sh testing/run_realtime.py` o `./scripts/run_tests.sh realtime_datalayer`
+- Tests curts: `./scripts/run_tests.sh realtime_datalayer`
 
 ---
 

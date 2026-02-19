@@ -65,6 +65,7 @@ def load_symbols_config() -> dict[str, Any]:
         return {
             "symbols": default_list,
             "instrument_overrides": {},
+            "market_hours_overrides": {},
         }
     try:
         with open(path) as f:
@@ -72,23 +73,37 @@ def load_symbols_config() -> dict[str, Any]:
         return {
             "symbols": data.get("symbols", list(DEFAULT_SYMBOLS)),
             "instrument_overrides": data.get("instrument_overrides", {}),
+            "market_hours_overrides": data.get("market_hours_overrides", {}),
         }
     except Exception as e:
         logger.warning("symbol_config load failed: %s, using default", e)
-        return {"symbols": list(DEFAULT_SYMBOLS), "instrument_overrides": {}}
+        return {"symbols": list(DEFAULT_SYMBOLS), "instrument_overrides": {}, "market_hours_overrides": {}}
 
 
-def save_symbols_config(symbols: list[str], instrument_overrides: dict | None = None) -> None:
+def save_symbols_config(
+    symbols: list[str],
+    instrument_overrides: dict | None = None,
+    market_hours_overrides: dict | None = None,
+) -> None:
     """Desa config a disc."""
     path = _get_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
+    existing = load_symbols_config() if path.exists() else {}
     data = {
         "symbols": [s.upper() for s in symbols],
-        "instrument_overrides": instrument_overrides or {},
+        "instrument_overrides": instrument_overrides if instrument_overrides is not None else existing.get("instrument_overrides", {}),
+        "market_hours_overrides": market_hours_overrides if market_hours_overrides is not None else existing.get("market_hours_overrides", {}),
     }
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
     logger.info("symbol_config saved: %s symbols", len(symbols))
+
+
+def get_market_hours_profile(symbol: str) -> str | None:
+    """Retorna profile d'horari per símbol (override o None per default)."""
+    cfg = load_symbols_config()
+    overrides = cfg.get("market_hours_overrides", {})
+    return overrides.get(symbol.upper())
 
 
 def get_desired_symbols() -> list[str]:
