@@ -21,11 +21,13 @@
 - ✅ **Data Layer prod v0** (opt-in): prefetch + writer loop + gates; `DATA_LAYER_ENABLED=1`
 - ✅ **Ostium Data Layer prod v0** (opt-in): realtime Ostium (polling) + backfill Dukascopy; `OSTIUM_ENABLED=1`
 - ✅ **Broker API** `/api/v1/broker/*` (POST body únic)
+- ✅ **Split vNext Phase 1:** 3 serveis autònoms (realtime/historical/trading); entrypoints + role wiring
+- ✅ **Split vNext Phase 2:** trading_service → realtime_datalayer via HTTP; QualityGate fail-closed (`application/data/quality_gate.py`)
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - ⛔ **Backtest** pendent
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 
-> **Focus 48h:** Data Layer en producció (prefetch + gates + observability).
+> **Focus next:** Trading loop NO_TRADE enforcement quan `quality_gate.is_bad()`.
 
 ---
 
@@ -63,9 +65,19 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 curl -s http://localhost:8010/api/v1/broker/data_status
 curl -s "http://localhost:8010/api/v1/broker/coverage?symbol=EURUSD&resolution=1m"
 curl -s "http://localhost:8010/api/v1/broker/ohlcv/EURUSD?tf=1m&limit=5"
+# Verificar quality gate als logs del trading_service:
+docker logs trading_service 2>&1 | grep -E "quality_gate|QUALITY_GATE"
 ```
 
-**Estructura:** `apps/<servei>/app.py` (entrypoint), `application/app_factory.py` (create_app role-aware), `packages/shared/realtime_datalayer_client.py` (Phase 2).
+**Phase 2 — Quality Gates (fail-closed):**
+- `REALTIME_DATALAYER_BASE_URL` set → HTTP reader actiu → `get_ohlcv_with_gate` avalua `X-Data-*` headers
+- `QualityGateResult.status`: `ok` (dades netes) | `bad` (gaps/stale/missing headers)
+- Trading loop: si `gate.is_bad()` → NO_TRADE, log + reason
+- Env override dels llindars: `QUALITY_GATE_MAX_FRESHNESS_SEC` (default 300s), `QUALITY_GATE_MIN_COMPLETENESS` (default 0.95), `QUALITY_GATE_MAX_GAP_S_GATE` (default 180s)
+- Fail-closed: si headers `X-Data-Coverage-From/To` absents → `bad/missing_headers`
+- Mercat tancat: si `missing_minutes==0` i `max_gap_s==0` → `ok` (no incident, freshness ignorada)
+
+**Estructura:** `apps/<servei>/app.py` (entrypoint), `application/app_factory.py` (create_app role-aware), `packages/shared/realtime_datalayer_client.py` (Phase 2), `application/data/quality_gate.py` (QualityGateEvaluator).
 
 **Docs per subprojecte:**
 
