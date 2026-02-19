@@ -1,5 +1,13 @@
 # realtime_datalayer — Data Layer + Ostium ingest + market_hours (0-network)
 # Realtime DataLayer v1 (curts)
+testing/realtime_datalayer/test_market_hours_xau_break_ny.py
+testing/realtime_datalayer/test_market_hours_indices_break_ny.py
+testing/realtime_datalayer/test_market_hours_nvda_rth_ny.py
+testing/realtime_datalayer/test_market_hours_googusd_ny.py
+testing/realtime_datalayer/test_warmup_gating_ostium.py
+testing/realtime_datalayer/test_closed_does_not_degrade_health.py
+testing/realtime_datalayer/test_supervisor_pauses_on_closed.py
+testing/realtime_datalayer/test_age_fields_are_deltas.py
 testing/realtime_datalayer/test_status_contract.py
 testing/realtime_datalayer/test_health_states.py
 testing/realtime_datalayer/test_candle_builder_from_ticks.py

@@ -124,6 +124,8 @@ class OstiumCandleIngestService:
         self._last_error: Dict[str, str] = {}
         self._market_hours_fn = market_hours_fn
         self._market_hours_full_fn = market_hours_full_fn
+        # first_seen_ts: timestamp del primer tick per símbol (per calcular symbol_uptime_s)
+        self._first_seen_ts: Dict[str, int] = {}
 
         logger.info(
             "OstiumCandleIngestService initialized: symbols=%s poll_s=%s",
@@ -204,6 +206,14 @@ class OstiumCandleIngestService:
                 state = "warming"
             else:
                 state = "running"
+            # Coverage informativa (no governa health)
+            coverage_expected = m.get("expected_open_minutes_24h", 0)
+            coverage_observed = m.get("observed_open_minutes_24h", 0)
+            coverage_missing = m.get("missing_minutes_24h", 0)
+            coverage_ratio = round(coverage_observed / coverage_expected, 4) if coverage_expected > 0 else None
+            # symbol_uptime_s: temps desde primer tick
+            first_seen = self._first_seen_ts.get(symbol)
+            symbol_uptime_s = (now_ts - first_seen) if first_seen is not None else None
             row: Dict[str, Any] = {
                 "ticks_seen": self._ticks_seen.get(symbol, 0),
                 "ticks_last_ts": self._ticks_last_ts.get(symbol),
@@ -218,6 +228,11 @@ class OstiumCandleIngestService:
                 "market_state_reason": m_reason,
                 "degrade_reason": self._degraded_reason.get(symbol),
                 "next_poll_in_s": max(0, self._symbol_backoff_until.get(symbol, 0) - now_ts) if symbol in self._degraded_symbols else None,
+                # Coverage informativa
+                "coverage_expected_minutes": coverage_expected,
+                "coverage_missing_minutes": coverage_missing,
+                "coverage_ratio": coverage_ratio,
+                "symbol_uptime_s": symbol_uptime_s,
             }
             if self._market_hours_full_fn:
                 try:
@@ -264,6 +279,8 @@ class OstiumCandleIngestService:
                         self._ticks_seen[symbol] += 1
                         self._ticks_last_ts[symbol] = result["timestamp"]
                         self._last_price[symbol] = result["price"]
+                        if symbol not in self._first_seen_ts:
+                            self._first_seen_ts[symbol] = now_ts
                         tick = _Tick(ts=result["timestamp"], price=result["price"])
                         minute_start = (tick.ts // 60) * 60
                         self._ticks[symbol][minute_start].append(tick)
@@ -409,6 +426,12 @@ class OstiumCandleIngestService:
                 stale_s = max(0, now_ts - last_ts_int - 60)
             else:
                 stale_s = 0
+            # symbol_uptime_s: temps des del primer tick rebut (o uptime màxim de 24h)
+            first_seen = self._first_seen_ts.get(symbol)
+            if first_seen is not None:
+                symbol_uptime_s = max(0, now_ts - first_seen)
+            else:
+                symbol_uptime_s = 0
             try:
                 r = self.store.read_range(symbol, window_24h_start, now_utc, validate_gaps=True)
                 missing_24h_raw = getattr(r, "missing_count", 0) or 0
@@ -417,7 +440,10 @@ class OstiumCandleIngestService:
             except Exception:
                 missing_24h = 0
                 closed_mins = 0
-            expected_open_minutes_24h = max(0, min(1440, 1440 - closed_mins))
+            # expected basat en uptime del símbol (no en 24h fix):
+            # min(1440, floor(symbol_uptime_s/60)) - closed_mins_en_finestra_uptime
+            uptime_minutes = min(1440, symbol_uptime_s // 60)
+            expected_open_minutes_24h = max(0, uptime_minutes - closed_mins)
             observed_open_minutes_24h = max(0, expected_open_minutes_24h - missing_24h)
             max_gap_s = min(self.max_gap_s, 60 * max(0, missing_24h)) if missing_24h > 0 else 0
             metrics.update_gate_metrics(

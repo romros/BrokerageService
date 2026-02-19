@@ -510,6 +510,10 @@ def create_app(role: str | None = None) -> FastAPI:
                     tick_info = {}
                     if tick_rec and tick_rec.get_status().get("symbols", {}).get(sym):
                         tick_info = tick_rec.get_status()["symbols"][sym]
+                    coverage_expected = m.get("expected_open_minutes_24h", 0)
+                    coverage_observed = m.get("observed_open_minutes_24h", 0)
+                    coverage_missing = m.get("missing_minutes_24h", 0)
+                    coverage_ratio = round(coverage_observed / coverage_expected, 4) if coverage_expected > 0 else None
                     symbols_data[sym] = {
                         "last_candle_ts": m.get("last_candle_ts"),
                         "last_tick_ts": tick_info.get("last_tick_ts"),
@@ -521,6 +525,10 @@ def create_app(role: str | None = None) -> FastAPI:
                         "market_state_reason": m.get("market_state_reason", "open"),
                         "lines_written_ticks": tick_info.get("lines_written", 0),
                         "dupes_detected_ticks": tick_info.get("dupes_detected", 0),
+                        # Coverage informativa
+                        "coverage_expected_minutes": coverage_expected,
+                        "coverage_missing_minutes": coverage_missing,
+                        "coverage_ratio": coverage_ratio,
                     }
             retention = {
                 "candles_max_hours": int(os.getenv("REALTIME_CANDLES_MAX_HOURS", "168")),
@@ -590,6 +598,11 @@ def create_app(role: str | None = None) -> FastAPI:
                     "state": stats.get("state", "stopped" if sym not in active else "running"),
                     "degrade_reason": stats.get("degrade_reason"),
                     "next_poll_in_s": stats.get("next_poll_in_s"),
+                    # Coverage informativa (no governa health)
+                    "coverage_expected_minutes": stats.get("coverage_expected_minutes", 0),
+                    "coverage_missing_minutes": stats.get("coverage_missing_minutes", 0),
+                    "coverage_ratio": stats.get("coverage_ratio"),
+                    "symbol_uptime_s": stats.get("symbol_uptime_s"),
                 }
             return {
                 "desired": desired,

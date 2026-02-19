@@ -102,6 +102,7 @@ class DataLayerProdService:
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self._degraded_symbols: set = set()
+        self._service_start_ts: int = 0  # set a start()
 
         logger.info(
             "DataLayerProdService initialized: symbols=%s prefetch_min=%s max_gap_s=%s",
@@ -117,6 +118,7 @@ class DataLayerProdService:
             return
 
         self._running = True
+        self._service_start_ts = int(datetime.now(timezone.utc).timestamp())
 
         provider_ok = await self.provider.is_available()
         if not provider_ok:
@@ -322,8 +324,11 @@ class DataLayerProdService:
                 missing_24h = 0
                 closed_mins = 0
 
-            # Warmup: cobertura recent dins 24h (no span històric)
-            expected_open_minutes_24h = max(0, min(1440, 1440 - closed_mins))
+            # Warmup: expected basat en service_uptime_s (no 1440 fix)
+            # Si el servei porta poc temps, expected serà baix → in_warmup=True → no degrada
+            service_uptime_s = max(0, now_ts - self._service_start_ts) if self._service_start_ts else 0
+            uptime_minutes = min(1440, service_uptime_s // 60)
+            expected_open_minutes_24h = max(0, uptime_minutes - closed_mins)
             observed_open_minutes_24h = max(0, expected_open_minutes_24h - missing_24h)
 
             # max_gap_s: simplificat (v1 no ajusta per closed; conservador)

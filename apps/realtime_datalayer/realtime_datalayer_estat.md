@@ -1,6 +1,6 @@
 # Realtime DataLayer v1 — Estat
 
-**Data:** 2026-02-18
+**Data:** 2026-02-19
 
 ---
 
@@ -66,7 +66,10 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 ## Per què pots veure closed / warning i és OK
 
 - **market_state=closed / state=paused_closed:** Mercat tancat (break diari XAU/DAX/SPX, RTH tancat NVDA, cap de setmana FX). No és incident. Ingest pausat; es repren quan obre.
-- **market_state=unknown:** Calendari no fiable (GOOGUSD). `state=warning` si no hi ha dades; no és degraded.
+- **market_state=unknown:** Símbol sense perfil d'horaris conegut (ara tots els símbols per defecte tenen perfil). `state=warning` si no hi ha dades.
+- **GOOGUSD → us_equities_ny:** RTH 09:30–16:00 NY. Fora d'horari: `paused_closed` + `next_open_local`. (Abans era `unknown`.)
+- **WARMUP:** Durant arrencada (`symbol_uptime_s < warmup_minutes`), `missing_minutes_24h` no pot degradar. `coverage_*` es mostren com a mètrica informativa però no governen `state`.
+- **coverage_* (informatives):** `coverage_expected_minutes`, `coverage_missing_minutes`, `coverage_ratio` disponibles a `/symbols` i `/status`. Basades en `symbol_uptime_s`, no en 24h fix.
 - **DEGRADED** només per errors reals durant market_open. Degraded és **non-blocking**: continua polling amb backoff (base 2s, max 60s); autorecover quan arriba tick nou; pause només per `paused_closed`. `/symbols` inclou `next_poll_in_s`, `degrade_reason`.
 
 ## Override horaris (symbols.json)

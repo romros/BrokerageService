@@ -45,7 +45,7 @@
 ### GET /symbols
 - `desired`: llista desitjada (config)
 - `active`: símbols actualment en ingest (no stopped)
-- `by_symbol`: per cada símbol: ostium_asset, kind (perp|spot|unknown), resolution_source (auto|override), **market_state** (open|closed|unknown), market_open, market_state_reason, **last_price**, ticks_seen, ticks_last_ts, candles_written, candle_last_ts, errors_count, last_error, **state** (running|closed|warming|warning|degraded|stopped), degrade_reason, next_poll_in_s
+- `by_symbol`: per cada símbol: ostium_asset, kind (perp|spot|unknown), resolution_source (auto|override), **market_state** (open|closed|unknown), market_open, market_state_reason, **last_price**, ticks_seen, ticks_last_ts, candles_written, candle_last_ts, errors_count, last_error, **state** (running|closed|warming|warning|degraded|paused_closed|stopped), degrade_reason, next_poll_in_s, **coverage_expected_minutes**, **coverage_missing_minutes**, **coverage_ratio**, **symbol_uptime_s**
 
 ### PUT /symbols
 - Body: `{"symbols": ["EURUSD","USDJPY",...], "apply_mode": "diff"|"replace"}`
@@ -102,7 +102,7 @@ Via túnel SSH: `ssh -L 8081:localhost:8081 user@host` → obrir http://localhos
 
 ---
 
-## Market hours (v2.1 — America/New_York)
+## Market hours (v2.2 — America/New_York)
 
 Perfils Ostium (timezone: America/New_York):
 
@@ -110,13 +110,43 @@ Perfils Ostium (timezone: America/New_York):
 |--------|---------|--------|
 | ostium_xau_break | XAUUSD | Open 00:00–16:59, break 16:59–18:10, open 18:10–24:00 |
 | ostium_indices_break | DAXEUR, SPXUSD | Open 00:00–16:59, break 16:59–18:00, open 18:00–24:00 |
-| ostium_rth_equities | NVDAUSD | Open 09:31–15:59 (RTH) |
+| ostium_rth_equities | NVDAUSD | Open 09:31–15:59 (RTH weekday) |
+| us_equities_ny | GOOGUSD | Open 09:30–16:00 (NYSE RTH weekday) |
 | fx_24_5 | EURUSD, GBPUSD, USDJPY, AUDUSD | Diumenge 22:00 UTC – Divendres 22:00 UTC |
-| unknown | GOOGUSD, altres | No pause; no degradar per stale |
 
-- **paused_closed:** Quan `market_closed` o `daily_break` → ingest pausat (sense borrar dades).
-- **Health:** closed no penalitza; només símbols OPEN degradats compten.
+- **paused_closed:** Quan `market_closed`, `daily_break` o `rth_closed` → ingest pausat (sense borrar dades). `next_open_local` informat.
+- **Health:** closed/paused no penalitza; només símbols OPEN degradats compten.
 - **Override:** `symbols.json` → `market_hours_overrides: {"SYMBOL": "profile"}`.
+
+## HEALTH vs COVERAGE (v2.2)
+
+**HEALTH** (`state`): basat en `market_open`, `errors_count`, `stale_seconds`. **Prohibit:** `missing_minutes_24h` no pot degradar durant warmup.
+
+**WARMUP:** durant `service_uptime_s < warmup_minutes` (default 120min), `missing_minutes_24h` mai degrada.
+- `expected_open_minutes` = `min(1440, service_uptime_s // 60) - closed_mins` (no 1440 fix)
+- `in_warmup = observed_open_minutes < warmup_minutes`
+
+**COVERAGE** (informatiu, no governa HEALTH):
+- `coverage_expected_minutes`: minuts oberts esperats per l'uptime actual
+- `coverage_missing_minutes`: minuts oberts sense candle
+- `coverage_ratio`: observed/expected (0..1)
+- `symbol_uptime_s`: segons des del primer tick
+
+## Deploy zero-downtime
+
+```bash
+# 1. Build (mentre el servei corre — les candles al volum no es toquen)
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml build realtime_datalayer
+
+# 2. Restart (solo el contenidor: ~10-15s gap, dades intactes)
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml up -d --no-deps realtime_datalayer
+
+# 3. Verificar (esperar ~8s)
+curl -s http://localhost:8081/health   # esperat: {"status":"ok"}
+curl -s http://localhost:8081/symbols  # estats i coverage per símbol
+```
+
+**Les candles sobreviuen al restart:** el volum `./datafiles:/datafiles` és persistent. El gap d'ingest durant el restart (~10-15s) és acceptable — el CSV store resumeix des de l'últim candle escrit.
 
 ## Boundaries
 
