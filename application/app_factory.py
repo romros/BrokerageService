@@ -462,6 +462,11 @@ def create_app(role: str | None = None) -> FastAPI:
     for r in get_routers_for_role(role):
         app.include_router(r)
 
+    # Phase 12: backtest API (trading_service i monolithic)
+    if role in (None, "trading_service"):
+        from application.api.backtest_routes import router as backtest_router
+        app.include_router(backtest_router)
+
     if _role_starts_adapter(role):
         app.include_router(ws_router, prefix="/api/v1")
 

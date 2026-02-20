@@ -32,10 +32,12 @@
 - ✅ **Split vNext Phase 9:** `PASS_BACKTEST` — nova mètrica `dir_agree_filtered_1m` (ignora minuts flat/soroll feed). EURUSD: **PASS_BACKTEST** (corr=0.968, dir_agree_filtered=96.7%); XAUUSD: **PASS_BACKTEST** (corr=0.977, dir_agree_filtered=95.9%). `allowed_for_backtest=true` per ambdós.
 - ✅ **Phase 10:** `BacktestMarketDataProvider` registry-aware. EURUSD/XAUUSD → `ostium_local`; no graduat → `dukascopy`. Headers X-Data-* coherents. 9 tests 0-network. `application/data/backtest_market_data.py`.
 - ✅ **Phase 11:** Backtest runner offline + estratègia `simple_trend` + KPIs (trades, win_rate, pnl, max_drawdown) + artifact JSON. `application/tools/run_backtest.py`, `scripts/run_backtest_offline.sh`. 12 tests 0-network.
+- ✅ **Phase 12:** Backtest API REST: `POST /api/v1/backtests/run` → run_id + KPIs + x_data; `GET /api/v1/backtests/runs/{run_id}` → artifact JSON. Artifact persistit a `datafiles/backtests/`. 8 tests 0-network. `application/api/backtest_routes.py`.
+- ✅ **Phase 13:** `run_all.py` usable: quiet + fail-fast per defecte, Lighter opt-in (`--include-lighter`), `--verbose`, `--no-fail-fast`. 63 passed, 0 failed, 50 skipped (Lighter/gTrade/xarxa).
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 
-> **Phases 2–11 completades.** EURUSD i XAUUSD: **PASS_BACKTEST** (`allowed_for_backtest=true`). Backtest runner offline (`simple_trend`) + artifact JSON operatiu. Focus next: estratègies reals, window multi-dia, métriques avançades.
+> **Phases 2–13 completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Backtest API REST operativa. `run_all` quiet+fail-fast; Lighter opt-in. Focus next: estratègies reals, window multi-dia, métriques avançades.
 
 ---
 
@@ -361,6 +363,46 @@ Si PASS → `ostium_compat_registry.json` actualitzat, `ostium_primary_allowed=t
 
 ---
 
+## Phase 13 — run_all quiet + fail-fast + Lighter opt-in
+
+**Comandes canòniques:**
+```bash
+./test.sh testing/run_all.py                    # default: core 0-network, quiet, fail-fast
+./test.sh testing/run_all.py --include-lighter  # + Lighter (adapters, WS, soak)
+./test.sh testing/run_all.py --verbose          # mostra output de cada test
+./test.sh testing/run_all.py --no-fail-fast     # continua fins al final
+```
+
+**Comportament default:** quiet (captura output, imprimeix-lo només si falla), fail-fast (para al primer error), Lighter exclòs (opt-in via `--include-lighter`), gTrade exclòs (`--include-gtrade`).
+
+---
+
+## Phase 12 — Backtest API REST (POST /run + GET /runs/{run_id})
+
+**Fitxers:** `application/api/backtest_routes.py`, `application/api/error_codes.py` (3 noves constants)
+
+**Endpoints:**
+- `POST /api/v1/backtests/run` → 200 `{run_id, status, symbol, kpis, x_data, artifact_id}`
+- `GET /api/v1/backtests/runs/{run_id}` → 200 artifact complet (+ `trades_sample`)
+- `run_id` invàlid → 422; `run_id` inexistent → 404 `BACKTEST_NOT_FOUND`
+
+**Com provar (curl):**
+```bash
+# POST run
+curl -s -X POST http://localhost:8010/api/v1/backtests/run \
+  -H 'Content-Type: application/json' \
+  -d '{"symbol": "EURUSD", "days": 1}' | python3 -m json.tool
+
+# GET run (substituir <run_id> per el valor retornat)
+curl -s http://localhost:8010/api/v1/backtests/runs/<run_id> | python3 -m json.tool
+```
+
+**Validació inputs (422):**
+- `symbol`: alpha, max 10 chars, normalitzat a majúscules
+- `days`: 0.01–30; `strategy`: `simple_trend`; `timeframe`: `1m`
+
+---
+
 ## Data Layer readiness gates (prod)
 
 Llindars via env: `DATA_LAYER_GATES_MAX_GAP_S`, `DATA_LAYER_GATES_MAX_MISSING_PER_24H`, `DATA_LAYER_STALE_SECONDS` (defaults a constants.py).
@@ -440,6 +482,8 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-20 | Phase 9: PASS_BACKTEST + dir_agree_filtered | ✅ EURUSD **PASS_BACKTEST** (corr=0.968, dir_filtered=96.7%, eligible=427); XAUUSD **PASS_BACKTEST** (corr=0.977, dir_filtered=95.9%, eligible=468). `allowed_for_backtest=true`. 9 tests unitaris. | `datafiles/compat_reports/20260220_153*.json` |
 | 2026-02-20 | Phase 10: BacktestMarketDataProvider registry-aware | ✅ `application/data/backtest_market_data.py`; EURUSD/XAUUSD → `ostium_local`; no graduat → `dukascopy`; headers X-Data-* coherents; 9 tests 0-network; `run_all.py` VERD (85 passed). | `./scripts/run_tests.sh trading_service` |
 | 2026-02-20 | Phase 11: Backtest runner offline + KPIs + artifact | ✅ `application/tools/run_backtest.py`; estratègia `simple_trend`; KPIs (trades, win_rate, pnl, max_dd); artifact JSON `datafiles/backtests/`; `scripts/run_backtest_offline.sh`; 12 tests 0-network; `run_all.py` VERD (85 passed). | `./scripts/run_backtest_offline.sh EURUSD 1` |
+| 2026-02-20 | Phase 12: Backtest API REST | ✅ `application/api/backtest_routes.py`; `POST /api/v1/backtests/run` + `GET /runs/{run_id}`; artifact persistit; 8 tests 0-network. | `curl -X POST http://localhost:8010/api/v1/backtests/run -d '{"symbol":"EURUSD","days":1}'` |
+| 2026-02-20 | Phase 13: run_all quiet+fail-fast+Lighter opt-in | ✅ `testing/run_all.py` reescrit; quiet+fail-fast per defecte; Lighter → `--include-lighter`; `LOG_LEVEL=WARNING` fills; 63 passed, 0 failed. | `./test.sh testing/run_all.py` |
 
 **DEGRADED vs CLOSED vs WARNING:** `closed` = mercat tancat (cap de setmana FX/XAU); no és incident. `warning` = market_state=unknown sense dades; no és degraded. `DEGRADED` = errors reals (duplicates, ts_step_errors, stale quan market_open). **Degraded és non-blocking:** continua polling amb backoff (base 2s, max 60s); autorecover quan arriba tick nou; pause només per `paused_closed` (market_closed). `/symbols` inclou `next_poll_in_s`, `degrade_reason`.
 
