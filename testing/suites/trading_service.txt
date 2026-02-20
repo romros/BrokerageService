@@ -1,4 +1,4 @@
-# trading_service — execució/venue adapters/trade flows + Phase 5 quality gate enforçat + Phase 6 soak e2e (0-network) + Phase 10 backtest registry-aware + Phase 11 backtest runner offline + Phase 12 backtest API
+# trading_service — execució/venue adapters/trade flows + Phase 5 quality gate enforçat + Phase 6 soak e2e (0-network) + Phase 10 backtest registry-aware + Phase 11 backtest runner offline + Phase 12 backtest API + Phase 19 OHLCV long-range Parquet + Coverage API
 testing/apps/trading_service/test_quality_gates.py
 testing/apps/trading_service/test_http_data_layer_reader.py
 testing/apps/trading_service/test_quality_gate_enforced.py
@@ -14,3 +14,5 @@ testing/apps/trading_service/test_backtest_registry_marketdata.py
 testing/apps/trading_service/test_backtest_runner_offline.py
 testing/apps/trading_service/test_backtest_api.py
 testing/apps/trading_service/test_ohlcv_data_api.py
+testing/apps/trading_service/test_data_ohlcv_long_range_parquet.py
+testing/apps/trading_service/test_coverage_endpoint.py

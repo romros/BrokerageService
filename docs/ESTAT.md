@@ -39,10 +39,11 @@
 - ✅ **Phase 16:** DuckDB query layer sobre Parquet. `infrastructure/query/duckdb_query_service.py` (predicate pushdown, cursor `next_ts`, `compute_xdata_headers`). `GET /api/v1/data/ohlcv/{symbol}` fa routing automàtic DuckDB si existeix Parquet; legacy sinó. 9 tests 0-network. `duckdb>=0.10.0` afegit a requirements.
 - ✅ **Phase 17:** Backtest runner "Freqtrade-style" sobre Parquet. `application/tools/run_backtest_parquet.py` (loader estratègia dinàmic, DuckDB paginat, `pd.DataFrame` shape-compatible Freqtrade, KPIs, artifact JSON). `strategies/simple_trend_df.py` (exemple `generate_signals(df) -> pd.Series`). `scripts/run_backtest_parquet.sh`. 9 tests 0-network.
 - ✅ **Phase 18:** Ops robustos per backfill 2003→avui. `application/data/coverage_index.py` (index JSON per mes: done/failed/empty, persistit a `_coverage/`). `run_historical_backfill.py` ampliada: retries/backoff exponencial, resume per coverage index, `--dry-run`, `--stop-after N`, `--retry-failed`. `scripts/run_full_pipeline.sh` wrapper. 11 tests 0-network.
+- ✅ **Phase 19:** Data API long-range + Coverage API. `GET /api/v1/data/ohlcv/{symbol}` serveix rangs llargs des de Parquet via DuckDB amb cursor `next_ts` (multi-mes, sense solapament). `GET /api/v1/data/coverage/{symbol}?tf=1m` exposa el coverage index (summary + detall per mes). 10 tests 0-network.
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 
-> **Phases 2–18 completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Parquet (15) + DuckDB (16) + Backtest Freqtrade-style (17) + Ops robustos (18): coverage index, retries/backoff, resume, dry-run, stop-after. Pipeline prod-ish per backfill 2003→avui. 78 tests 0-network.
+> **Phases 2–19 completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Parquet (15) + DuckDB (16) + Backtest Freqtrade-style (17) + Ops robustos (18) + Data API long-range + Coverage API (19). Pipeline prod-ish per backfill 2003→avui. 88 tests 0-network.
 
 ---
 
@@ -552,6 +553,40 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 
 ---
 
+## Phase 19 — Data API long-range + Coverage API
+
+**Endpoint OHLCV long-range (DuckDB cursor):**
+```bash
+# Si hi ha Parquet → DuckDB path, source=historical_parquet
+curl -s "http://localhost:8010/api/v1/data/ohlcv/EURUSD?tf=1m&limit=1000" | python3 -m json.tool
+
+# Paginació cursor multi-mes (next_ts)
+NEXT=$(curl -s "http://localhost:8010/api/v1/data/ohlcv/EURUSD?limit=5000" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['next_ts'] or '')")
+curl -s "http://localhost:8010/api/v1/data/ohlcv/EURUSD?limit=5000&next_ts=$NEXT"
+
+# Rang temporal explícit
+curl -s "http://localhost:8010/api/v1/data/ohlcv/EURUSD?from_ts=1577836800&to_ts=1580515200&limit=5000"
+```
+
+**Coverage API:**
+```bash
+# Summary + detall per mes (done/failed/empty)
+curl -s "http://localhost:8010/api/v1/data/coverage/EURUSD?tf=1m" | python3 -m json.tool
+
+# Resultat esperat (exemple post-backfill):
+# {
+#   "symbol": "EURUSD", "timeframe": "1m",
+#   "summary": {"months_done": 264, "months_failed": 0, "months_empty": 0, "total_rows": 8372149},
+#   "months": {"2003-01": {"status": "done", "rows": 31653, ...}, ...}
+# }
+```
+
+**Routing OHLCV:**
+- Parquet existent → `DuckDBQueryService.query_ohlcv()` + cursor `next_ts` + `source=historical_parquet`
+- Sense Parquet → legacy path (ostium_local o dukascopy) + paginació `offset`
+
+---
+
 ## Evidència recent
 
 | Data | Run | Resultat | Com validar |
@@ -595,6 +630,7 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 | 2026-02-20 | Phase 13: run_all quiet+fail-fast+Lighter opt-in | ✅ `testing/run_all.py` reescrit; quiet+fail-fast per defecte; Lighter → `--include-lighter`; `LOG_LEVEL=WARNING` fills; 63 passed, 0 failed. | `./test.sh testing/run_all.py` |
 | 2026-02-20 | Phase 14: OHLCV Data API registry-aware | ✅ `application/api/data_routes.py`; `GET /api/v1/data/ohlcv/{symbol}`; format `[ts,o,h,l,c,v]`; paginació; X-Data-* headers; 9 tests 0-network; 64 passed. | `curl "http://localhost:8010/api/v1/data/ohlcv/EURUSD?tf=1m&limit=100"` |
 | 2026-02-20 | Phase 15: Parquet storage + backfill runner | ✅ `infrastructure/storage/parquet_store.py`; particionat mensual; idempotent; `application/tools/run_historical_backfill.py`; 13 tests 0-network; 65 passed. | `python3 application/tools/run_historical_backfill.py --symbol EURUSD --from 2003-01-01 --to 2003-12-31` |
+| 2026-02-20 | Phase 19: Data API long-range + Coverage API | ✅ `GET /api/v1/data/ohlcv/{symbol}` DuckDB cursor `next_ts` multi-mes; `GET /api/v1/data/coverage/{symbol}` exposa index (summary+mesos); 10 tests 0-network; run_all VERD. | `curl "http://localhost:8010/api/v1/data/coverage/EURUSD?tf=1m"` |
 
 **DEGRADED vs CLOSED vs WARNING:** `closed` = mercat tancat (cap de setmana FX/XAU); no és incident. `warning` = market_state=unknown sense dades; no és degraded. `DEGRADED` = errors reals (duplicates, ts_step_errors, stale quan market_open). **Degraded és non-blocking:** continua polling amb backoff (base 2s, max 60s); autorecover quan arriba tick nou; pause només per `paused_closed` (market_closed). `/symbols` inclou `next_poll_in_s`, `degrade_reason`.
 

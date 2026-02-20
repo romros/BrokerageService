@@ -1,10 +1,11 @@
 """
-Data API — Phase 14/16.
+Data API — Phase 14/16/19.
 
 Prefix: /api/v1/data
 
-GET /ohlcv/{symbol} → candles OHLCV registry-aware (Ostium local o Dukascopy fallback)
-                       Si existeix Parquet históric → DuckDB (Phase 16)
+GET /ohlcv/{symbol}      → candles OHLCV registry-aware (Ostium local o Dukascopy fallback)
+                           Si existeix Parquet históric → DuckDB (Phase 16)
+GET /coverage/{symbol}   → Coverage index per símbol (Phase 19)
 
 Dissenyat per ser consumit per un adaptador Freqtrade backtest.
 """
@@ -144,3 +145,52 @@ async def get_ohlcv(
     }
 
     return JSONResponse(content=response_body, headers=xdata_headers)
+
+
+# ---------------------------------------------------------------------------
+# Phase 19: Coverage API
+# ---------------------------------------------------------------------------
+
+@router.get("/coverage/{symbol}")
+async def get_coverage(
+    symbol: str,
+    tf: str = Query(default="1m", description="Timeframe (només 1m)"),
+):
+    """
+    Retorna el coverage index del Parquet históric per un símbol.
+
+    Response:
+    {
+      "symbol": "EURUSD",
+      "timeframe": "1m",
+      "summary": {months_total, months_done, months_failed, months_empty, total_rows},
+      "months": {"2020-01": {"status": "done", "rows": 31653, ...}, ...}
+    }
+
+    Si no existeix coverage index → summary buit + months buit (no 404).
+    """
+    sym = symbol.strip().upper()
+    if not sym or not sym.isalnum() or len(sym) > 10:
+        raise HTTPException(
+            status_code=422,
+            detail={"detail": "symbol invàlid", "code": INVALID_PARAMS},
+        )
+
+    if tf not in SUPPORTED_TIMEFRAMES:
+        raise HTTPException(
+            status_code=422,
+            detail={"detail": f"timeframe '{tf}' no suportat", "code": INVALID_PARAMS},
+        )
+
+    datafiles_root = os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT)
+
+    from application.data.coverage_index import CoverageIndex
+    idx = CoverageIndex(root_path=datafiles_root, symbol=sym)
+    summary = idx.summary()
+
+    return JSONResponse(content={
+        "symbol": sym,
+        "timeframe": tf,
+        "summary": summary,
+        "months": idx._data.get("months", {}),
+    })
