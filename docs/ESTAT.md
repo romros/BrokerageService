@@ -37,10 +37,11 @@
 - ✅ **Phase 14:** OHLCV Data API registry-aware: `GET /api/v1/data/ohlcv/{symbol}?tf=1m&from_ts=&to_ts=&limit=&offset=`. Format candles `[ts,o,h,l,c,v]`. Paginació `next_offset`. X-Data-* headers. 9 tests 0-network. `application/api/data_routes.py`.
 - ✅ **Phase 15:** Parquet storage particionat + backfill runner. `infrastructure/storage/parquet_store.py` (write/read/range/coverage, idempotent, validació). Runner `application/tools/run_historical_backfill.py` (mes a mes, skip_existing, rate-limit, 0-network via override). 13 tests 0-network.
 - ✅ **Phase 16:** DuckDB query layer sobre Parquet. `infrastructure/query/duckdb_query_service.py` (predicate pushdown, cursor `next_ts`, `compute_xdata_headers`). `GET /api/v1/data/ohlcv/{symbol}` fa routing automàtic DuckDB si existeix Parquet; legacy sinó. 9 tests 0-network. `duckdb>=0.10.0` afegit a requirements.
+- ✅ **Phase 17:** Backtest runner "Freqtrade-style" sobre Parquet. `application/tools/run_backtest_parquet.py` (loader estratègia dinàmic, DuckDB paginat, `pd.DataFrame` shape-compatible Freqtrade, KPIs, artifact JSON). `strategies/simple_trend_df.py` (exemple `generate_signals(df) -> pd.Series`). `scripts/run_backtest_parquet.sh`. 9 tests 0-network.
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 
-> **Phases 2–16 completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Backtest + OHLCV API. Parquet storage particionat (Phase 15). DuckDB query layer (Phase 16): routing automàtic DuckDB/legacy, cursor `next_ts`, 66 tests 0-network. Focus next: adaptador Freqtrade.
+> **Phases 2–17 completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Parquet (15) + DuckDB (16) + Backtest Freqtrade-style (17): `generate_signals(df) -> Series`, KPIs, artifact JSON. 75 tests 0-network.
 
 ---
 

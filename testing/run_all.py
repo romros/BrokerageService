@@ -301,6 +301,7 @@ def main():
         testing_dir / "apps" / "historical_datalayer" / "test_compat_report_service.py",  # P8 Compat report (0 network)
         testing_dir / "apps" / "historical_datalayer" / "test_historical_parquet.py",  # Phase 15 Parquet storage + backfill
         testing_dir / "apps" / "historical_datalayer" / "test_duckdb_query.py",       # Phase 16 DuckDB query + routing
+        testing_dir / "apps" / "historical_datalayer" / "test_backtest_parquet.py",  # Phase 17 backtest Freqtrade-style
         testing_dir / "unit" / "test_ostium_compat_report_service.py",  # Ostium compat (0 network)
         testing_dir / "unit" / "test_compat_registry_ostium_gate.py",  # Ostium graduation gate (0 network)
         testing_dir / "unit" / "test_save_ostium_registry_robust.py",  # save_ostium_registry atomic + dirs + error (0 network)
