@@ -38,10 +38,11 @@
 - ✅ **Phase 15:** Parquet storage particionat + backfill runner. `infrastructure/storage/parquet_store.py` (write/read/range/coverage, idempotent, validació). Runner `application/tools/run_historical_backfill.py` (mes a mes, skip_existing, rate-limit, 0-network via override). 13 tests 0-network.
 - ✅ **Phase 16:** DuckDB query layer sobre Parquet. `infrastructure/query/duckdb_query_service.py` (predicate pushdown, cursor `next_ts`, `compute_xdata_headers`). `GET /api/v1/data/ohlcv/{symbol}` fa routing automàtic DuckDB si existeix Parquet; legacy sinó. 9 tests 0-network. `duckdb>=0.10.0` afegit a requirements.
 - ✅ **Phase 17:** Backtest runner "Freqtrade-style" sobre Parquet. `application/tools/run_backtest_parquet.py` (loader estratègia dinàmic, DuckDB paginat, `pd.DataFrame` shape-compatible Freqtrade, KPIs, artifact JSON). `strategies/simple_trend_df.py` (exemple `generate_signals(df) -> pd.Series`). `scripts/run_backtest_parquet.sh`. 9 tests 0-network.
+- ✅ **Phase 18:** Ops robustos per backfill 2003→avui. `application/data/coverage_index.py` (index JSON per mes: done/failed/empty, persistit a `_coverage/`). `run_historical_backfill.py` ampliada: retries/backoff exponencial, resume per coverage index, `--dry-run`, `--stop-after N`, `--retry-failed`. `scripts/run_full_pipeline.sh` wrapper. 11 tests 0-network.
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 
-> **Phases 2–17 completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Parquet (15) + DuckDB (16) + Backtest Freqtrade-style (17): `generate_signals(df) -> Series`, KPIs, artifact JSON. 75 tests 0-network.
+> **Phases 2–18 completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Parquet (15) + DuckDB (16) + Backtest Freqtrade-style (17) + Ops robustos (18): coverage index, retries/backoff, resume, dry-run, stop-after. Pipeline prod-ish per backfill 2003→avui. 78 tests 0-network.
 
 ---
 
@@ -515,6 +516,38 @@ curl -s http://localhost:8000/api/v1/broker/data_status
 curl -s "http://localhost:8000/api/v1/broker/coverage?symbol=ETH&resolution=1m"
 curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-Data
 ./test.sh testing/integration/test_data_layer_soak_metrics.py --minutes 2
+```
+
+---
+
+## Backfill 2003→avui (prod-ish, Phase 18)
+
+```bash
+# Prova segura: 2 mesos, dry-run primer
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml run --rm \
+  historical_datalayer python3 application/tools/run_historical_backfill.py \
+  --symbol EURUSD --from 2003-01-01 --to 2024-12-31 --dry-run --stop-after 2
+
+# 2 mesos reals (valida pipeline)
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml run --rm \
+  historical_datalayer python3 application/tools/run_historical_backfill.py \
+  --symbol EURUSD --from 2003-01-01 --to 2024-12-31 --stop-after 2 --sleep 1
+
+# Continuar (resume automàtic per coverage index)
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml run --rm \
+  historical_datalayer python3 application/tools/run_historical_backfill.py \
+  --symbol EURUSD --from 2003-01-01 --to 2024-12-31 --sleep 1
+
+# Reintenta mesos fallats
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml run --rm \
+  historical_datalayer python3 application/tools/run_historical_backfill.py \
+  --symbol EURUSD --from 2003-01-01 --to 2024-12-31 --retry-failed --sleep 2
+
+# Pipeline complet (backfill + backtest)
+./scripts/run_full_pipeline.sh --symbol EURUSD --from 2020-01-01 --to 2020-12-31
+
+# Coverage index (on és el fitxer)
+# datafiles/historical_parquet/_coverage/EURUSD_tf1m.json
 ```
 
 ---
