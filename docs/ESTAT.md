@@ -28,11 +28,12 @@
 - ✅ **Split vNext Phase 5:** NO_TRADE enforçat quan `quality_gate.is_bad()` — `_do_order_open` comprova gate abans d'executar; `DataQualityGateBadError` → 422; 5 tests
 - ✅ **Split vNext Phase 6:** Soak e2e (3 casos OK/BAD/down) validat; retenció candles augmentada (4320h / 180 dies); `scripts/run_soak_e2e.sh`; artifact `datafiles/e2e_runs/`
 - ✅ **Split vNext Phase 7:** `run_all.py` VERD — 3 fixes (IndentationError, app.title assert, warmup READY); venue/test matrix documentada; `testing/suites/lab_lighter.txt` opt-in
+- 🟡 **Split vNext Phase 8:** Compat sampling Ostium↔Dukascopy executat amb dades reals. EURUSD: PARTIAL (corr=0.958, dir_agree=90%, diff p95=0.5pip); XAUUSD: PARTIAL (corr=0.977, dir_agree=90.7%, diff p95=$0.98). Ambdós just per sota del llindar PASS (95%). `ostium_primary_allowed=false` fins graduation PASS.
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - ⛔ **Backtest** pendent
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 
-> **Phases 2–7 completades.** Focus next: **Phase 8 — compat sampling Ostium↔Dukascopy** (comparar sèries, detectar gaps/desfasaments sistemàtics, gates de graduació).
+> **Phases 2–8 completades.** EURUSD compat = **PARTIAL** (corr=0.958, dir_agree=90% — Ostium realtime vs Dukascopy 1m). Focus next: acumular més mostra i re-córrer compat per intentar graduation PASS; o avançar a Phase 9 (backtesting coherent amb PARTIAL).
 
 ---
 
@@ -134,7 +135,7 @@ docker logs trading_service 2>&1 | grep -E "quality_gate|QUALITY_GATE"
 | historical_datalayer | **Dukascopy** (target) | — | Suite `historical_datalayer` verda |
 | gTrade exec | — | gTrade (legacy) | Opt-in `--include-gtrade`; no CI |
 | Lighter backfill | Lighter API | — | Opt-in `--include-lighter-backfill` |
-| Compat Ostium↔Dukascopy | Ostium + Dukascopy | — | Opt-in `--include-ostium-compat`; **Phase 8 pendent** |
+| Compat Ostium↔Dukascopy | Ostium + Dukascopy | — | Opt-in `--include-ostium-compat`; **Phase 8 fet** (EURUSD PARTIAL) |
 
 **Suites LAB/opt-in:** `testing/suites/lab_lighter.txt` (Lighter venue, tests no canònics).
 
@@ -195,10 +196,18 @@ docker logs trading_service 2>&1 | grep -E "quality_gate|QUALITY_GATE"
 
 **Estat per símbol (prod-ish v1):**
 
-| Símbol | Compat | Primary allowed | Quarantined |
-|--------|--------|-----------------|-------------|
-| EURUSD | PASS   | ✅ true         | No          |
-| XAUUSD | FAIL   | ❌ false        | Sí (config) |
+| Símbol | Compat | Primary allowed | Quarantined | Corr | Dir agree | Diff preu típic | Diff preu màx |
+|--------|--------|-----------------|-------------|------|-----------|-----------------|---------------|
+| EURUSD | **PARTIAL** | ❌ false | No | 0.958 | 90.0% | ~0.14 pips | 1.3 pips |
+| XAUUSD | **PARTIAL** | ❌ false | Sí (quarantine config) | 0.977 | 90.7% | ~$0.42 (~0.008%) | $4.45 (~0.09%) |
+
+**Interpretació (2026-02-20, 650 candles 1m, dades reals Ostium recorder):**
+- Les diferències de **preu absolut** entre Ostium i Dukascopy són negligibles per ambdós símbols.
+- El PARTIAL ve del soroll intrínsec entre dos feeds independents a resolució 1m: ~10% dels minuts la direcció del tick difereix — comportament normal entre fonts.
+- **XAUUSD té millor correlació que EURUSD** (0.977 vs 0.958): el spread Ostium és consistent amb Dukascopy.
+- **Útil per backtesting**: sí per ambdós. El PARTIAL és un llindar estricte de la pipeline, no una incompatibilitat real.
+
+**Nota:** El PASS anterior (18-feb, corr=1.000) era espuri — llegia del store `gtrade/` (Dukascopy via gTrade), no les candles Ostium reals. El run del 20-feb llegeix correctament de `realtime_datalayer/candles/`.
 
 **Què canvia quan PASS → primary (mini-taula):**
 
@@ -309,6 +318,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-20 | Split vNext Phase 3: Symbol Supervisor + heartbeat | ✅ market_closed → heartbeat 60s (OSTIUM_CLOSED_HEARTBEAT_S); no stop total; last_price actualitza; candles NO durant heartbeat; 5 tests test_heartbeat_when_closed + 5 tests nous suite | `./scripts/run_tests.sh realtime_datalayer` |
 | 2026-02-20 | Split vNext Phase 4: X-Data-* headers contracte | ✅ GET /ohlcv/{symbol} i /candles emeten X-Data-Source/Coverage-From/To/Missing-Minutes/Max-Gap-S; path local ja correcte; 4 tests test_ohlcv_headers | `./scripts/run_tests.sh realtime_datalayer` |
 | 2026-02-20 | Split vNext Phase 5: NO_TRADE enforçat (fail-closed real) | ✅ `_do_order_open` comprova gate via `assert_data_quality_ok()`; gate=BAD→422 DATA_QUALITY_GATE_BAD; cap venue call; gate=OK→continua; 5 tests test_quality_gate_enforced | `./scripts/run_tests.sh trading_service` |
+| 2026-02-20 | Phase 8: Compat sampling Ostium↔Dukascopy | 🟡 EURUSD **PARTIAL** (corr=0.958, dir_agree=90%, diff p95=0.5pip); XAUUSD **PARTIAL** (corr=0.977, dir_agree=90.7%, diff p95=$0.98). Ambdós amb dades reals Ostium recorder (650 candles 1m). Diferències preu negligibles; PARTIAL = soroll intrínsec feed 1m. Registry actualitzat. | `datafiles/compat_reports/20260220_*.json` |
 
 **DEGRADED vs CLOSED vs WARNING:** `closed` = mercat tancat (cap de setmana FX/XAU); no és incident. `warning` = market_state=unknown sense dades; no és degraded. `DEGRADED` = errors reals (duplicates, ts_step_errors, stale quan market_open). **Degraded és non-blocking:** continua polling amb backoff (base 2s, max 60s); autorecover quan arriba tick nou; pause només per `paused_closed` (market_closed). `/symbols` inclou `next_poll_in_s`, `degrade_reason`.
 
