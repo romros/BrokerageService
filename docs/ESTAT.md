@@ -30,11 +30,11 @@
 - ✅ **Split vNext Phase 7:** `run_all.py` VERD — 3 fixes (IndentationError, app.title assert, warmup READY); venue/test matrix documentada; `testing/suites/lab_lighter.txt` opt-in
 - ✅ **Split vNext Phase 8:** Compat sampling Ostium↔Dukascopy executat amb dades reals. EURUSD: PARTIAL (corr=0.958, dir_agree=90%, diff p95=0.5pip); XAUUSD: PARTIAL (corr=0.977, dir_agree=90.7%, diff p95=$0.98).
 - ✅ **Split vNext Phase 9:** `PASS_BACKTEST` — nova mètrica `dir_agree_filtered_1m` (ignora minuts flat/soroll feed). EURUSD: **PASS_BACKTEST** (corr=0.968, dir_agree_filtered=96.7%); XAUUSD: **PASS_BACKTEST** (corr=0.977, dir_agree_filtered=95.9%). `allowed_for_backtest=true` per ambdós.
+- ✅ **Phase 10:** `BacktestMarketDataProvider` registry-aware. EURUSD/XAUUSD → `ostium_local`; no graduat → `dukascopy`. Headers X-Data-* coherents. 9 tests 0-network. `application/data/backtest_market_data.py`.
 - 🟡 **gTrade** existent (paper OK); no prioritzat
-- ⛔ **Backtest** pendent
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 
-> **Phases 2–9 completades.** EURUSD i XAUUSD: **PASS_BACKTEST** (`allowed_for_backtest=true`). Focus next: Phase 10 — pipeline de backtesting coherent usant dades Ostium graduades.
+> **Phases 2–10 completades.** EURUSD i XAUUSD: **PASS_BACKTEST** (`allowed_for_backtest=true`). `BacktestMarketDataProvider` resol fonts via registry i retorna headers X-Data-* coherents. Focus next: estratègies backtesting usant provider registry-aware.
 
 ---
 
@@ -228,6 +228,64 @@ docker logs trading_service 2>&1 | grep -E "quality_gate|QUALITY_GATE"
 
 **Tests:** Unit 0-network: `test_ostium_compat_report_service.py`, `test_compat_registry_ostium_gate.py`, `test_save_ostium_registry_robust.py`. Opt-in real: `./test.sh testing/run_all.py --include-ostium-compat`.
 
+---
+
+## Phase 10 — BacktestMarketDataProvider (registry-aware)
+
+**Propòsit:** Provider OHLCV per mode backtest que resol la font de dades via `ostium_compat_registry`:
+- `allowed_for_backtest=true` → llegeix candles Ostium locals (`realtime_datalayer/candles/`)
+- Altrament → fallback Dukascopy (pot requerir xarxa o cache)
+
+**Fitxer:** `application/data/backtest_market_data.py`
+
+**API pública:**
+```python
+# Resolució de font (determinisat, 0-network)
+source = resolve_backtest_data_source("EURUSD", registry_path=...)
+# → "ostium" o "dukascopy"
+
+# OHLCV amb headers X-Data-* (async, però ostium_local = 0-network)
+body, headers = await get_ohlcv_backtest(
+    symbol="EURUSD",
+    start=datetime(...),
+    end=datetime(...),
+    datafiles_root="/datafiles",
+    registry_path=...,             # opcional; default DATAFILES_ROOT
+    dukascopy_override=[...],      # per testing 0-network
+)
+```
+
+**Headers X-Data-* retornats:**
+
+| Header | Valor |
+|--------|-------|
+| `X-Data-Source` | `ostium_local` o `dukascopy` |
+| `X-Data-Coverage-From` | unix ts candle inicial |
+| `X-Data-Coverage-To` | unix ts fi de l'última candle |
+| `X-Data-Missing-Minutes` | minuts esperats - candles obtingudes |
+| `X-Data-Max-Gap-S` | gap màxim entre candles consecutives (≥60s exclòs) |
+
+**Observabilitat (output demo):**
+```
+symbol=EURUSD source=ostium_local candles=10 missing=0
+symbol=XAUUSD source=ostium_local candles=10 missing=0
+symbol=USDJPY source=dukascopy candles=8 missing=2
+```
+
+**Fixtures testing:** `testing/fixtures/realtime_datalayer/candles/{EURUSD,XAUUSD}/America_New_York/2026/02.csv` (10 candles 1m cadascun, 2026-02-20 10:00–10:09 UTC)
+
+**Com executar tests:**
+```bash
+./scripts/run_tests.sh trading_service
+# o directament:
+./test.sh testing/apps/trading_service/test_backtest_registry_marketdata.py
+```
+
+**Guardrails:**
+- Registry absent → fallback determinista a `dukascopy` + log warn
+- Ostium seleccionat però 0 candles → retorna body buit + headers coherents (missing=expected); NO fallback a Dukascopy (comportament explícit: si graduat, no amagar dades mancants)
+- NEVER throws: errors de lectura retornen candles buides, no excepció
+
 **Graduation run canònic (EURUSD):**
 ```bash
 # 1. Arrancar broker ostium (scripts exporten UID/GID → datafiles writable)
@@ -321,6 +379,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-20 | Split vNext Phase 5: NO_TRADE enforçat (fail-closed real) | ✅ `_do_order_open` comprova gate via `assert_data_quality_ok()`; gate=BAD→422 DATA_QUALITY_GATE_BAD; cap venue call; gate=OK→continua; 5 tests test_quality_gate_enforced | `./scripts/run_tests.sh trading_service` |
 | 2026-02-20 | Phase 8: Compat sampling Ostium↔Dukascopy | ✅ EURUSD PARTIAL (corr=0.958, dir_agree=90%); XAUUSD PARTIAL (corr=0.977, dir_agree=90.7%). Dades reals Ostium recorder. | `datafiles/compat_reports/20260220_1[56]*.json` |
 | 2026-02-20 | Phase 9: PASS_BACKTEST + dir_agree_filtered | ✅ EURUSD **PASS_BACKTEST** (corr=0.968, dir_filtered=96.7%, eligible=427); XAUUSD **PASS_BACKTEST** (corr=0.977, dir_filtered=95.9%, eligible=468). `allowed_for_backtest=true`. 9 tests unitaris. | `datafiles/compat_reports/20260220_153*.json` |
+| 2026-02-20 | Phase 10: BacktestMarketDataProvider registry-aware | ✅ `application/data/backtest_market_data.py`; EURUSD/XAUUSD → `ostium_local`; no graduat → `dukascopy`; headers X-Data-* coherents; 9 tests 0-network; `run_all.py` VERD (85 passed). | `./scripts/run_tests.sh trading_service` |
 
 **DEGRADED vs CLOSED vs WARNING:** `closed` = mercat tancat (cap de setmana FX/XAU); no és incident. `warning` = market_state=unknown sense dades; no és degraded. `DEGRADED` = errors reals (duplicates, ts_step_errors, stale quan market_open). **Degraded és non-blocking:** continua polling amb backoff (base 2s, max 60s); autorecover quan arriba tick nou; pause només per `paused_closed` (market_closed). `/symbols` inclou `next_poll_in_s`, `degrade_reason`.
 
