@@ -26,11 +26,12 @@
 - ✅ **Split vNext Phase 3:** Symbol Supervisor + heartbeat mode (market_closed → poll 60s, no stop total; `OSTIUM_CLOSED_HEARTBEAT_S`)
 - ✅ **Split vNext Phase 4:** X-Data-* headers contracte verificat; `test_ohlcv_headers.py` (4 tests); path local ja emetia headers correctament
 - ✅ **Split vNext Phase 5:** NO_TRADE enforçat quan `quality_gate.is_bad()` — `_do_order_open` comprova gate abans d'executar; `DataQualityGateBadError` → 422; 5 tests
+- ✅ **Split vNext Phase 6:** Soak e2e (3 casos OK/BAD/down) validat; retenció candles augmentada (4320h / 180 dies); `scripts/run_soak_e2e.sh`; artifact `datafiles/e2e_runs/`
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - ⛔ **Backtest** pendent
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 
-> **Phases 2–5 completades.** Focus next: soak end-to-end realtime_datalayer → trading_service amb gate real.
+> **Phases 2–6 completades.** Split vNext operatiu: realtime_datalayer → trading_service amb quality gate fail-closed i retenció llarga.
 
 ---
 
@@ -92,9 +93,18 @@ docker logs trading_service 2>&1 | grep -E "quality_gate|QUALITY_GATE"
 
 **Realtime DataLayer v1 (servei independent):**
 - Storage: `datafiles/realtime_datalayer/candles/`, `datafiles/realtime_datalayer/ticks/`
-- Retenció: `REALTIME_CANDLES_MAX_HOURS`, `REALTIME_TICKS_MAX_HOURS`
+- Retenció: `REALTIME_CANDLES_MAX_HOURS` (default **4320h = 180 dies** des de Phase 6), `REALTIME_TICKS_MAX_HOURS` (default 720h = 30 dies)
 - Docs: `apps/realtime_datalayer/realtime_datalayer_arquitectura.md`, `realtime_datalayer_estat.md`
 - Tests curts: `./scripts/run_tests.sh realtime_datalayer`
+
+**Phase 6 — Soak e2e + Retenció:**
+- Soak e2e 3 casos (0-network, reproduïble): `./scripts/run_soak_e2e.sh`
+  - Cas A (gate=OK): `POST /orders/open` → 200, adapter cridat
+  - Cas B (gate=BAD): `POST /orders/open` → 422 `DATA_QUALITY_GATE_BAD`, adapter NO cridat
+  - Cas C (datalayer down): reader llança exc → 422 `DATA_QUALITY_GATE_BAD` (fail-closed)
+- Artifact JSON: `datafiles/e2e_runs/YYYYMMDD_HHMMSS_soak_e2e.json`
+- Retenció candles augmentada al compose split: `REALTIME_CANDLES_MAX_HOURS=4320` (180 dies), `REALTIME_TICKS_MAX_HOURS=720` (30 dies)
+- Mode live (serveis Docker reals): `./scripts/run_soak_e2e.sh live`
 
 ---
 
