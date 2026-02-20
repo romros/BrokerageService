@@ -1,10 +1,4 @@
-# historical_datalayer — Dukascopy/backfill/compat (0-network)
-testing/apps/historical_datalayer/test_dukascopy_provider.py
+# historical_datalayer — Parquet storage + backfill runner + DuckDB (Phase 15+)
 testing/apps/historical_datalayer/test_compat_report_service.py
-testing/unit/test_compat_registry_parsing.py
-testing/unit/test_ostium_compat_report_service.py
-testing/unit/test_compat_registry_ostium_gate.py
-testing/unit/test_save_ostium_registry_robust.py
-testing/unit/test_p7_mixed_gated_stitching.py
-testing/unit/test_p8_read_through_response_only.py
-testing/integration/test_backfill_patch_flow.py
+testing/apps/historical_datalayer/test_dukascopy_provider.py
+testing/apps/historical_datalayer/test_historical_parquet.py

@@ -299,6 +299,7 @@ def main():
         testing_dir / "unit" / "test_compat_registry_parsing.py",  # P7b compat registry robustesa
         testing_dir / "apps" / "historical_datalayer" / "test_dukascopy_provider.py",  # P6 Dukascopy provider (cache, parser)
         testing_dir / "apps" / "historical_datalayer" / "test_compat_report_service.py",  # P8 Compat report (0 network)
+        testing_dir / "apps" / "historical_datalayer" / "test_historical_parquet.py",  # Phase 15 Parquet storage + backfill
         testing_dir / "unit" / "test_ostium_compat_report_service.py",  # Ostium compat (0 network)
         testing_dir / "unit" / "test_compat_registry_ostium_gate.py",  # Ostium graduation gate (0 network)
         testing_dir / "unit" / "test_save_ostium_registry_robust.py",  # save_ostium_registry atomic + dirs + error (0 network)

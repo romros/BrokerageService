@@ -35,10 +35,11 @@
 - ✅ **Phase 12:** Backtest API REST: `POST /api/v1/backtests/run` → run_id + KPIs + x_data; `GET /api/v1/backtests/runs/{run_id}` → artifact JSON. Artifact persistit a `datafiles/backtests/`. 8 tests 0-network. `application/api/backtest_routes.py`.
 - ✅ **Phase 13:** `run_all.py` usable: quiet + fail-fast per defecte, Lighter opt-in (`--include-lighter`), `--verbose`, `--no-fail-fast`. 63 passed, 0 failed, 50 skipped (Lighter/gTrade/xarxa).
 - ✅ **Phase 14:** OHLCV Data API registry-aware: `GET /api/v1/data/ohlcv/{symbol}?tf=1m&from_ts=&to_ts=&limit=&offset=`. Format candles `[ts,o,h,l,c,v]`. Paginació `next_offset`. X-Data-* headers. 9 tests 0-network. `application/api/data_routes.py`.
+- ✅ **Phase 15:** Parquet storage particionat + backfill runner. `infrastructure/storage/parquet_store.py` (write/read/range/coverage, idempotent, validació). Runner `application/tools/run_historical_backfill.py` (mes a mes, skip_existing, rate-limit, 0-network via override). 13 tests 0-network.
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 
-> **Phases 2–14 completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Backtest API + OHLCV Data API operatives. `run_all` quiet+fail-fast; Lighter opt-in. Focus next: adaptador Freqtrade, estratègies reals.
+> **Phases 2–15 completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Backtest + OHLCV API. Parquet storage particionat (Phase 15). Focus next: DuckDB query layer (Phase 16), adaptador Freqtrade.
 
 ---
 
@@ -364,6 +365,36 @@ Si PASS → `ostium_compat_registry.json` actualitzat, `ostium_primary_allowed=t
 
 ---
 
+## Phase 15 — Parquet storage particionat + Historical backfill runner
+
+**Fitxers:**
+- `infrastructure/storage/parquet_store.py` — `ParquetCandleStore`: write/read/range/coverage, idempotent, validació
+- `application/tools/run_historical_backfill.py` — runner mes a mes, `skip_existing`, rate-limit, `dukascopy_override` per tests
+
+**Layout Parquet:**
+```
+{datafiles_root}/historical_parquet/{SYMBOL}/tf=1m/year={YYYY}/month={MM}/data.parquet
+```
+
+**Ús CLI:**
+```bash
+python3 application/tools/run_historical_backfill.py \
+    --symbol EURUSD --from 2003-01-01 --to 2003-12-31 \
+    --datafiles-root /datafiles
+```
+
+**Ús programàtic (0-network):**
+```python
+result = await run_historical_backfill(
+    symbol="EURUSD", from_date=date(2003,1,1), to_date=date(2003,12,31),
+    datafiles_root="/datafiles", dukascopy_override=fake_candles,
+)
+```
+
+**Idempotència:** `skip_existing=True` per defecte. `--no-skip-existing` per força rewrite.
+
+---
+
 ## Phase 14 — OHLCV Data API registry-aware (Freqtrade-friendly)
 
 **Fitxer:** `application/api/data_routes.py`
@@ -528,6 +559,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-20 | Phase 12: Backtest API REST | ✅ `application/api/backtest_routes.py`; `POST /api/v1/backtests/run` + `GET /runs/{run_id}`; artifact persistit; 8 tests 0-network. | `curl -X POST http://localhost:8010/api/v1/backtests/run -d '{"symbol":"EURUSD","days":1}'` |
 | 2026-02-20 | Phase 13: run_all quiet+fail-fast+Lighter opt-in | ✅ `testing/run_all.py` reescrit; quiet+fail-fast per defecte; Lighter → `--include-lighter`; `LOG_LEVEL=WARNING` fills; 63 passed, 0 failed. | `./test.sh testing/run_all.py` |
 | 2026-02-20 | Phase 14: OHLCV Data API registry-aware | ✅ `application/api/data_routes.py`; `GET /api/v1/data/ohlcv/{symbol}`; format `[ts,o,h,l,c,v]`; paginació; X-Data-* headers; 9 tests 0-network; 64 passed. | `curl "http://localhost:8010/api/v1/data/ohlcv/EURUSD?tf=1m&limit=100"` |
+| 2026-02-20 | Phase 15: Parquet storage + backfill runner | ✅ `infrastructure/storage/parquet_store.py`; particionat mensual; idempotent; `application/tools/run_historical_backfill.py`; 13 tests 0-network; 65 passed. | `python3 application/tools/run_historical_backfill.py --symbol EURUSD --from 2003-01-01 --to 2003-12-31` |
 
 **DEGRADED vs CLOSED vs WARNING:** `closed` = mercat tancat (cap de setmana FX/XAU); no és incident. `warning` = market_state=unknown sense dades; no és degraded. `DEGRADED` = errors reals (duplicates, ts_step_errors, stale quan market_open). **Degraded és non-blocking:** continua polling amb backoff (base 2s, max 60s); autorecover quan arriba tick nou; pause només per `paused_closed` (market_closed). `/symbols` inclou `next_poll_in_s`, `degrade_reason`.
 

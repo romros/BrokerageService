@@ -10,7 +10,8 @@
 |---------|-------|-------|
 | Servei autònom | 🟡 | Entrypoint creat; pendent validació completa |
 | GET /health | 🟡 | Pendent |
-| Backfill Dukascopy | 🟡 | `NullBackfillProvider` en realtime; pendent dedicat |
+| Backfill Dukascopy | ✅ | Phase 15: `run_historical_backfill.py` + Parquet storage particionat |
+| Parquet storage | ✅ | Phase 15: `infrastructure/storage/parquet_store.py`; particionat mensual; idempotent |
 | Compat engine | 🟡 | Existent al LAB; pendent integrar al servei |
 | Compat registry | 🟡 | `compat_reports/ostium_compat_registry.json` via run_compat.sh |
 | Stitching gated | 🟡 | Lògica existent; pendent activació per servei |
@@ -20,7 +21,7 @@
 
 ## DoD del servei
 
-- [ ] Backfill Dukascopy funcional (descàrrega 1m, escriptura CSV)
+- [x] Backfill Dukascopy funcional (Phase 15: Parquet particionat)
 - [ ] Compat report genera registry correcte
 - [ ] Stitching gated per compat PASS; mixed coherent
 - [ ] `/health` i `/data_status` operatius
