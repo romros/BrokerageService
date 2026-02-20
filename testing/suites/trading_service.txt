@@ -13,3 +13,4 @@ testing/apps/trading_service/test_soak_e2e.py
 testing/apps/trading_service/test_backtest_registry_marketdata.py
 testing/apps/trading_service/test_backtest_runner_offline.py
 testing/apps/trading_service/test_backtest_api.py
+testing/apps/trading_service/test_ohlcv_data_api.py

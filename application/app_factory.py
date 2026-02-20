@@ -467,6 +467,11 @@ def create_app(role: str | None = None) -> FastAPI:
         from application.api.backtest_routes import router as backtest_router
         app.include_router(backtest_router)
 
+    # Phase 14: OHLCV data API registry-aware (trading_service i monolithic)
+    if role in (None, "trading_service"):
+        from application.api.data_routes import router as data_router
+        app.include_router(data_router)
+
     if _role_starts_adapter(role):
         app.include_router(ws_router, prefix="/api/v1")
 

@@ -34,10 +34,11 @@
 - ✅ **Phase 11:** Backtest runner offline + estratègia `simple_trend` + KPIs (trades, win_rate, pnl, max_drawdown) + artifact JSON. `application/tools/run_backtest.py`, `scripts/run_backtest_offline.sh`. 12 tests 0-network.
 - ✅ **Phase 12:** Backtest API REST: `POST /api/v1/backtests/run` → run_id + KPIs + x_data; `GET /api/v1/backtests/runs/{run_id}` → artifact JSON. Artifact persistit a `datafiles/backtests/`. 8 tests 0-network. `application/api/backtest_routes.py`.
 - ✅ **Phase 13:** `run_all.py` usable: quiet + fail-fast per defecte, Lighter opt-in (`--include-lighter`), `--verbose`, `--no-fail-fast`. 63 passed, 0 failed, 50 skipped (Lighter/gTrade/xarxa).
+- ✅ **Phase 14:** OHLCV Data API registry-aware: `GET /api/v1/data/ohlcv/{symbol}?tf=1m&from_ts=&to_ts=&limit=&offset=`. Format candles `[ts,o,h,l,c,v]`. Paginació `next_offset`. X-Data-* headers. 9 tests 0-network. `application/api/data_routes.py`.
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 
-> **Phases 2–13 completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Backtest API REST operativa. `run_all` quiet+fail-fast; Lighter opt-in. Focus next: estratègies reals, window multi-dia, métriques avançades.
+> **Phases 2–14 completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Backtest API + OHLCV Data API operatives. `run_all` quiet+fail-fast; Lighter opt-in. Focus next: adaptador Freqtrade, estratègies reals.
 
 ---
 
@@ -363,6 +364,48 @@ Si PASS → `ostium_compat_registry.json` actualitzat, `ostium_primary_allowed=t
 
 ---
 
+## Phase 14 — OHLCV Data API registry-aware (Freqtrade-friendly)
+
+**Fitxer:** `application/api/data_routes.py`
+
+**Endpoint:** `GET /api/v1/data/ohlcv/{symbol}`
+
+**Query params:**
+- `tf=1m` (únic suportat ara)
+- `from_ts`, `to_ts` (epoch UTC, opcionals; default = últimes N candles)
+- `limit` (default 1000, max 5000)
+- `offset` (paginació simple)
+
+**Response:**
+```json
+{
+  "symbol": "EURUSD",
+  "timeframe": "1m",
+  "source": "ostium_local",
+  "candles": [[1700000000, 1.1000, 1.1010, 1.0990, 1.1005, 0.0], ...],
+  "total": 1440,
+  "offset": 0,
+  "limit": 1000,
+  "next_offset": 1000
+}
+```
+
+**Headers:** `X-Data-Source`, `X-Data-Coverage-From/To`, `X-Data-Missing-Minutes`, `X-Data-Max-Gap-S`
+
+**Curl d'exemple:**
+```bash
+curl -s "http://localhost:8010/api/v1/data/ohlcv/EURUSD?tf=1m&limit=100" | python3 -m json.tool
+# Paginació:
+curl -s "http://localhost:8010/api/v1/data/ohlcv/EURUSD?limit=500&offset=0"
+curl -s "http://localhost:8010/api/v1/data/ohlcv/EURUSD?limit=500&offset=500"
+# Rang temporal:
+curl -s "http://localhost:8010/api/v1/data/ohlcv/EURUSD?from_ts=1700000000&to_ts=1700086400"
+```
+
+**Nota Freqtrade:** aquesta API serveix les dades; l'adaptador Freqtrade farà el mapping a DataFrame. No replica el format intern de Freqtrade 1:1.
+
+---
+
 ## Phase 13 — run_all quiet + fail-fast + Lighter opt-in
 
 **Comandes canòniques:**
@@ -484,6 +527,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-20 | Phase 11: Backtest runner offline + KPIs + artifact | ✅ `application/tools/run_backtest.py`; estratègia `simple_trend`; KPIs (trades, win_rate, pnl, max_dd); artifact JSON `datafiles/backtests/`; `scripts/run_backtest_offline.sh`; 12 tests 0-network; `run_all.py` VERD (85 passed). | `./scripts/run_backtest_offline.sh EURUSD 1` |
 | 2026-02-20 | Phase 12: Backtest API REST | ✅ `application/api/backtest_routes.py`; `POST /api/v1/backtests/run` + `GET /runs/{run_id}`; artifact persistit; 8 tests 0-network. | `curl -X POST http://localhost:8010/api/v1/backtests/run -d '{"symbol":"EURUSD","days":1}'` |
 | 2026-02-20 | Phase 13: run_all quiet+fail-fast+Lighter opt-in | ✅ `testing/run_all.py` reescrit; quiet+fail-fast per defecte; Lighter → `--include-lighter`; `LOG_LEVEL=WARNING` fills; 63 passed, 0 failed. | `./test.sh testing/run_all.py` |
+| 2026-02-20 | Phase 14: OHLCV Data API registry-aware | ✅ `application/api/data_routes.py`; `GET /api/v1/data/ohlcv/{symbol}`; format `[ts,o,h,l,c,v]`; paginació; X-Data-* headers; 9 tests 0-network; 64 passed. | `curl "http://localhost:8010/api/v1/data/ohlcv/EURUSD?tf=1m&limit=100"` |
 
 **DEGRADED vs CLOSED vs WARNING:** `closed` = mercat tancat (cap de setmana FX/XAU); no és incident. `warning` = market_state=unknown sense dades; no és degraded. `DEGRADED` = errors reals (duplicates, ts_step_errors, stale quan market_open). **Degraded és non-blocking:** continua polling amb backoff (base 2s, max 60s); autorecover quan arriba tick nou; pause només per `paused_closed` (market_closed). `/symbols` inclou `next_poll_in_s`, `degrade_reason`.
 

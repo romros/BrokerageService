@@ -365,6 +365,7 @@ def main():
         testing_dir / "apps" / "trading_service" / "test_backtest_registry_marketdata.py",
         testing_dir / "apps" / "trading_service" / "test_backtest_runner_offline.py",
         testing_dir / "apps" / "trading_service" / "test_backtest_api.py",
+        testing_dir / "apps" / "trading_service" / "test_ohlcv_data_api.py",
 
         # API smoke tests
         testing_dir / "api" / "test_rest_smoke.py",
