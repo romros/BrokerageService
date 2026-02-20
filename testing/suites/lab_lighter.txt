@@ -1,0 +1,11 @@
+# lab_lighter — Tests Lighter venue (LAB/opt-in, no canònics)
+# Execució manual: ./scripts/run_tests.sh lab_lighter
+# Requereixen Lighter API real o credencials (.env)
+# run_all.py: Lighter backfill → --include-lighter-backfill; adapters → inclosos per defecte
+testing/integration/test_lighter_adapter_prices.py
+testing/integration/test_lighter_adapter_open.py
+testing/integration/test_lighter_adapter_close.py
+testing/integration/test_lighter_ticks_to_candles_flow.py
+testing/integration/test_lighter_candles_time_semantics.py
+testing/integration/test_lighter_backfill_pagination_dedup.py
+testing/integration/test_gap_repair_flow.py

@@ -183,7 +183,7 @@ def main() -> int:
         return 1
 
     finally:
-            _stop_broker(process)
+        _stop_broker(process)
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 

@@ -27,11 +27,12 @@
 - ✅ **Split vNext Phase 4:** X-Data-* headers contracte verificat; `test_ohlcv_headers.py` (4 tests); path local ja emetia headers correctament
 - ✅ **Split vNext Phase 5:** NO_TRADE enforçat quan `quality_gate.is_bad()` — `_do_order_open` comprova gate abans d'executar; `DataQualityGateBadError` → 422; 5 tests
 - ✅ **Split vNext Phase 6:** Soak e2e (3 casos OK/BAD/down) validat; retenció candles augmentada (4320h / 180 dies); `scripts/run_soak_e2e.sh`; artifact `datafiles/e2e_runs/`
+- ✅ **Split vNext Phase 7:** `run_all.py` VERD — 3 fixes (IndentationError, app.title assert, warmup READY); venue/test matrix documentada; `testing/suites/lab_lighter.txt` opt-in
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - ⛔ **Backtest** pendent
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 
-> **Phases 2–6 completades.** Split vNext operatiu: realtime_datalayer → trading_service amb quality gate fail-closed i retenció llarga.
+> **Phases 2–7 completades.** Focus next: **Phase 8 — compat sampling Ostium↔Dukascopy** (comparar sèries, detectar gaps/desfasaments sistemàtics, gates de graduació).
 
 ---
 
@@ -120,9 +121,22 @@ docker logs trading_service 2>&1 | grep -E "quality_gate|QUALITY_GATE"
 | historical_datalayer | `./scripts/run_tests.sh historical_datalayer` | Dukascopy/compat/backfill |
 | trading_service | `./scripts/run_tests.sh trading_service` | execució/venue adapters |
 
-**Full suite:** `./test.sh testing/run_all.py` — tot (lent; CI o validació completa).
+**Full suite:** `./test.sh testing/run_all.py` — tot (lent; CI o validació completa). **Ha de quedar VERD** (Phase 7).
 
 **Estructura:** `testing/suites/*.txt` (paths), `testing/apps/<servei>/` (tests migrats). La resta a `testing/unit/`, `testing/integration/`, `testing/api/` — pendent de migració.
+
+**Venue / Test Matrix (canònic vs LAB/opt-in):**
+
+| Subprojecte | Venue marketdata | Venue exec | Estat tests |
+|-------------|-----------------|------------|-------------|
+| realtime_datalayer | **Ostium** (canònic) | — | Suite `realtime_datalayer` VERDA |
+| trading_service | Ostium via HTTP (gate) | **paper/Lighter** (canònic) | Suite `trading_service` VERDA |
+| historical_datalayer | **Dukascopy** (target) | — | Suite `historical_datalayer` verda |
+| gTrade exec | — | gTrade (legacy) | Opt-in `--include-gtrade`; no CI |
+| Lighter backfill | Lighter API | — | Opt-in `--include-lighter-backfill` |
+| Compat Ostium↔Dukascopy | Ostium + Dukascopy | — | Opt-in `--include-ostium-compat`; **Phase 8 pendent** |
+
+**Suites LAB/opt-in:** `testing/suites/lab_lighter.txt` (Lighter venue, tests no canònics).
 
 ---
 

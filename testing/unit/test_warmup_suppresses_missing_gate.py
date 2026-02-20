@@ -119,6 +119,8 @@ def test_observed_above_warmup_ready():
             stale_seconds=3600,
             max_gap_s=180,
         )
+        # Simular servei actiu des de fa 25h (uptime_minutes=1500 >= warmup_minutes=120)
+        svc._service_start_ts = int((datetime.now(timezone.utc) - timedelta(hours=25)).timestamp())
         svc._update_gate_metrics()
 
         status, _ = get_data_layer_status()
