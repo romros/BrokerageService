@@ -2,7 +2,7 @@
 
 **Data:** 2026-02-20
 **Repo/Path:** `/mnt/volume-SQ/dev/BrokerageService`
-**Venues:** **Lighter (principal — MVP 100%)** · gTrade (futur)
+**Venues:** Ostium (marketdata principal) · Dukascopy (historic/backtest fallback) · Lighter (LAB opt-in) · gTrade (legacy/futur)
 **TZ canònica (config):** `CANONICAL_TZ=America/New_York`
 **TZ container (runtime/logs):** `TZ=America/New_York`
 **Índex docs:** [docs/INDEX.md](INDEX.md) ← navegació centralitzada

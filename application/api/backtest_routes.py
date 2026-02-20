@@ -48,7 +48,7 @@ class BacktestRunRequest(BaseModel):
     @classmethod
     def symbol_upper(cls, v: str) -> str:
         s = v.strip().upper()
-        if not s or not s.isalpha() or len(s) > 10:
+        if not s or not s.isalnum() or len(s) > 10:
             raise ValueError("symbol invàlid")
         return s
 

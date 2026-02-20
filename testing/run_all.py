@@ -6,7 +6,9 @@ Executes all test scripts in order:
 2. Integration tests (backfill flow, etc.)
 3. API smoke tests (REST, WebSocket)
 
-Default: core + 0-network tests. Lighter i gTrade: opt-in.
+Default: core 0-network (sense Lighter, sense gTrade). Quiet + fail-fast.
+Lighter opt-in: --include-lighter
+gTrade opt-in: --include-gtrade
 
 Per suites curtes per focus: ./scripts/run_tests.sh <suite> (smoke|core|realtime_datalayer|historical_datalayer|trading_service)
 
@@ -231,6 +233,7 @@ def main():
         flags.append("verbose")
     flags_str = f"  [{', '.join(flags)}]" if flags else ""
     print(f"Suite: {suite_mode}{flags_str}")
+    print(f"  core=0-network | Lighter={'ON' if args.include_lighter else 'opt-in (--include-lighter)'}")
     if not args.include_lighter:
         print("  (Lighter tests excluded; use --include-lighter to add)")
     if not args.include_gtrade:
