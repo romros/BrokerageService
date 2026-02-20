@@ -31,10 +31,11 @@
 - ✅ **Split vNext Phase 8:** Compat sampling Ostium↔Dukascopy executat amb dades reals. EURUSD: PARTIAL (corr=0.958, dir_agree=90%, diff p95=0.5pip); XAUUSD: PARTIAL (corr=0.977, dir_agree=90.7%, diff p95=$0.98).
 - ✅ **Split vNext Phase 9:** `PASS_BACKTEST` — nova mètrica `dir_agree_filtered_1m` (ignora minuts flat/soroll feed). EURUSD: **PASS_BACKTEST** (corr=0.968, dir_agree_filtered=96.7%); XAUUSD: **PASS_BACKTEST** (corr=0.977, dir_agree_filtered=95.9%). `allowed_for_backtest=true` per ambdós.
 - ✅ **Phase 10:** `BacktestMarketDataProvider` registry-aware. EURUSD/XAUUSD → `ostium_local`; no graduat → `dukascopy`. Headers X-Data-* coherents. 9 tests 0-network. `application/data/backtest_market_data.py`.
+- ✅ **Phase 11:** Backtest runner offline + estratègia `simple_trend` + KPIs (trades, win_rate, pnl, max_drawdown) + artifact JSON. `application/tools/run_backtest.py`, `scripts/run_backtest_offline.sh`. 12 tests 0-network.
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 
-> **Phases 2–10 completades.** EURUSD i XAUUSD: **PASS_BACKTEST** (`allowed_for_backtest=true`). `BacktestMarketDataProvider` resol fonts via registry i retorna headers X-Data-* coherents. Focus next: estratègies backtesting usant provider registry-aware.
+> **Phases 2–11 completades.** EURUSD i XAUUSD: **PASS_BACKTEST** (`allowed_for_backtest=true`). Backtest runner offline (`simple_trend`) + artifact JSON operatiu. Focus next: estratègies reals, window multi-dia, métriques avançades.
 
 ---
 
@@ -272,7 +273,7 @@ symbol=XAUUSD source=ostium_local candles=10 missing=0
 symbol=USDJPY source=dukascopy candles=8 missing=2
 ```
 
-**Fixtures testing:** `testing/fixtures/realtime_datalayer/candles/{EURUSD,XAUUSD}/America_New_York/2026/02.csv` (10 candles 1m cadascun, 2026-02-20 10:00–10:09 UTC)
+**Fixtures testing:** Generades en `tempdir` a cada execució (0 fitxers externs; CSV creats inline al test).
 
 **Com executar tests:**
 ```bash
@@ -285,6 +286,64 @@ symbol=USDJPY source=dukascopy candles=8 missing=2
 - Registry absent → fallback determinista a `dukascopy` + log warn
 - Ostium seleccionat però 0 candles → retorna body buit + headers coherents (missing=expected); NO fallback a Dukascopy (comportament explícit: si graduat, no amagar dades mancants)
 - NEVER throws: errors de lectura retornen candles buides, no excepció
+
+---
+
+## Phase 11 — Backtest runner offline (simple_trend + KPIs + artifact)
+
+**Fitxers:** `application/tools/run_backtest.py`, `scripts/run_backtest_offline.sh`
+
+**Com executar:**
+```bash
+# EURUSD (Ostium local, 1 dia)
+./scripts/run_backtest_offline.sh EURUSD 1
+
+# XAUUSD (Ostium local, 1 dia)
+./scripts/run_backtest_offline.sh XAUUSD 1
+
+# USDJPY (Dukascopy fallback, 1 dia)
+./scripts/run_backtest_offline.sh USDJPY 1
+
+# Finestra personalitzada (via env o args)
+BACKTEST_WINDOW_DAYS=7 ./scripts/run_backtest_offline.sh EURUSD
+```
+
+**Output consola (exemple):**
+```
+Backtest EURUSD (2026-02-19 → 2026-02-20)
+  source=ostium_local candles=635 missing=0
+  trades=42 wins=21 losses=21
+  win_rate=50.0% pnl=+0.1234% max_dd=0.8500%
+  artifact=datafiles/backtests/20260220_183037_EURUSD.json
+```
+
+**Artifact JSON** (`datafiles/backtests/YYYYMMDD_HHMMSS_<symbol>.json`):
+```json
+{
+  "run_ts": "20260220_183037",
+  "phase": "Phase11_backtest_offline",
+  "symbol": "EURUSD",
+  "timeframe": "1m",
+  "window": {"start": "...", "end": "...", "days": 1.0},
+  "strategy": {"name": "simple_trend", "lookback": 5, "hold_minutes": 10},
+  "coverage": {"source": "ostium_local", "candles_count": 635, "missing_minutes": 0},
+  "kpis": {
+    "trades_count": 42, "wins": 21, "losses": 21,
+    "win_rate_pct": 50.0, "pnl_total_pct": 0.1234,
+    "roi_pct": 0.1234, "max_drawdown_pct": 0.85
+  },
+  "trades_sample": [...]
+}
+```
+
+**Estratègia `simple_trend`:**
+- Signal long si `close[i] > close[i - lookback]`; short si `close[i] < close[i - lookback]`
+- Tancar posició quan: senyal contrari, flat, o `hold_minutes` exhaurits
+- Sense apalancament; PnL en % sobre preu d'entrada
+
+**Tests:** `testing/apps/trading_service/test_backtest_runner_offline.py` (12 tests 0-network):
+- Tests d'estratègia pura (`_simple_trend_signals`, `_run_strategy`, `_compute_kpis`)
+- Tests d'integració (runner complet, artifact verificat en disc)
 
 **Graduation run canònic (EURUSD):**
 ```bash
@@ -380,6 +439,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-20 | Phase 8: Compat sampling Ostium↔Dukascopy | ✅ EURUSD PARTIAL (corr=0.958, dir_agree=90%); XAUUSD PARTIAL (corr=0.977, dir_agree=90.7%). Dades reals Ostium recorder. | `datafiles/compat_reports/20260220_1[56]*.json` |
 | 2026-02-20 | Phase 9: PASS_BACKTEST + dir_agree_filtered | ✅ EURUSD **PASS_BACKTEST** (corr=0.968, dir_filtered=96.7%, eligible=427); XAUUSD **PASS_BACKTEST** (corr=0.977, dir_filtered=95.9%, eligible=468). `allowed_for_backtest=true`. 9 tests unitaris. | `datafiles/compat_reports/20260220_153*.json` |
 | 2026-02-20 | Phase 10: BacktestMarketDataProvider registry-aware | ✅ `application/data/backtest_market_data.py`; EURUSD/XAUUSD → `ostium_local`; no graduat → `dukascopy`; headers X-Data-* coherents; 9 tests 0-network; `run_all.py` VERD (85 passed). | `./scripts/run_tests.sh trading_service` |
+| 2026-02-20 | Phase 11: Backtest runner offline + KPIs + artifact | ✅ `application/tools/run_backtest.py`; estratègia `simple_trend`; KPIs (trades, win_rate, pnl, max_dd); artifact JSON `datafiles/backtests/`; `scripts/run_backtest_offline.sh`; 12 tests 0-network; `run_all.py` VERD (85 passed). | `./scripts/run_backtest_offline.sh EURUSD 1` |
 
 **DEGRADED vs CLOSED vs WARNING:** `closed` = mercat tancat (cap de setmana FX/XAU); no és incident. `warning` = market_state=unknown sense dades; no és degraded. `DEGRADED` = errors reals (duplicates, ts_step_errors, stale quan market_open). **Degraded és non-blocking:** continua polling amb backoff (base 2s, max 60s); autorecover quan arriba tick nou; pause només per `paused_closed` (market_closed). `/symbols` inclou `next_poll_in_s`, `degrade_reason`.
 

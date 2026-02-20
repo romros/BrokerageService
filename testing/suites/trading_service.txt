@@ -1,4 +1,4 @@
-# trading_service — execució/venue adapters/trade flows + Phase 5 quality gate enforçat + Phase 6 soak e2e (0-network) + Phase 10 backtest registry-aware
+# trading_service — execució/venue adapters/trade flows + Phase 5 quality gate enforçat + Phase 6 soak e2e (0-network) + Phase 10 backtest registry-aware + Phase 11 backtest runner offline
 testing/apps/trading_service/test_quality_gates.py
 testing/apps/trading_service/test_http_data_layer_reader.py
 testing/apps/trading_service/test_quality_gate_enforced.py
@@ -11,3 +11,4 @@ testing/unit/test_idempotency.py
 testing/integration/test_paper_positions_flow.py
 testing/apps/trading_service/test_soak_e2e.py
 testing/apps/trading_service/test_backtest_registry_marketdata.py
+testing/apps/trading_service/test_backtest_runner_offline.py
