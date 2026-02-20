@@ -26,6 +26,7 @@ from application.services.compat_report_service import (
     VERDICT_DATA_QUALITY_FAIL,
     VERDICT_INCOMPATIBLE,
     VERDICT_PARTIAL,
+    VERDICT_PASS_BACKTEST,
     build_compat_report,
     compute_compat_verdict,
     save_compat_report,
@@ -39,6 +40,7 @@ logger = get_logger(__name__)
 
 VERDICT_TO_STATUS = {
     VERDICT_COMPATIBLE: "PASS",
+    VERDICT_PASS_BACKTEST: "PASS_BACKTEST",
     VERDICT_PARTIAL: "PARTIAL",
     VERDICT_INCOMPATIBLE: "FAIL",
     VERDICT_DATA_QUALITY_FAIL: "FAIL",

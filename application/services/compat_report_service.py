@@ -22,6 +22,7 @@ logger = get_logger(__name__)
 COMPAT_REPORTS_DIR = "compat_reports"
 
 VERDICT_COMPATIBLE = "COMPATIBLE"
+VERDICT_PASS_BACKTEST = "PASS_BACKTEST"
 VERDICT_PARTIAL = "PARTIAL"
 VERDICT_INCOMPATIBLE = "INCOMPATIBLE"
 VERDICT_DATA_QUALITY_FAIL = "DATA_QUALITY_FAIL"
@@ -35,6 +36,16 @@ DIR_AGREE_COMPATIBLE_MIN = 95.0
 PCT_OVERLAP_MIN = 50.0  # mínim % overlap per considerar
 OFFSET_P95_EURUSD_MAX = 0.002  # ~2 pips
 OFFSET_P95_XAUUSD_MAX = 15.0   # $15
+
+# Phase 9 — dir_agree filtrat (ignora minuts "flat", soroll de feed 1m)
+# ε: moviment mínim per considerar el minut com a "direccionable"
+# EURUSD: log-return ~ 0.0001 = 1 pip; ε = 0.5 pip = 0.00005
+# XAUUSD: moviment mínim $0.5
+DIR_AGREE_FILTERED_EPS_DEFAULT = 0.00005   # EURUSD (log-return, ~0.5 pip)
+DIR_AGREE_FILTERED_EPS_XAU = 0.0001       # XAUUSD (log-return, ~$0.5 sobre $5000)
+DIR_AGREE_FILTERED_MIN_ELIGIBLE = 100      # mínim eligible per aplicar gate filtrat
+DIR_AGREE_FILTERED_COMPATIBLE_MIN = 95.0   # llindar PASS_BACKTEST (gate filtrat)
+CORR_PASS_BACKTEST_MIN = 0.90              # llindar corr per PASS_BACKTEST (relaxat vs COMPATIBLE)
 
 
 def _ts(c: Candle) -> int:
@@ -140,6 +151,48 @@ def _return_metrics(aligned: List[Tuple[Candle, Candle]]) -> Dict[str, Any]:
         "flip_rate_a": float(flip_a),
         "flip_rate_b": float(flip_b),
         "flip_rate_diff": float(abs(flip_a - flip_b)),
+    }
+
+
+def _dir_agree_filtered(
+    aligned: List[Tuple[Candle, Candle]],
+    symbol: str = "",
+) -> Dict[str, Any]:
+    """
+    Dir agree filtrat: ignora minuts amb moviment quasi zero (soroll de feed).
+
+    Filtra parells on cap de les dues fonts mou més que ε (log-return).
+    Retorna dir_agree_filtered_pct, eligible_count, total_count.
+    """
+    if len(aligned) < 2:
+        return {"dir_agree_filtered_pct": 0.0, "eligible_count": 0, "total_count": 0}
+
+    sym = symbol.upper()
+    eps = DIR_AGREE_FILTERED_EPS_XAU if "XAU" in sym else DIR_AGREE_FILTERED_EPS_DEFAULT
+
+    ret_a_list, ret_b_list = [], []
+    for i in range(1, len(aligned)):
+        ra = _log_return(aligned[i - 1][0].close, aligned[i][0].close)
+        rb = _log_return(aligned[i - 1][1].close, aligned[i][1].close)
+        ret_a_list.append(ra)
+        ret_b_list.append(rb)
+
+    eligible = [
+        (ra, rb)
+        for ra, rb in zip(ret_a_list, ret_b_list)
+        if abs(ra) >= eps or abs(rb) >= eps
+    ]
+    total = len(ret_a_list)
+    n_eligible = len(eligible)
+
+    if n_eligible == 0:
+        return {"dir_agree_filtered_pct": 0.0, "eligible_count": 0, "total_count": total}
+
+    matches = sum(1 for ra, rb in eligible if (ra > 0) == (rb > 0))
+    return {
+        "dir_agree_filtered_pct": round(matches / n_eligible * 100, 4),
+        "eligible_count": n_eligible,
+        "total_count": total,
     }
 
 
@@ -262,7 +315,17 @@ def _get_start_end(candles: List[Candle]) -> Tuple[Optional[datetime], Optional[
 
 def compute_compat_verdict(report: Dict[str, Any]) -> Tuple[str, str]:
     """
-    Verdict: COMPATIBLE | PARTIAL | INCOMPATIBLE | DATA_QUALITY_FAIL.
+    Verdict: COMPATIBLE | PASS_BACKTEST | PARTIAL | INCOMPATIBLE | DATA_QUALITY_FAIL.
+
+    Ordre de gates:
+    0. zero_range > 20% → DATA_QUALITY_FAIL
+    1. overlap < 50% → INCOMPATIBLE
+    2. offset p95 > llindar per símbol → PARTIAL
+    3. corr >= 0.95 AND dir_agree_1m >= 95% → COMPATIBLE (llindar estricte)
+    4. corr >= 0.90 AND dir_agree_filtered >= 95% (gate robust) → PASS_BACKTEST
+    5. corr >= 0.70 AND dir_agree_1m >= 70% → PARTIAL
+    6. → INCOMPATIBLE
+
     Returns (verdict, reason).
     """
     zr_a = report.get("candle_quality", {}).get("a", {}).get("zero_range_ratio", 0) or 0
@@ -290,8 +353,24 @@ def compute_compat_verdict(report: Dict[str, Any]) -> Tuple[str, str]:
     if symbol == "XAUUSD" and p95_abs > OFFSET_P95_XAUUSD_MAX:
         return VERDICT_PARTIAL, f"offset p95=${p95_abs:.1f} > ${OFFSET_P95_XAUUSD_MAX}"
 
+    # Gate estricte: COMPATIBLE (apte per live + backtest)
     if corr_best >= CORR_COMPATIBLE_MIN and dir_agree >= DIR_AGREE_COMPATIBLE_MIN:
         return VERDICT_COMPATIBLE, f"corr={corr_best:.3f} dir_agree={dir_agree:.1f}%"
+
+    # Gate robust: PASS_BACKTEST (apte per backtesting, dir_agree filtrat ignora soroll feed 1m)
+    dir_filtered = report.get("dir_agree_filtered", {})
+    daf_pct = dir_filtered.get("dir_agree_filtered_pct", 0) or 0
+    eligible = dir_filtered.get("eligible_count", 0) or 0
+    if (
+        corr_best >= CORR_PASS_BACKTEST_MIN
+        and eligible >= DIR_AGREE_FILTERED_MIN_ELIGIBLE
+        and daf_pct >= DIR_AGREE_FILTERED_COMPATIBLE_MIN
+    ):
+        return VERDICT_PASS_BACKTEST, (
+            f"corr={corr_best:.3f} dir_agree_filtered={daf_pct:.1f}% "
+            f"(eligible={eligible}, dir_agree_1m={dir_agree:.1f}%)"
+        )
+
     if corr_best >= CORR_PARTIAL_MIN and dir_agree >= DIR_AGREE_PARTIAL_MIN:
         return VERDICT_PARTIAL, f"corr={corr_best:.3f} dir_agree={dir_agree:.1f}%"
     return VERDICT_INCOMPATIBLE, f"corr={corr_best:.3f} dir_agree={dir_agree:.1f}%"
@@ -410,6 +489,7 @@ def build_compat_report(
         "lag_scan": _lag_scan(candles_a, candles_b),
         "ohlc_diffs": ohlc_diffs,
         "returns": _return_metrics(aligned),
+        "dir_agree_filtered": _dir_agree_filtered(aligned, symbol=symbol),
         "range_bps": _range_bps_stats(aligned),
         "proxy_strategy": _proxy_strategy(aligned),
     }

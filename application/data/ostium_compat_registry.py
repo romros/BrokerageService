@@ -20,7 +20,7 @@ from foundation.logging import get_logger
 
 logger = get_logger(__name__)
 
-OSTIUM_VERDICT = Literal["PASS", "PARTIAL", "FAIL"]
+OSTIUM_VERDICT = Literal["PASS", "PASS_BACKTEST", "PARTIAL", "FAIL"]
 
 
 def _get_registry_path(registry_path: str | Path | None) -> Path:
@@ -77,7 +77,9 @@ def save_ostium_registry(
     """
     Actualitza registry amb resultat compat per símbol.
 
-    PASS → ostium_primary_allowed=true; PARTIAL/FAIL → false.
+    PASS → ostium_primary_allowed=true, allowed_for_backtest=true, allowed_for_live=true
+    PASS_BACKTEST → allowed_for_backtest=true, allowed_for_live=false
+    PARTIAL/FAIL → tots false.
     Escritura atòmica (.tmp + rename). Crea directoris si no existeixen.
     Raises OSError amb missatge clar si no pot escriure.
     """
@@ -88,9 +90,12 @@ def save_ostium_registry(
 
     data = load_ostium_registry(registry_path)
     ts = asof_ts or int(time.time())
+    status_up = (status or "").upper()
     data[symbol.upper()] = {
         "status": status,
-        "ostium_primary_allowed": status == "PASS",
+        "ostium_primary_allowed": status_up == "PASS",
+        "allowed_for_backtest": status_up in ("PASS", "PASS_BACKTEST"),
+        "allowed_for_live": status_up == "PASS",
         "asof_ts": ts,
         "verdict_reason": verdict_reason,
         "window_minutes": window_minutes,
