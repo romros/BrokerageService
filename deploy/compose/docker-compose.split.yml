@@ -14,6 +14,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: realtime-datalayer
+    restart: unless-stopped
     working_dir: /app
     ports:
       - "${REALTIME_PORT:-8081}:${REALTIME_PORT:-8081}"
@@ -51,6 +52,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: historical-datalayer
+    restart: unless-stopped
     working_dir: /app
     ports:
       - "8002:8002"
@@ -82,6 +84,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: trading-service-split
+    restart: unless-stopped
     working_dir: /app
     ports:
       - "8010:8010"
