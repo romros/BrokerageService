@@ -1,6 +1,6 @@
 # ESTAT DEL PROJECTE — BrokerageService
 
-**Data:** 2026-02-19
+**Data:** 2026-02-20
 **Repo/Path:** `/mnt/volume-SQ/dev/BrokerageService`
 **Venues:** **Lighter (principal — MVP 100%)** · gTrade (futur)
 **TZ canònica (config):** `CANONICAL_TZ=America/New_York`
@@ -23,11 +23,13 @@
 - ✅ **Broker API** `/api/v1/broker/*` (POST body únic)
 - ✅ **Split vNext Phase 1:** 3 serveis autònoms (realtime/historical/trading); entrypoints + role wiring
 - ✅ **Split vNext Phase 2:** trading_service → realtime_datalayer via HTTP; QualityGate fail-closed (`application/data/quality_gate.py`)
+- ✅ **Split vNext Phase 3:** Symbol Supervisor + heartbeat mode (market_closed → poll 60s, no stop total; `OSTIUM_CLOSED_HEARTBEAT_S`)
+- ✅ **Split vNext Phase 4:** X-Data-* headers contracte verificat; `test_ohlcv_headers.py` (4 tests); path local ja emetia headers correctament
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - ⛔ **Backtest** pendent
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 
-> **Focus next:** Trading loop NO_TRADE enforcement quan `quality_gate.is_bad()`.
+> **Focus next:** Trading loop NO_TRADE enforcement quan `quality_gate.is_bad()`. Phases 2–4 completades.
 
 ---
 
@@ -279,6 +281,8 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=5" | grep X-D
 | 2026-02-18 | Imports AGENTS compliance | ✅ app_factory: stdlib (datetime, zoneinfo, subprocess, time) a capçalera; lazy imports documentats; tests realtime_datalayer imports a capçalera | AGENTS_ARQUITECTURA.md §6.1 |
 | 2026-02-18 | Realtime v2.1 Market-hours Ostium (NY) | ✅ perfils XAU break 16:59–18:10, indices 16:59–18:00, NVDA RTH 09:31–15:59; paused_closed; health no penalitza closed; ages com deltes; next_open_local | apps/realtime_datalayer/market_hours/ |
 | 2026-02-18 | Degraded non-blocking + autorecover | ✅ degraded continua polling amb backoff (2s–60s); autorecover quan tick nou; pause només paused_closed; /symbols next_poll_in_s, degrade_reason; UI mostra; tests test_degraded_does_not_stop_polling, test_autorecover_on_new_tick | `./test.sh testing/run_realtime.py` |
+| 2026-02-20 | Split vNext Phase 3: Symbol Supervisor + heartbeat | ✅ market_closed → heartbeat 60s (OSTIUM_CLOSED_HEARTBEAT_S); no stop total; last_price actualitza; candles NO durant heartbeat; 5 tests test_heartbeat_when_closed + 5 tests nous suite | `./scripts/run_tests.sh realtime_datalayer` |
+| 2026-02-20 | Split vNext Phase 4: X-Data-* headers contracte | ✅ GET /ohlcv/{symbol} i /candles emeten X-Data-Source/Coverage-From/To/Missing-Minutes/Max-Gap-S; path local ja correcte; 4 tests test_ohlcv_headers | `./scripts/run_tests.sh realtime_datalayer` |
 
 **DEGRADED vs CLOSED vs WARNING:** `closed` = mercat tancat (cap de setmana FX/XAU); no és incident. `warning` = market_state=unknown sense dades; no és degraded. `DEGRADED` = errors reals (duplicates, ts_step_errors, stale quan market_open). **Degraded és non-blocking:** continua polling amb backoff (base 2s, max 60s); autorecover quan arriba tick nou; pause només per `paused_closed` (market_closed). `/symbols` inclou `next_poll_in_s`, `degrade_reason`.
 
