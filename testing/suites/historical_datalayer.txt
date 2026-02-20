@@ -2,3 +2,4 @@
 testing/apps/historical_datalayer/test_compat_report_service.py
 testing/apps/historical_datalayer/test_dukascopy_provider.py
 testing/apps/historical_datalayer/test_historical_parquet.py
+testing/apps/historical_datalayer/test_duckdb_query.py

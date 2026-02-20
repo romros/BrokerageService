@@ -1,9 +1,10 @@
 """
-Data API — Phase 14.
+Data API — Phase 14/16.
 
 Prefix: /api/v1/data
 
 GET /ohlcv/{symbol} → candles OHLCV registry-aware (Ostium local o Dukascopy fallback)
+                       Si existeix Parquet históric → DuckDB (Phase 16)
 
 Dissenyat per ser consumit per un adaptador Freqtrade backtest.
 """
@@ -37,17 +38,18 @@ async def get_ohlcv(
     from_ts: Optional[int] = Query(default=None, description="Inici rang (epoch UTC)"),
     to_ts: Optional[int] = Query(default=None, description="Fi rang (epoch UTC)"),
     limit: int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="Màxim candles retornades"),
-    offset: int = Query(default=0, ge=0, description="Offset per paginació"),
+    offset: int = Query(default=0, ge=0, description="Offset per paginació (legacy; usa next_ts per rangs llargs)"),
+    next_ts: Optional[int] = Query(default=None, description="Cursor paginació DuckDB (timestamp exclusiu inici)"),
 ):
     """
     Retorna candles OHLCV registry-aware.
 
+    - Si existeix Parquet históric (Phase 16) → DuckDB amb cursor next_ts
     - symbol graduat (allowed_for_backtest=true) → ostium_local
     - altrament → dukascopy fallback
 
     Format candles: [[ts_epoch, open, high, low, close, volume], ...]
     X-Data-* headers inclosos per qualitat de dades.
-    next_offset: null si no hi ha més dades, int si queden candles.
     """
     # Validar symbol
     sym = symbol.strip().upper()
@@ -64,7 +66,38 @@ async def get_ohlcv(
             detail={"detail": f"timeframe '{tf}' no suportat; suportats: {sorted(SUPPORTED_TIMEFRAMES)}", "code": INVALID_PARAMS},
         )
 
-    # Rang temporal
+    datafiles_root = os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT)
+
+    # Phase 16: routing DuckDB si existeix Parquet históric
+    from infrastructure.query.duckdb_query_service import DuckDBQueryService
+    duckdb_svc = DuckDBQueryService(root_path=datafiles_root)
+
+    if duckdb_svc.has_data(sym):
+        result = duckdb_svc.query_ohlcv(
+            symbol=sym,
+            from_ts=from_ts,
+            to_ts=to_ts,
+            limit=limit,
+            next_ts=next_ts,
+        )
+        xdata_headers = duckdb_svc.compute_xdata_headers(
+            symbol=sym,
+            candles=result["candles"],
+            from_ts=from_ts,
+            to_ts=to_ts,
+        )
+        response_body = {
+            "symbol": sym,
+            "timeframe": tf,
+            "source": result["source"],
+            "candles": result["candles"],
+            "total": result["total_in_range"],
+            "limit": limit,
+            "next_ts": result["next_ts"],
+        }
+        return JSONResponse(content=response_body, headers=xdata_headers)
+
+    # Camí legacy (Phase 14): Ostium local o Dukascopy
     now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
     if to_ts is not None:
         end = datetime.fromtimestamp(to_ts, tz=timezone.utc)
@@ -73,7 +106,6 @@ async def get_ohlcv(
     if from_ts is not None:
         start = datetime.fromtimestamp(from_ts, tz=timezone.utc)
     else:
-        # Default: les últimes (limit + offset) candles
         start = end - timedelta(minutes=limit + offset + 60)
 
     if start >= end:
@@ -81,8 +113,6 @@ async def get_ohlcv(
             status_code=422,
             detail={"detail": "from_ts ha de ser anterior a to_ts", "code": INVALID_PARAMS},
         )
-
-    datafiles_root = os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT)
 
     body, xdata_headers = await get_ohlcv_backtest(
         symbol=sym,
@@ -93,11 +123,9 @@ async def get_ohlcv(
 
     all_candles = body.get("candles", [])
 
-    # Aplicar offset + limit
     page = all_candles[offset: offset + limit]
     next_offset = offset + limit if (offset + limit) < len(all_candles) else None
 
-    # Format compacte per Freqtrade: [ts, o, h, l, c, v]
     candles_array = [
         [c["ts"], c["open"], c["high"], c["low"], c["close"], c["volume"]]
         for c in page
@@ -112,6 +140,7 @@ async def get_ohlcv(
         "offset": offset,
         "limit": limit,
         "next_offset": next_offset,
+        "next_ts": None,
     }
 
     return JSONResponse(content=response_body, headers=xdata_headers)
