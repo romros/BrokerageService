@@ -1,6 +1,7 @@
-# trading_service — execució/venue adapters/trade flows (0-network)
+# trading_service — execució/venue adapters/trade flows + Phase 5 quality gate enforçat (0-network)
 testing/apps/trading_service/test_quality_gates.py
 testing/apps/trading_service/test_http_data_layer_reader.py
+testing/apps/trading_service/test_quality_gate_enforced.py
 testing/apps/trading_service/test_broker_api.py
 testing/unit/test_broker_api_trades.py
 testing/apps/trading_service/test_paper_venue_adapter.py

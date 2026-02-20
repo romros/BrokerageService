@@ -21,6 +21,7 @@ from application.api.error_codes import (
     ADAPTER_NOT_AVAILABLE,
     CANDLE_STORE_NOT_AVAILABLE,
     DATA_STATUS_NOT_AVAILABLE,
+    DATA_QUALITY_GATE_BAD,
     VENUE_NOT_CONFIGURED,
     TIMEFRAME_NOT_SUPPORTED,
     SYMBOL_NOT_FOUND,
@@ -847,6 +848,20 @@ async def get_trades(
 
 async def _do_order_open(req: OrderOpenRequest) -> OrderOpenResponse:
     """Lògica comuna per obrir posició. Validacions ja fetes al model."""
+    # Phase 5: Quality gate fail-closed — si data_layer_reader actiu, comprovar qualitat OHLCV
+    # Si gate=BAD → NO_TRADE (422). Només en mode split/HTTP (quan hi ha reader).
+    if _data_layer_reader is not None:
+        from application.services.data_quality_guard import assert_data_quality_ok
+        from application.errors import DataQualityGateBadError
+        try:
+            await assert_data_quality_ok(_data_layer_reader, symbol=req.symbol)
+        except DataQualityGateBadError as e:
+            _http_error(
+                422,
+                DATA_QUALITY_GATE_BAD,
+                f"NO_TRADE: quality gate BAD for {e.symbol} — {e.reason}",
+            )
+
     adapter = _get_adapter_or_http_error(req.venue)
     is_long = req.side.lower() == "long"
     try:
