@@ -1,10 +1,11 @@
 """
-Data API — Phase 14/16/19.
+Data API — Phase 14/16/19/20.
 
 Prefix: /api/v1/data
 
 GET /ohlcv/{symbol}      → candles OHLCV registry-aware (Ostium local o Dukascopy fallback)
                            Si existeix Parquet históric → DuckDB (Phase 16)
+                           Mixed stitching parquet+realtime (Phase 20)
 GET /coverage/{symbol}   → Coverage index per símbol (Phase 19)
 
 Dissenyat per ser consumit per un adaptador Freqtrade backtest.
@@ -74,27 +75,40 @@ async def get_ohlcv(
     duckdb_svc = DuckDBQueryService(root_path=datafiles_root)
 
     if duckdb_svc.has_data(sym):
-        result = duckdb_svc.query_ohlcv(
+        parquet_result = duckdb_svc.query_ohlcv(
             symbol=sym,
             from_ts=from_ts,
             to_ts=to_ts,
             limit=limit,
             next_ts=next_ts,
         )
-        xdata_headers = duckdb_svc.compute_xdata_headers(
+
+        # Phase 20: mixed stitching parquet + realtime
+        from application.data.mixed_ohlcv_stitcher import stitch_ohlcv_mixed, compute_xdata_headers_mixed
+        stitched = stitch_ohlcv_mixed(
+            parquet_candles=parquet_result["candles"],
             symbol=sym,
-            candles=result["candles"],
+            datafiles_root=datafiles_root,
+            from_ts=from_ts,
+            to_ts=to_ts,
+            limit=limit,
+            next_ts_cursor=next_ts,
+        )
+
+        xdata_headers = compute_xdata_headers_mixed(
+            candles=stitched["candles"],
+            source=stitched["source"],
             from_ts=from_ts,
             to_ts=to_ts,
         )
         response_body = {
             "symbol": sym,
             "timeframe": tf,
-            "source": result["source"],
-            "candles": result["candles"],
-            "total": result["total_in_range"],
+            "source": stitched["source"],
+            "candles": stitched["candles"],
+            "total": parquet_result["total_in_range"],
             "limit": limit,
-            "next_ts": result["next_ts"],
+            "next_ts": stitched["next_ts"],
         }
         return JSONResponse(content=response_body, headers=xdata_headers)
 

@@ -372,6 +372,7 @@ def main():
         testing_dir / "apps" / "trading_service" / "test_ohlcv_data_api.py",
         testing_dir / "apps" / "trading_service" / "test_data_ohlcv_long_range_parquet.py",  # Phase 19 OHLCV long-range Parquet + DuckDB cursor
         testing_dir / "apps" / "trading_service" / "test_coverage_endpoint.py",  # Phase 19 Coverage API
+        testing_dir / "apps" / "trading_service" / "test_mixed_stitching.py",  # Phase 20 Mixed parquet+realtime stitching
 
         # API smoke tests
         testing_dir / "api" / "test_rest_smoke.py",
