@@ -43,10 +43,30 @@
 - ✅ **Phase 20:** Mixed stitching parquet+realtime. `application/data/mixed_ohlcv_stitcher.py`: merge monotònic sense duplicats (realtime guanya en overlap), policy `HISTORICAL_MIXED_ALLOWED` (default=1), `source=mixed` quan dues fonts, cursor `next_ts` consistent. `scripts/run_historical_cron.sh` (daily/retry-failed/gap-repair). 6 tests 0-network.
 - ✅ **Market-hours fix + golden tests (2026-02-21):** Corregit bug weekend a `engine.py` (XAUUSD/DAXEUR/SPXUSD mostraven `open` dissabte; NVDAUSD obria en cap de setmana). Break XAU/indices corregit a 17:00–18:00 NY (era 16:59–18:10). Nou helper `_next_sunday_18()`. Tests anti-regressió `test_market_hours_golden_weekend.py` (7 tests).
 - ✅ **Phase C: Historical dashboard + nginx proxy + cron metadata (2026-02-21):** `GET /health` i `/status` a historical_datalayer. Nginx `datalayer-proxy` unifica port 8081: `/realtime/*` → realtime:8082, `/data/*` → historical:8002. `application/data/cron_metadata.py` (atomic write/read `_cron/last_runs.json`). `run_historical_cron.sh` escriu metadata. `get_historical_router()` exposa `/ohlcv` i `/coverage` sense prefix. 19 tests 0-network.
+- ✅ **Phase D: Gateway single-port complet (2026-02-21):** Nginx `:8081` exposa `/trade/*` → trading_service:8010 (strip prefix) i `/backtests/*` → trading_service:8010/api/v1/backtests/* (alias). `datalayer-proxy` ara és el punt d'entrada únic per tots els serveis. `scripts/smoke_gateway.sh` verifica tots els prefixos. Exec Ostium NO implementat — pendent Phase E (refactor trading).
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 
-> **Phases 2–20 + Phase C completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Parquet (15) + DuckDB (16) + Backtest Freqtrade-style (17) + Ops robustos (18) + Data API long-range + Coverage API (19) + Mixed stitching + Cron (20) + Historical dashboard + nginx proxy (C). Pipeline prod-ish per backfill 2003→avui. 72 tests 0-network, run_all verd.
+> **Phases 2–20 + Phase C + Phase D completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Parquet (15) + DuckDB (16) + Backtest Freqtrade-style (17) + Ops robustos (18) + Data API long-range + Coverage API (19) + Mixed stitching + Cron (20) + Historical dashboard + nginx proxy (C) + Gateway single-port (D). Pipeline prod-ish per backfill 2003→avui. 72 tests 0-network, run_all verd. **Single-port API: `:8081/realtime`, `:8081/data`, `:8081/trade`.** Exec Ostium (venue trading) pendent Phase E.
+
+### Single-port API (Phase D)
+
+| Prefix extern (`:8081`) | Servei intern | Strip prefix | Notes |
+|-------------------------|---------------|-------------|-------|
+| `/realtime/*` | `realtime_datalayer:8082` | sí | health, status, ohlcv, ui |
+| `/data/*` | `historical_datalayer:8002` | sí | health, status, ohlcv, coverage |
+| `/trade/*` | `trading_service:8010` | sí | api/v1/broker/*, api/v1/backtests/* |
+| `/backtests/*` | `trading_service:8010` | → `/api/v1/backtests/*` | alias comoditat |
+| `/nginx-health` | nginx intern | — | healthcheck proxy |
+| `/` | — | — | 302 → `/realtime/ui` |
+
+**Smoke:**
+```bash
+./scripts/smoke_gateway.sh                   # localhost:8081
+./scripts/smoke_gateway.sh <host> <port>     # remot
+```
+
+**Nota:** exec Ostium (venue trading) NO implementat. Refactor trading_service pendent **Phase E**.
 
 ### Boundaries ràpides per servei
 
@@ -679,6 +699,7 @@ HISTORICAL_MIXED_ALLOWED=0 docker compose up -d trading_service
 | 2026-02-21 | Phase 20: Mixed stitching + Cron | ✅ `mixed_ohlcv_stitcher.py`; merge parquet+realtime monotònic; policy `HISTORICAL_MIXED_ALLOWED`; `source=mixed`; `run_historical_cron.sh` daily/retry-failed/gap-repair; 6 tests 0-network; run_all VERD. | `curl "http://localhost:8010/api/v1/data/ohlcv/EURUSD"` → source=mixed |
 | 2026-02-21 | Market-hours fix (weekend bug) | ✅ `engine.py`: XAU/indices/NVDA tancats cap de setmana; break 17:00–18:00 NY; `_next_sunday_18()`; golden anti-regressió `test_market_hours_golden_weekend.py` (7 tests); tots els 8 símbols `closed` dissabte verificat via Docker. | `./scripts/run_tests.sh realtime_datalayer` |
 | 2026-02-21 | Phase C: Historical dashboard + nginx proxy | ✅ nginx `datalayer-proxy` port 8081: `/realtime/*`→realtime:8082, `/data/*`→historical:8002. `GET /health` i `/status` a historical (`cron_metadata`, `coverage_index`). `get_historical_router()` sense prefix. `run_historical_cron.sh` escriu `_cron/last_runs.json`. 19 tests 0-network; run_all 72 passed. | `curl :8081/data/health` · `curl :8081/realtime/status` |
+| 2026-02-21 | Phase D: Gateway single-port complet | ✅ `/trade/*` → trading_service:8010 (strip prefix); `/backtests/*` alias. `datalayer-proxy` és ara el gateway únic. `scripts/smoke_gateway.sh` verifica tots els prefixos. run_all 72 passed. | `curl :8081/trade/api/v1/broker/health` · `./scripts/smoke_gateway.sh` |
 
 **DEGRADED vs CLOSED vs WARNING:** `closed` = mercat tancat (cap de setmana FX/XAU); no és incident. `warning` = market_state=unknown sense dades; no és degraded. `DEGRADED` = errors reals (duplicates, ts_step_errors, stale quan market_open). **Degraded és non-blocking:** continua polling amb backoff (base 2s, max 60s); autorecover quan arriba tick nou; pause només per `paused_closed` (market_closed). `/symbols` inclou `next_poll_in_s`, `degrade_reason`.
 

@@ -8,7 +8,11 @@
 
 **Fa:** execució d'ordres (paper/live) via Lighter, reconcile, guards, balance/positions, consum de candles del realtime_datalayer via HTTP + quality gate fail-closed, backtesting (BacktestMarketDataProvider, runner offline, API REST).
 
+**Accés extern:** Via nginx `datalayer-proxy` → `host:8081/trade/*` (strip prefix → port intern 8010). `/backtests/*` → `/api/v1/backtests/*` (alias). Accessible directament a `:8010` per debug intern.
+
 **No fa:** ingest en temps real (→ realtime_datalayer), backfill Dukascopy (→ historical_datalayer), emmagatzematge de candles (→ realtime/historical datalayer).
+
+**Pendent Phase E:** refactor execució venue Ostium (exec Ostium NO implementat; Lighter era l'antic venue exec).
 
 ---
 
@@ -63,7 +67,12 @@ datafiles/backtests/                              # Artifacts backtest (JSON)
 docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml up -d trading_service
 docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml up -d realtime_datalayer trading_service
 
-# Verificar
+# Verificar via gateway (port públic unificat — Phase D)
+curl -s http://localhost:8081/trade/api/v1/broker/health
+curl -s http://localhost:8081/trade/api/v1/broker/data_status
+curl -s http://localhost:8081/backtests/runs
+
+# Verificar directament al servei (port intern, per debug)
 curl -s http://localhost:8010/api/v1/broker/health
 curl -s http://localhost:8010/api/v1/broker/balance?venue=lighter
 curl -s http://localhost:8010/api/v1/broker/positions?venue=lighter

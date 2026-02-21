@@ -2,12 +2,14 @@
 # Reutilitza mateixa imatge/codi; ports i env diferenciats.
 #
 # Arquitectura ports:
-#   8081 → datalayer-proxy (nginx)
-#            /realtime/* → realtime_datalayer:8082  (strip prefix)
-#            /data/*     → historical_datalayer:8002 (strip prefix)
+#   8081 → datalayer-proxy (nginx) — single-port gateway
+#            /realtime/*  → realtime_datalayer:8082  (strip prefix)
+#            /data/*      → historical_datalayer:8002 (strip prefix)
+#            /trade/*     → trading_service:8010      (strip prefix)
+#            /backtests/* → trading_service:8010/api/v1/backtests/* (alias)
 #   8082 → realtime_datalayer (intern, no exposat al host)
 #   8002 → historical_datalayer (intern, no exposat al host)
-#   8010 → trading_service
+#   8010 → trading_service (directe per debug intern)
 #   trading_service → REALTIME_DATALAYER_BASE_URL=http://realtime_datalayer:8082
 #
 # Ús:
@@ -32,6 +34,7 @@ services:
     depends_on:
       - realtime_datalayer
       - historical_datalayer
+      - trading_service
 
   # ─── Realtime DataLayer (port intern 8082) ─────────────────────────────────
   realtime_datalayer:
