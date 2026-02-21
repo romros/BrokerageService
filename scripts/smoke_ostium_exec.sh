@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# smoke_ostium_exec.sh — Phase G: smoke test OstiumExecutionAdapter (live testnet)
+# smoke_ostium_exec.sh — Phase H: smoke test OstiumExecutionAdapter (live testnet)
 #
 # Executa un cicle complet open → close en Ostium testnet (Arbitrum Sepolia).
 # Requereix fons testnet USDC i ETH.
@@ -34,7 +34,7 @@ if [ "${ENABLE_OSTIUM_LIVE_SMOKE:-0}" != "1" ]; then
     exit 0
 fi
 
-echo "🔥 smoke_ostium_exec — Phase G (live testnet)"
+echo "🔥 smoke_ostium_exec — Phase H (live testnet)"
 echo "================================================"
 
 # ── Checks previs ─────────────────────────────────────────────────────────────
@@ -149,7 +149,17 @@ async def main():
     print(f'   ✅ Posició tancada!')
 
     print()
-    print('✅ SMOKE TEST PASSAT — cicle open/close complet en testnet Ostium')
+    print('STEP 5: Confirmar que la posició ja no apareix a get_open_positions...')
+    await _asyncio.sleep(2)  # Donar temps al bloc
+    open_positions = await adapter.get_open_positions()
+    still_open = [p for p in open_positions if p.venue_position_id == position_id]
+    if still_open:
+        print(f'❌ La posició {position_id} encara apareix oberta: {still_open}')
+        sys.exit(1)
+    print(f'   ✅ Posició {position_id} confirmada tancada (no a get_open_positions)')
+
+    print()
+    print('✅ SMOKE TEST PASSAT — open/close + verificació tancament en testnet Ostium')
 
 asyncio.run(main())
 PYEOF

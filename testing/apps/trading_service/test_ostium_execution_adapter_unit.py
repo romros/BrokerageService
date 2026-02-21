@@ -153,6 +153,9 @@ def test_close_position_ok():
 def test_close_position_client_error_returns_false():
     """Si close_trade falla, close_position retorna False."""
     adapter = _make_fake_adapter(close_should_fail=True)
+    # Obrir un trade primer (idempotència: si no existeix → True sense cridar SDK)
+    run(adapter.open_position("EURUSD", True, 100.0, 5.0))
+    # Ara el trade existeix → el check idempotent passa (collateral>0), i close_trade falla
     ok = run(adapter.close_position("ostium:0:0"))
     assert ok is False
 
@@ -324,6 +327,107 @@ def test_short_position_ok():
     assert fake.open_calls[0]["is_long"] is False
 
 
+# ── Phase H: tests nous ────────────────────────────────────────────────────────
+
+
+def test_close_position_idempotent_already_closed():
+    """close_position sobre trade ja tancat → True sense cridar close_trade."""
+    adapter = _make_fake_adapter()
+    # FakeOstiumClient buit (cap trade) → get_trade_info retorna None → idempotent
+    ok = run(adapter.close_position("ostium:0:0"))
+    assert ok is True
+    fake: FakeOstiumClient = adapter._client
+    assert len(fake.close_calls) == 0, "close_trade no hauria de ser cridat si ja tancat"
+    print("✓ test_close_position_idempotent_already_closed passed")
+
+
+def test_get_balance_returns_balance():
+    """get_balance: usdc, used_margin (collateral posicions), available_margin."""
+    fake = FakeOstiumClient(mid_price=1.085, usdc_balance=200.0)
+    adapter = OstiumExecutionAdapter(client=fake)
+    fake._trader_address = "0xFakeTrader"
+
+    # Obrir posició amb collateral=50
+    run(adapter.open_position("EURUSD", True, 50.0, 5.0))
+
+    balance = run(adapter.get_balance())
+    assert balance.usdc == 200.0
+    assert balance.used_margin == 50.0
+    assert balance.available_margin == 150.0
+    print("✓ test_get_balance_returns_balance passed")
+
+
+def test_get_position_metrics_long_profit():
+    """get_position_metrics LONG: si preu puja, pnl positiu (fórmula manual)."""
+    open_price = 1.08000
+    current_price = 1.09000  # +0.926%
+    fake = FakeOstiumClient(mid_price=open_price)
+    adapter = OstiumExecutionAdapter(client=fake)
+    fake._trader_address = "0xFakeTrader"
+
+    # Obrir posició (open_price=1.08, collateral=100, leverage=10, notional=1000)
+    run(adapter.open_position("EURUSD", True, 100.0, 10.0))
+
+    # Canviar preu del fake per simular profit
+    fake.mid_price = current_price
+
+    metrics = run(adapter.get_position_metrics("ostium:0:0"))
+    assert metrics.unrealized_pnl > 0, f"PnL hauria de ser positiu, got {metrics.unrealized_pnl}"
+    assert metrics.unrealized_pnl_percent > 0
+    assert metrics.current_price == current_price
+    # Liquidation price LONG: open * (1 - 1/leverage) = 1.08 * 0.9 = 0.972
+    assert abs(metrics.liquidation_price - (open_price * 0.9)) < 0.001
+    print(f"✓ test_get_position_metrics_long_profit passed "
+          f"(PnL={metrics.unrealized_pnl:.4f} liq={metrics.liquidation_price:.5f})")
+
+
+def test_get_position_metrics_not_found():
+    """get_position_metrics sobre trade inexistent → VenueAPIError."""
+    adapter = _make_fake_adapter()
+    try:
+        run(adapter.get_position_metrics("ostium:0:99"))
+        assert False, "Hauria d'haver llançat VenueAPIError"
+    except VenueAPIError as e:
+        assert (
+            "no trobat" in str(e).lower()
+            or "tancat" in str(e).lower()
+            or "collateral" in str(e).lower()
+        )
+    print("✓ test_get_position_metrics_not_found passed")
+
+
+def test_open_position_idempotent_disc(tmp_path=None):
+    """Dues crides open amb same client_order_id → 2a retorna same position_id, 1 sola crida al client."""
+    import tempfile
+    if tmp_path is None:
+        tmp_path = tempfile.mkdtemp()
+        idem_file = str(Path(tmp_path) / "trade_ids.jsonl")
+    else:
+        idem_file = str(tmp_path / "trade_ids.jsonl")
+
+    fake = FakeOstiumClient(mid_price=1.085)
+    adapter = OstiumExecutionAdapter(client=fake, _idempotency_file=idem_file)
+
+    # Primera crida
+    r1 = run(adapter.open_position(
+        symbol="EURUSD", is_long=True, collateral=100.0, leverage=5.0,
+        client_order_id="order-abc-123",
+    ))
+    assert r1.success is True
+    assert r1.position_id == "ostium:0:0"
+    assert len(fake.open_calls) == 1
+
+    # Segona crida — mateixa client_order_id
+    r2 = run(adapter.open_position(
+        symbol="EURUSD", is_long=True, collateral=100.0, leverage=5.0,
+        client_order_id="order-abc-123",
+    ))
+    assert r2.success is True
+    assert r2.position_id == r1.position_id, "Ha de retornar el same position_id"
+    assert len(fake.open_calls) == 1, "No hauria de cridar open_trade una 2a vegada"
+    print("✓ test_open_position_idempotent_disc passed")
+
+
 if __name__ == "__main__":
     tests = [
         test_open_position_ok,
@@ -349,6 +453,12 @@ if __name__ == "__main__":
         test_get_pairs_returns_empty,
         test_start_no_env_key_adapter_inactiu,
         test_short_position_ok,
+        # Phase H
+        test_close_position_idempotent_already_closed,
+        test_get_balance_returns_balance,
+        test_get_position_metrics_long_profit,
+        test_get_position_metrics_not_found,
+        test_open_position_idempotent_disc,
     ]
     passed = failed = 0
     for t in tests:

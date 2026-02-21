@@ -35,7 +35,7 @@ from __future__ import annotations
 import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from foundation.logging import get_logger
 
@@ -71,6 +71,20 @@ ORDER_OPENED_TOPIC = "0x" + "b1c6bd0c9c6a36fbb3b8cccda60a0ad29e2f28fb6e5c7c6b6a6
 # — es recalcula a l'inici si web3 disponible (veure OstiumClient.__init__)
 
 FIND_TRADE_MAX_INDEX = 10  # 0-9 per testnet (256 per seguretat màxima)
+
+# ── USDC ERC-20 (per get_balance) ────────────────────────────────────────────
+
+USDC_CONTRACT_TESTNET = "0xe73B11Fb1e3eeEe8AF2a23079A4410Fe1B370548"  # Confirmat al lab
+USDC_CONTRACT_MAINNET = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"  # USDC on Arbitrum One
+USDC_PRECISION = 10 ** 10  # Confirmat al lab (PRECISION_10)
+
+USDC_BALANCE_ABI = [{
+    "inputs": [{"name": "account", "type": "address"}],
+    "name": "balanceOf",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function",
+}]
 
 
 # ── Dataclasses de resultat ──────────────────────────────────────────────────
@@ -159,6 +173,29 @@ class IOstiumClient(ABC):
     async def health(self) -> bool:
         """Retorna True si l'API és accessible."""
 
+    @abstractmethod
+    async def get_usdc_balance(self) -> float:
+        """Retorna saldo USDC de la wallet (float, en USDC humans)."""
+
+    @abstractmethod
+    async def get_trade_info(
+        self, pair_id: int, trade_index: int
+    ) -> Optional[OpenTradeInfo]:
+        """
+        Retorna info del trade via getOpenTrade.
+        Retorna None si collateral==0 (trade ja tancat o no existent).
+        """
+
+    @abstractmethod
+    async def get_trade_metrics(
+        self, pair_id: int, trade_index: int
+    ) -> Optional[Dict]:
+        """
+        Retorna mètriques del trade via sdk.get_open_trade_metrics().
+        Keys esperades: unrealizedPnl (float), unrealizedPnlPercentage (float).
+        Retorna None si el SDK no exposa el mètode o falla.
+        """
+
 
 # ── Implementació real ────────────────────────────────────────────────────────
 
@@ -183,6 +220,7 @@ class OstiumClient(IOstiumClient):
         self._sdk: Any = None
         self._w3: Any = None
         self._contract: Any = None
+        self._usdc_contract: Any = None
         self._trader_address: Optional[str] = None
 
     def _ensure_sdk(self) -> None:
@@ -205,6 +243,11 @@ class OstiumClient(IOstiumClient):
         self._contract = self._w3.eth.contract(
             address=Web3.to_checksum_address(contract_addr),
             abi=GET_OPEN_TRADE_ABI,
+        )
+        usdc_addr = USDC_CONTRACT_TESTNET if self._network == "testnet" else USDC_CONTRACT_MAINNET
+        self._usdc_contract = self._w3.eth.contract(
+            address=Web3.to_checksum_address(usdc_addr),
+            abi=USDC_BALANCE_ABI,
         )
         account = Account.from_key(self._private_key)
         self._trader_address = account.address
@@ -438,6 +481,83 @@ class OstiumClient(IOstiumClient):
         results = await loop.run_in_executor(None, _scan)
         return results
 
+    async def get_usdc_balance(self) -> float:
+        """
+        Retorna saldo USDC de la wallet via ERC-20 balanceOf.
+        Escala: raw / USDC_PRECISION (10^10 confirmat al lab).
+        """
+        self._ensure_sdk()
+        loop = asyncio.get_event_loop()
+        raw = await loop.run_in_executor(
+            None,
+            lambda: self._usdc_contract.functions.balanceOf(
+                self._w3.to_checksum_address(self._trader_address)
+            ).call(),
+        )
+        return float(raw) / USDC_PRECISION
+
+    async def get_trade_info(
+        self, pair_id: int, trade_index: int
+    ) -> Optional[OpenTradeInfo]:
+        """
+        Retorna info del trade via getOpenTrade.
+        Retorna None si collateral==0 (trade tancat o no existeix).
+        """
+        self._ensure_sdk()
+        loop = asyncio.get_event_loop()
+
+        def _call() -> Optional[OpenTradeInfo]:
+            r = self._contract.functions.getOpenTrade(
+                self._w3.to_checksum_address(self._trader_address),
+                pair_id,
+                trade_index,
+            ).call()
+            collateral_raw = r[3]
+            if collateral_raw <= 0:
+                return None
+            collateral = collateral_raw / 1e18
+            open_price_raw = r[0]
+            open_price = open_price_raw / 1e18 if open_price_raw > 1e10 else float(open_price_raw)
+            tp_raw = r[1]
+            sl_raw = r[2]
+            tp = tp_raw / 1e18 if tp_raw > 1e10 else float(tp_raw)
+            sl = sl_raw / 1e18 if sl_raw > 1e10 else float(sl_raw)
+            return OpenTradeInfo(
+                pair_id=pair_id,
+                trade_index=trade_index,
+                open_price=open_price,
+                tp=tp,
+                sl=sl,
+                collateral=collateral,
+                leverage=int(r[4]),
+                is_long=bool(r[5]),
+            )
+
+        return await loop.run_in_executor(None, _call)
+
+    async def get_trade_metrics(
+        self, pair_id: int, trade_index: int
+    ) -> Optional[Dict]:
+        """
+        Retorna mètriques del trade via sdk.get_open_trade_metrics() si existeix.
+        Retorna None si el SDK no exposa el mètode o si la crida falla.
+        """
+        self._ensure_sdk()
+        fn = getattr(self._sdk, "get_open_trade_metrics", None)
+        if fn is None:
+            logger.debug("OstiumClient.get_trade_metrics: SDK no exposa get_open_trade_metrics")
+            return None
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, lambda: fn(pair_id, trade_index))
+            return dict(result) if result else None
+        except Exception as e:
+            logger.warning(
+                "OstiumClient.get_trade_metrics(pair_id=%d, trade_index=%d): %s",
+                pair_id, trade_index, e,
+            )
+            return None
+
     async def health(self) -> bool:
         try:
             self._ensure_sdk()
@@ -481,11 +601,15 @@ class FakeOstiumClient(IOstiumClient):
         open_should_fail: bool = False,
         close_should_fail: bool = False,
         health_result: bool = True,
+        usdc_balance: float = 100.0,
+        fake_metrics: bool = False,
     ):
         self.mid_price = mid_price
         self.open_should_fail = open_should_fail
         self.close_should_fail = close_should_fail
         self.health_result = health_result
+        self.usdc_balance = usdc_balance
+        self.fake_metrics = fake_metrics
 
         # Estat intern
         self._trades: Dict[Tuple[int, int], _FakeTrade] = {}
@@ -592,6 +716,43 @@ class FakeOstiumClient(IOstiumClient):
                 is_long=t.is_long,
             ))
         return result
+
+    async def get_usdc_balance(self) -> float:
+        return self.usdc_balance
+
+    async def get_trade_info(
+        self, pair_id: int, trade_index: int
+    ) -> Optional[OpenTradeInfo]:
+        trade = self._trades.get((pair_id, trade_index))
+        if trade is None:
+            return None
+        return OpenTradeInfo(
+            pair_id=trade.pair_id,
+            trade_index=trade.trade_index,
+            open_price=trade.open_price,
+            tp=trade.tp,
+            sl=trade.sl,
+            collateral=trade.collateral,
+            leverage=trade.leverage,
+            is_long=trade.is_long,
+        )
+
+    async def get_trade_metrics(
+        self, pair_id: int, trade_index: int
+    ) -> Optional[Dict]:
+        if not self.fake_metrics:
+            return None
+        trade = self._trades.get((pair_id, trade_index))
+        if trade is None:
+            return None
+        # Fórmula simple: PnL = (mid - open) / open * notional (LONG)
+        notional = trade.collateral * trade.leverage
+        price_delta = self.mid_price - trade.open_price
+        if not trade.is_long:
+            price_delta = -price_delta
+        pnl = price_delta / trade.open_price * notional if trade.open_price > 0 else 0.0
+        pnl_pct = (pnl / trade.collateral) * 100 if trade.collateral > 0 else 0.0
+        return {"unrealizedPnl": pnl, "unrealizedPnlPercentage": pnl_pct}
 
     async def health(self) -> bool:
         return self.health_result

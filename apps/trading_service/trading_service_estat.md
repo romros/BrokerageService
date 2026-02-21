@@ -138,7 +138,7 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 
 - **Paper-first (Phase F):** Per defecte `VENUE=""` → paper adapter. Segur i funcional sense config de venue.
 - **Legacy venues opt-in:** `VENUE=lighter` o `VENUE=gtrade` requereixen `ENABLE_LEGACY_VENUES=1`. Sense opt-in → 503.
-- **Ostium scaffold:** `VENUE=ostium` → OstiumExecutionAdapter wired; exec NotImplementedError fins Phase G.
+- **Ostium exec:** `VENUE=ostium` → OstiumExecutionAdapter (Phase H: balance, metrics, idempotència open/close; smoke verifica tancament).
 - **Mode paper:** Per defecte `MODE=paper`. Live trading requereix `ENABLE_LIVE_TRADING=1` explícit.
 - **Venue Lighter:** MVP 100% completat. gTrade i Ostium execution pendents.
 - **Quality gate env vars:** `QUALITY_GATE_MAX_FRESHNESS_SEC` (default 300s), `QUALITY_GATE_MIN_COMPLETENESS` (default 0.95), `QUALITY_GATE_MAX_GAP_S_GATE` (default 180s).
@@ -147,9 +147,9 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 
 ---
 
-## Phase G — OstiumExecutionAdapter MVP (2026-02-21)
+## Phase G + H — OstiumExecutionAdapter MVP i safe live (2026-02-21)
 
-**Status**: ✅ Implementat (0-network tests verds, smoke opt-in disponible)
+**Status**: ✅ Implementat (0-network tests verds, smoke opt-in amb verificació de tancament)
 
 ### Implementació
 
@@ -158,31 +158,33 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 | `IOstiumClient` | `infrastructure/venues/ostium/ostium_client.py` | ✅ |
 | `OstiumClient` (real) | idem | ✅ (requereix SDK + web3) |
 | `FakeOstiumClient` (test stub) | idem | ✅ |
-| `OstiumExecutionAdapter` | `infrastructure/venues/ostium/ostium_execution_adapter.py` | ✅ MVP |
-| Tests 0-network (23) | `testing/apps/trading_service/test_ostium_execution_adapter_unit.py` | ✅ |
-| Smoke opt-in | `scripts/smoke_ostium_exec.sh` | ✅ |
+| `OstiumExecutionAdapter` | `infrastructure/venues/ostium/ostium_execution_adapter.py` | ✅ Phase H |
+| Tests 0-network (23+) | `testing/apps/trading_service/test_ostium_execution_adapter_unit.py` | ✅ |
+| Smoke opt-in | `scripts/smoke_ostium_exec.sh` | ✅ (Phase H: STEP 5 verifica tancament) |
 
-### Capacitats MVP
+### Capacitats MVP (Phase G) + safe live (Phase H)
 
-- ✅ `open_position` → `OstiumClient.open_trade` → `OrderResult(success=True, position_id='ostium:{pair_id}:{trade_index}')`
-- ✅ `close_position` → `OstiumClient.close_trade` (obté preu automàticament)
+- ✅ `open_position` → `OstiumClient.open_trade` → `OrderResult` amb position_id; **idempotent** si `client_order_id` (disc `datafiles/trade_ids.jsonl`)
+- ✅ `close_position` → `OstiumClient.close_trade`; **idempotent** (si get_trade_info retorna collateral=0 → True sense cridar SDK)
 - ✅ `update_sl` / `update_tp` → no-op (SDK testnet no suporta; log WARNING)
-- ✅ `get_open_positions` → brute-force `getOpenTrade` (0-9 per pair, 10 RPC calls)
+- ✅ `get_open_positions` → brute-force `getOpenTrade` (0-9 per pair)
 - ✅ `health_check` → `OstiumClient.health()` (fetch EUR/USD price)
 - ✅ `get_latest_price` → `OstiumClient.get_price(base, quote)`
+- ✅ **`get_balance`** → USDC ERC-20 balanceOf + used_margin (suma collateral posicions obertes)
+- ✅ **`get_position_metrics`** → open_price, current_price, pnl manual (o SDK si disponible), liquidation_price
 - ⚠️ `get_trade_history` → `[]` (subgraph no funciona (ni testnet ni mainnet))
 - ⚠️ `get_pairs` → `[]` (subgraph no funciona (ni testnet ni mainnet))
-- ⚠️ `get_balance` → `NotImplementedError` (pendent)
-- ⚠️ `get_position_metrics` → `NotImplementedError` (pendent)
 
 ### Limitacions conegudes
 
 - SL/TP via `update_sl`/`update_tp`: no-op MVP (SDK testnet no exposa endpoint)
-- `get_open_positions` requereix conèixer trader_address (disponible en `OstiumClient` real)
-- Subgraph no disponible (ni testnet ni mainnet) → `get_trade_history` / `get_pairs` retornen `[]`
+- `get_open_positions` requereix trader_address (disponible en `OstiumClient` real)
+- Subgraph no disponible → `get_trade_history` / `get_pairs` retornen `[]`
 - `percent` en `close_position` ignorat MVP (sempre 100%)
 
-### Smoke test (opt-in)
+### Smoke test (opt-in, Phase H)
+
+Valida: health → open → close → **get_open_positions confirma que la posició ja no apareix**.
 
 ```bash
 ENABLE_OSTIUM_LIVE_SMOKE=1 OSTIUM_PRIVATE_KEY=0x... ./scripts/smoke_ostium_exec.sh

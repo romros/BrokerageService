@@ -1,5 +1,5 @@
 """
-OstiumExecutionAdapter — implementació MVP (Phase G).
+OstiumExecutionAdapter — implementació Phase H (safe live).
 
 Implementa IVenueAdapter per al venue Ostium (execució real on-chain).
 
@@ -7,13 +7,17 @@ Patrons:
 - DI: accepta IOstiumClient (real o fake per testing)
 - Position ID: "ostium:{pair_id}:{trade_index}"
 - open_position → IOstiumClient.open_trade → OpenTradeReceipt
+  - Idempotència: client_order_id → datafiles/trade_ids.jsonl
 - close_position → IOstiumClient.close_trade
+  - Idempotència: si getOpenTrade retorna collateral==0 → True sense cridar SDK
 - update_sl / update_tp → IOstiumClient.update_sl / update_tp (no-op SDK testnet MVP)
 - get_open_positions → IOstiumClient.get_open_trades (brute-force via contract)
 - get_trade_history → [] (subgraph no funciona ni testnet ni mainnet)
 - get_pairs → [] (subgraph no funciona ni testnet ni mainnet)
 - get_latest_price → IOstiumClient.get_price
 - health_check → IOstiumClient.health
+- get_balance → IOstiumClient.get_usdc_balance (USDC ERC-20)
+- get_position_metrics → IOstiumClient.get_trade_metrics + fallback PnL manual
 
 Configuració via ENV:
   OSTIUM_PRIVATE_KEY  — clau privada wallet (obligatòria per live)
@@ -21,8 +25,10 @@ Configuració via ENV:
   OSTIUM_RPC_URL      — opcional (usa default per network)
 """
 
+import json
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import AsyncIterator, Dict, List, Optional
 
 from domain.errors import MarketNotFoundError, VenueAPIError
@@ -48,6 +54,9 @@ OSTIUM_VENUE_ID = "ostium"
 OSTIUM_PRIVATE_KEY_ENV = "OSTIUM_PRIVATE_KEY"
 OSTIUM_NETWORK_ENV = "OSTIUM_NETWORK"
 OSTIUM_RPC_URL_ENV = "OSTIUM_RPC_URL"
+
+# ── Idempotència ───────────────────────────────────────────────────────────────
+IDEMPOTENCY_FILE = "datafiles/trade_ids.jsonl"
 
 # ── Symbol → pair_id (asset_type per SDK) ────────────────────────────────────
 # Valors confirmats als scripts del lab (testnet Arbitrum Sepolia).
@@ -111,13 +120,14 @@ def _make_position_id(pair_id: int, trade_index: int) -> str:
 
 class OstiumExecutionAdapter(IVenueAdapter):
     """
-    Adapter d'execució Ostium — implementació MVP (Phase G).
+    Adapter d'execució Ostium — implementació Phase H (safe live).
 
     Args:
         client: IOstiumClient (injecteu FakeOstiumClient per tests).
                 Si None, es construeix OstiumClient des de ENVs en start().
         private_key: Clau privada (override; si None, llegeix OSTIUM_PRIVATE_KEY).
         network: "testnet" | "mainnet" (override; si None, llegeix OSTIUM_NETWORK).
+        _idempotency_file: Path del fitxer JSONL d'idempotència (override per tests).
     """
 
     def __init__(
@@ -125,11 +135,39 @@ class OstiumExecutionAdapter(IVenueAdapter):
         client: Optional[IOstiumClient] = None,
         private_key: Optional[str] = None,
         network: Optional[str] = None,
+        _idempotency_file: str = IDEMPOTENCY_FILE,
     ):
         self._client_override = client
         self._private_key = private_key
         self._network = network
         self._client: Optional[IOstiumClient] = client
+        self._idempotency_file = _idempotency_file
+
+    # ── Idempotència helpers ──────────────────────────────────────────────────
+
+    def _load_idempotency_map(self) -> Dict[str, str]:
+        """Carrega {client_order_id → position_id} del fitxer JSONL."""
+        result: Dict[str, str] = {}
+        path = Path(self._idempotency_file)
+        if not path.exists():
+            return result
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+                result[entry["client_order_id"]] = entry["position_id"]
+            except Exception:
+                continue
+        return result
+
+    def _save_idempotency_entry(self, client_order_id: str, position_id: str) -> None:
+        """Afegeix entrada {client_order_id → position_id} al fitxer JSONL."""
+        path = Path(self._idempotency_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"client_order_id": client_order_id, "position_id": position_id}) + "\n")
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -193,7 +231,7 @@ class OstiumExecutionAdapter(IVenueAdapter):
         yield  # type: ignore[misc]
 
     async def get_pairs(self) -> List[TradingPair]:
-        # Subgraph testnet no indexa → retornar llista buida
+        # Subgraph no disponible (ni testnet ni mainnet) → retornar llista buida
         return []
 
     # ── Trading ───────────────────────────────────────────────────────────────
@@ -210,6 +248,23 @@ class OstiumExecutionAdapter(IVenueAdapter):
     ) -> OrderResult:
         if self._client is None:
             raise VenueAPIError("OstiumExecutionAdapter: client no inicialitzat (crida start())")
+
+        # Idempotència: si client_order_id present, comprovar disc
+        if client_order_id:
+            idem_map = self._load_idempotency_map()
+            if client_order_id in idem_map:
+                existing_pid = idem_map[client_order_id]
+                logger.info(
+                    "open_position: client_order_id=%s ja existent → %s (idempotent)",
+                    client_order_id, existing_pid,
+                )
+                return OrderResult(
+                    success=True,
+                    position_id=existing_pid,
+                    order_id="",
+                    executed_price=0.0,
+                    executed_size=0.0,
+                )
 
         sym_upper = symbol.upper()
         pair_id = SYMBOL_TO_PAIR_ID.get(sym_upper)
@@ -251,7 +306,8 @@ class OstiumExecutionAdapter(IVenueAdapter):
             "open_position OK: symbol=%s position_id=%s tx=%s",
             sym_upper, position_id, receipt.tx_hash[:20],
         )
-        return OrderResult(
+
+        result = OrderResult(
             success=True,
             position_id=position_id,
             order_id=receipt.tx_hash,
@@ -260,11 +316,32 @@ class OstiumExecutionAdapter(IVenueAdapter):
             tx_hash=receipt.tx_hash,
         )
 
+        # Guardar idempotència al disc (si èxit i client_order_id present)
+        if client_order_id and result.success:
+            self._save_idempotency_entry(client_order_id, position_id)
+
+        return result
+
     async def close_position(self, position_id: str, percent: float = 100.0) -> bool:
         if self._client is None:
             raise VenueAPIError("OstiumExecutionAdapter: client no inicialitzat (crida start())")
 
         pair_id, trade_index = _parse_position_id(position_id)
+
+        # Idempotència: si ja tancada (collateral==0) → True sense cridar close_trade
+        try:
+            trade_info = await self._client.get_trade_info(pair_id, trade_index)
+            if trade_info is None:
+                logger.info(
+                    "close_position: %s ja tancada (collateral=0), idempotent OK",
+                    position_id,
+                )
+                return True
+        except Exception as chk_e:
+            logger.warning(
+                "close_position: check idempotent error: %s — continuant amb close_trade",
+                chk_e,
+            )
 
         base_quote = PAIR_ID_TO_BASE_QUOTE.get(pair_id)
         if base_quote is None:
@@ -338,14 +415,103 @@ class OstiumExecutionAdapter(IVenueAdapter):
         return positions
 
     async def get_position_metrics(self, position_id: str) -> PositionMetrics:
-        raise NotImplementedError(
-            "OstiumExecutionAdapter: get_position_metrics no implementat (Phase G MVP)"
+        """
+        Retorna mètriques de la posició.
+
+        Fonts (per prioritat):
+        1. SDK get_open_trade_metrics() si disponible (unrealizedPnl oficial)
+        2. Fallback: PnL manual (current_price vs open_price), sense fees
+
+        Fees (funding_fee, rollover_fee) = 0.0 per MVP (no dades on-chain disponibles).
+        Liquidation price = aproximació (open * (1 ± 1/leverage)), sense tenir en compte fees.
+        """
+        if self._client is None:
+            raise VenueAPIError("OstiumExecutionAdapter: client no inicialitzat (crida start())")
+
+        pair_id, trade_index = _parse_position_id(position_id)
+
+        # Obtenir info del trade (open_price, collateral, leverage, is_long)
+        trade_info = await self._client.get_trade_info(pair_id, trade_index)
+        if trade_info is None:
+            raise VenueAPIError(
+                f"Ostium: trade {position_id} no trobat o ja tancat (collateral=0)"
+            )
+
+        # Obtenir preu actual
+        base_quote = PAIR_ID_TO_BASE_QUOTE.get(pair_id)
+        if base_quote is None:
+            raise VenueAPIError(f"Ostium: pair_id={pair_id} desconegut")
+        try:
+            current_price, _, _ = await self._client.get_price(*base_quote)
+        except Exception as e:
+            raise VenueAPIError(f"Ostium: no s'ha pogut obtenir preu actual: {e}") from e
+
+        # Intentar mètriques via SDK (retorna None si no disponible)
+        sdk_metrics = await self._client.get_trade_metrics(pair_id, trade_index)
+
+        notional = trade_info.collateral * trade_info.leverage
+
+        if sdk_metrics and "unrealizedPnl" in sdk_metrics:
+            # Font 1: SDK metrics (oficial)
+            pnl = float(sdk_metrics["unrealizedPnl"])
+            pnl_pct = float(sdk_metrics.get("unrealizedPnlPercentage", 0.0))
+        else:
+            # Font 2: Fórmula manual sense fees
+            price_delta = current_price - trade_info.open_price
+            if not trade_info.is_long:
+                price_delta = -price_delta
+            pnl = (price_delta / trade_info.open_price * notional) if trade_info.open_price > 0 else 0.0
+            pnl_pct = (pnl / trade_info.collateral * 100) if trade_info.collateral > 0 else 0.0
+
+        # Liquidation price aproximat (sense fees → subestima risc, conservador)
+        lev = float(trade_info.leverage)
+        if lev > 0:
+            if trade_info.is_long:
+                liq_price = trade_info.open_price * (1.0 - 1.0 / lev)
+            else:
+                liq_price = trade_info.open_price * (1.0 + 1.0 / lev)
+        else:
+            liq_price = 0.0
+
+        return PositionMetrics(
+            position_id=position_id,
+            unrealized_pnl=pnl,
+            unrealized_pnl_percent=pnl_pct,
+            funding_fee=0.0,    # MVP: sense dades on-chain de fees
+            rollover_fee=0.0,   # MVP: sense dades on-chain de fees
+            liquidation_price=liq_price,
+            current_price=current_price,
         )
 
     # ── Account ───────────────────────────────────────────────────────────────
 
     async def get_balance(self) -> Balance:
-        raise NotImplementedError("OstiumExecutionAdapter: get_balance no implementat (Phase G MVP)")
+        """
+        Retorna balanç USDC de la wallet via ERC-20 balanceOf.
+        used_margin = suma collateral de les posicions obertes.
+        native_token = 0.0 (ETH no necessari per MVP).
+        """
+        if self._client is None:
+            raise VenueAPIError("OstiumExecutionAdapter: client no inicialitzat (crida start())")
+
+        try:
+            usdc = await self._client.get_usdc_balance()
+        except Exception as e:
+            raise VenueAPIError(f"Ostium get_balance error: {e}") from e
+
+        # used_margin: suma del collateral de totes les posicions obertes
+        try:
+            positions = await self.get_open_positions()
+            used = sum(p.collateral for p in positions)
+        except Exception:
+            used = 0.0
+
+        return Balance(
+            usdc=usdc,
+            native_token=0.0,
+            available_margin=max(usdc - used, 0.0),
+            used_margin=used,
+        )
 
     async def get_trade_history(
         self,
@@ -354,7 +520,7 @@ class OstiumExecutionAdapter(IVenueAdapter):
         to: Optional[datetime] = None,
         limit: int = 500,
     ) -> List[TradeFill]:
-        # Subgraph testnet no indexa → retornar buit
+        # Subgraph no disponible (ni testnet ni mainnet) → retornar buit
         return []
 
     # ── Mode info ─────────────────────────────────────────────────────────────
