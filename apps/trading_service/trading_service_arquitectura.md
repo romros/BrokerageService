@@ -63,6 +63,26 @@
 
 ---
 
+## TradingCore (Phase E)
+
+| Component | Fitxer |
+|-----------|--------|
+| `TradingCore` | [`application/trading/trading_core.py`](../../application/trading/trading_core.py) |
+
+Responsabilitat: orquestra open/close d'ordres — quality gate → venue dispatch.
+`broker_routes._do_order_open` / `_do_order_close` deleguen a `TradingCore`.
+
+Errors domain-level (sense HTTP):
+- `AdapterNotAvailableError` — adapter_factory no configurat → 503
+- `VenueNotConfiguredError` — venue no disponible → 422
+- `DataQualityGateBadError` — gate=BAD → 422 `DATA_QUALITY_GATE_BAD` (fail-closed)
+- `MarketNotFoundError` — símbol no trobat → 404
+
+Futures adapters d'execució (opt-in):
+- `OstiumExecutionAdapter` — pendent Phase F
+
+---
+
 ## Deploy
 
 ```bash

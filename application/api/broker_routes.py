@@ -847,65 +847,70 @@ async def get_trades(
 
 
 async def _do_order_open(req: OrderOpenRequest) -> OrderOpenResponse:
-    """Lògica comuna per obrir posició. Validacions ja fetes al model."""
-    # Phase 5: Quality gate fail-closed — si data_layer_reader actiu, comprovar qualitat OHLCV
-    # Si gate=BAD → NO_TRADE (422). Només en mode split/HTTP (quan hi ha reader).
-    if _data_layer_reader is not None:
-        from application.services.data_quality_guard import assert_data_quality_ok
-        from application.errors import DataQualityGateBadError
-        try:
-            await assert_data_quality_ok(_data_layer_reader, symbol=req.symbol)
-        except DataQualityGateBadError as e:
-            _http_error(
-                422,
-                DATA_QUALITY_GATE_BAD,
-                f"NO_TRADE: quality gate BAD for {e.symbol} — {e.reason}",
-            )
+    """Lògica comuna per obrir posició. Delega a TradingCore (Phase E)."""
+    from application.trading.trading_core import (
+        TradingCore,
+        AdapterNotAvailableError,
+        VenueNotConfiguredError,
+    )
+    from application.errors import DataQualityGateBadError
 
-    adapter = _get_adapter_or_http_error(req.venue)
-    is_long = req.side.lower() == "long"
+    core = TradingCore(
+        adapter_factory=_adapter_factory,
+        data_layer_reader=_data_layer_reader,
+        known_venues=list(KNOWN_VENUES),
+    )
     try:
-        result = await adapter.open_position(
-            symbol=req.symbol,
-            is_long=is_long,
-            collateral=req.collateral,
-            leverage=req.leverage,
-            sl_price=req.sl_price,
-            tp_price=req.tp_price,
-            client_order_id=None,
+        result = await core.open_order(req)
+    except DataQualityGateBadError as e:
+        _http_error(
+            422,
+            DATA_QUALITY_GATE_BAD,
+            f"NO_TRADE: quality gate BAD for {e.symbol} — {e.reason}",
         )
-        # P3.1: Garantir position_id amb prefix venue per paper (consistent amb GET /positions)
-        pid = result.position_id or ""
-        if pid and req.venue == "paper" and ":" not in pid:
-            pid = f"paper:{pid}"
-        return OrderOpenResponse(
-            success=result.success,
-            position_id=pid,
-            order_id=result.order_id or "",
-            executed_price=result.executed_price or 0,
-            executed_size=result.executed_size or 0,
-            tx_hash=getattr(result, "tx_hash", "") or "",
-        )
+    except AdapterNotAvailableError as e:
+        _http_error(503, ADAPTER_NOT_AVAILABLE, str(e))
+    except VenueNotConfiguredError as e:
+        _http_error(422, VENUE_NOT_CONFIGURED, str(e))
     except MarketNotFoundError as e:
         _http_error(404, SYMBOL_NOT_FOUND, str(e))
     except Exception as e:
         logger.error("order_open %s %s: %s", req.venue, req.symbol, e)
         raise HTTPException(status_code=500, detail=str(e))
+    return OrderOpenResponse(
+        success=result.success,
+        position_id=result.position_id,
+        order_id=result.order_id,
+        executed_price=result.executed_price,
+        executed_size=result.executed_size,
+        tx_hash=result.tx_hash,
+    )
 
 
 async def _do_order_close(req: OrderCloseRequest) -> OrderCloseResponse:
-    """Lògica comuna per tancar posició. Validacions ja fetes al model."""
-    adapter = _get_adapter_or_http_error(req.venue)
-    position_id = req.position_id
-    if ":" not in position_id and req.venue == "lighter":
-        position_id = f"lighter:{position_id}"
+    """Lògica comuna per tancar posició. Delega a TradingCore (Phase E)."""
+    from application.trading.trading_core import (
+        TradingCore,
+        AdapterNotAvailableError,
+        VenueNotConfiguredError,
+    )
+
+    core = TradingCore(
+        adapter_factory=_adapter_factory,
+        data_layer_reader=_data_layer_reader,
+        known_venues=list(KNOWN_VENUES),
+    )
     try:
-        ok = await adapter.close_position(position_id, percent=req.percent)
-        return OrderCloseResponse(success=ok)
+        result = await core.close_order(req)
+        return OrderCloseResponse(success=result.success)
+    except AdapterNotAvailableError as e:
+        _http_error(503, ADAPTER_NOT_AVAILABLE, str(e))
+    except VenueNotConfiguredError as e:
+        _http_error(422, VENUE_NOT_CONFIGURED, str(e))
     except PositionNotFoundError as e:
         _http_error(404, POSITION_NOT_FOUND, str(e))
     except Exception as e:
-        logger.error("order_close %s %s: %s", req.venue, position_id, e)
+        logger.error("order_close %s %s: %s", req.venue, req.position_id, e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
