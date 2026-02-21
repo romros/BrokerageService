@@ -34,5 +34,6 @@ testing/unit/test_warmup_suppresses_missing_gate.py
 testing/unit/test_data_status_initializing.py
 testing/unit/test_ostium_symbol_allowlist.py
 testing/unit/test_market_hours_fx_closed_weekend.py
+testing/unit/test_market_hours_golden_weekend.py
 testing/unit/test_stale_ignored_when_market_closed.py
 testing/unit/test_data_status_includes_market_open.py

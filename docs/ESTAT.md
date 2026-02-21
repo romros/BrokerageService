@@ -1,6 +1,6 @@
 # ESTAT DEL PROJECTE — BrokerageService
 
-**Data:** 2026-02-20
+**Data:** 2026-02-21
 **Repo/Path:** `/mnt/volume-SQ/dev/BrokerageService`
 **Venues:** Ostium (marketdata principal) · Dukascopy (historic/backtest fallback) · Lighter (LAB opt-in) · gTrade (legacy/futur)
 **TZ canònica (config):** `CANONICAL_TZ=America/New_York`
@@ -41,10 +41,19 @@
 - ✅ **Phase 18:** Ops robustos per backfill 2003→avui. `application/data/coverage_index.py` (index JSON per mes: done/failed/empty, persistit a `_coverage/`). `run_historical_backfill.py` ampliada: retries/backoff exponencial, resume per coverage index, `--dry-run`, `--stop-after N`, `--retry-failed`. `scripts/run_full_pipeline.sh` wrapper. 11 tests 0-network.
 - ✅ **Phase 19:** Data API long-range + Coverage API. `GET /api/v1/data/ohlcv/{symbol}` serveix rangs llargs des de Parquet via DuckDB amb cursor `next_ts` (multi-mes, sense solapament). `GET /api/v1/data/coverage/{symbol}?tf=1m` exposa el coverage index (summary + detall per mes). 10 tests 0-network.
 - ✅ **Phase 20:** Mixed stitching parquet+realtime. `application/data/mixed_ohlcv_stitcher.py`: merge monotònic sense duplicats (realtime guanya en overlap), policy `HISTORICAL_MIXED_ALLOWED` (default=1), `source=mixed` quan dues fonts, cursor `next_ts` consistent. `scripts/run_historical_cron.sh` (daily/retry-failed/gap-repair). 6 tests 0-network.
+- ✅ **Market-hours fix + golden tests (2026-02-21):** Corregit bug weekend a `engine.py` (XAUUSD/DAXEUR/SPXUSD mostraven `open` dissabte; NVDAUSD obria en cap de setmana). Break XAU/indices corregit a 17:00–18:00 NY (era 16:59–18:10). Nou helper `_next_sunday_18()`. Tests anti-regressió `test_market_hours_golden_weekend.py` (7 tests).
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 
-> **Phases 2–20 completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Parquet (15) + DuckDB (16) + Backtest Freqtrade-style (17) + Ops robustos (18) + Data API long-range + Coverage API (19) + Mixed stitching + Cron (20). Pipeline prod-ish per backfill 2003→avui. 76 tests 0-network.
+> **Phases 2–20 + market-hours fix completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Parquet (15) + DuckDB (16) + Backtest Freqtrade-style (17) + Ops robustos (18) + Data API long-range + Coverage API (19) + Mixed stitching + Cron (20). Pipeline prod-ish per backfill 2003→avui. 76+ tests 0-network.
+
+### Boundaries ràpides per servei
+
+| Servei | Fa | No fa |
+|--------|----|-------|
+| **realtime_datalayer** | Ingest Ostium (polling), candles 1m, OHLCV+X-Data-* headers, market-hours, hot-reload símbols | Backfill Dukascopy, ordres, backtesting |
+| **historical_datalayer** | Backfill Dukascopy, Parquet, DuckDB, Coverage API, mixed stitching, cron | Ingest temps real, ordres, market-hours gating |
+| **trading_service** | Execució ordres (Lighter paper/live), quality gate fail-closed, backtest API | Ingest Ostium, backfill Dukascopy, emmagatzematge candles |
 
 ---
 
@@ -667,6 +676,7 @@ HISTORICAL_MIXED_ALLOWED=0 docker compose up -d trading_service
 | 2026-02-20 | Phase 15: Parquet storage + backfill runner | ✅ `infrastructure/storage/parquet_store.py`; particionat mensual; idempotent; `application/tools/run_historical_backfill.py`; 13 tests 0-network; 65 passed. | `python3 application/tools/run_historical_backfill.py --symbol EURUSD --from 2003-01-01 --to 2003-12-31` |
 | 2026-02-20 | Phase 19: Data API long-range + Coverage API | ✅ `GET /api/v1/data/ohlcv/{symbol}` DuckDB cursor `next_ts` multi-mes; `GET /api/v1/data/coverage/{symbol}` exposa index (summary+mesos); 10 tests 0-network; run_all VERD. | `curl "http://localhost:8010/api/v1/data/coverage/EURUSD?tf=1m"` |
 | 2026-02-21 | Phase 20: Mixed stitching + Cron | ✅ `mixed_ohlcv_stitcher.py`; merge parquet+realtime monotònic; policy `HISTORICAL_MIXED_ALLOWED`; `source=mixed`; `run_historical_cron.sh` daily/retry-failed/gap-repair; 6 tests 0-network; run_all VERD. | `curl "http://localhost:8010/api/v1/data/ohlcv/EURUSD"` → source=mixed |
+| 2026-02-21 | Market-hours fix (weekend bug) | ✅ `engine.py`: XAU/indices/NVDA tancats cap de setmana; break 17:00–18:00 NY; `_next_sunday_18()`; golden anti-regressió `test_market_hours_golden_weekend.py` (7 tests); tots els 8 símbols `closed` dissabte verificat via Docker. | `./scripts/run_tests.sh realtime_datalayer` |
 
 **DEGRADED vs CLOSED vs WARNING:** `closed` = mercat tancat (cap de setmana FX/XAU); no és incident. `warning` = market_state=unknown sense dades; no és degraded. `DEGRADED` = errors reals (duplicates, ts_step_errors, stale quan market_open). **Degraded és non-blocking:** continua polling amb backoff (base 2s, max 60s); autorecover quan arriba tick nou; pause només per `paused_closed` (market_closed). `/symbols` inclou `next_poll_in_s`, `degrade_reason`.
 
