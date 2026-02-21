@@ -286,9 +286,10 @@
         <p><b>desired:</b> ${(data?.desired || []).join(', ')}</p>
         <p><b>active:</b> ${(data?.active || []).join(', ')}</p>
         <table class="symbol-table">
-          <thead><tr><th>symbol</th><th>ostium_asset</th><th>kind</th><th>market_state</th><th>state</th><th>last_price</th><th>ticks</th><th>candles</th><th>last_tick_age_s</th><th>last_candle_age_s</th><th>errors</th><th>last_error</th></tr></thead>
+          <thead><tr><th>symbol</th><th>ostium_asset</th><th>kind</th><th>market_state</th><th>state</th><th>last_price</th><th title="Ticks rebuts en aquesta sessió (reset en restart)">ticks¹</th><th title="Candles totals en disc">candles</th><th>last_tick_age_s</th><th>last_candle_age_s</th><th>errors</th><th>last_error</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
+        <p class="help" style="margin-top:4px;font-size:0.8em">¹ ticks = rebuts en aquesta sessió del servei (es reseteja en cada restart). candles = total acumulat en disc.</p>
       `;
       if (rawEl) rawEl.textContent = JSON.stringify(data || {}, null, 2);
       if (lastUpdateEl) lastUpdateEl.textContent = new Date().toISOString();
