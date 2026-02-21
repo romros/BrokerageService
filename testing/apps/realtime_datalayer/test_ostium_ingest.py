@@ -99,6 +99,7 @@ def test_ostium_ingest_writes_closed_minute_only():
                     max_gap_s=180,
                     max_missing_per_24h=10,
                     stale_seconds=3600,
+                    market_hours_fn=lambda s, t: (True, "open"),  # sempre obert en tests
                 )
                 await svc.start()
                 await asyncio.sleep(2.5)  # 2 polls
@@ -155,6 +156,7 @@ def test_ostium_ingest_resume_state():
                     max_gap_s=180,
                     max_missing_per_24h=10,
                     stale_seconds=3600,
+                    market_hours_fn=lambda s, t: (True, "open"),  # sempre obert en tests
                 )
                 await svc.start()
                 await asyncio.sleep(2.5)
