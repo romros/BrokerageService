@@ -103,10 +103,28 @@
     <p><button id="btnPut" class="primary">PUT /symbols</button></p>
   </section>
 
-  <p><a href="/docs">OpenAPI /docs</a> · <a href="/openapi.json">openapi.json</a></p>
+  <p id="docsLinks"><a href="/docs">OpenAPI /docs</a> · <a href="/openapi.json">openapi.json</a></p>
+  <script>
+    // Arregla els links de docs amb el prefix correcte (inline, abans del main script)
+    (function() {
+      const p = window.location.pathname;
+      const m = p.match(/^(\/[^/]+)\/ui/);
+      const prefix = m ? m[1] : '';
+      if (prefix) {
+        const el = document.getElementById('docsLinks');
+        if (el) el.innerHTML = `<a href="${prefix}/docs">OpenAPI /docs</a> · <a href="${prefix}/openapi.json">openapi.json</a>`;
+      }
+    })();
+  </script>
 
   <script>
-    const BASE = '';
+    // Autodetecta el prefix del proxy: si la UI es serveix a /realtime/ui,
+    // BASE = '/realtime'. Si es serveix directament a /ui, BASE = ''.
+    const BASE = (() => {
+      const p = window.location.pathname; // ex: /realtime/ui
+      const m = p.match(/^(\/[^/]+)\/ui/);
+      return m ? m[1] : '';
+    })();
     const preset8 = ["EURUSD","USDJPY","XAUUSD","GBPUSD","GOOGUSD","NVDAUSD","DAXEUR","SPXUSD"];
     const presetFx = ["EURUSD","USDJPY","XAUUSD","GBPUSD"];
     let refreshTimer = null;
