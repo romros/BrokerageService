@@ -387,6 +387,32 @@ class CSVCandleStore(ICandleStore):
 
         return None
 
+    def count_stored_candles(self, symbol: str) -> int:
+        """
+        Compta el total de candles emmagatzemades en disc per un símbol.
+
+        Usa un glob per trobar tots els fitxers CSV del símbol i compta les files
+        (excloent la capçalera si n'hi ha). Operació lleu: llegeix metadades de fitxer,
+        no carrega les candles en memòria.
+
+        Retorna 0 si no hi ha fitxers o el símbol és desconegut.
+        """
+        tz_name = str(self.canonical_tz).replace("/", "_")
+        symbol_dir = self.root_path / self.broker / symbol / tz_name
+        if not symbol_dir.exists():
+            return 0
+        total = 0
+        for csv_path in symbol_dir.rglob("*.csv"):
+            try:
+                with open(csv_path, "r", encoding="utf-8") as f:
+                    lines = sum(1 for line in f if line.strip())
+                # Si el fitxer té capçalera (primera línia no numèrica), resta 1
+                # El nostre format CSV comença directament amb timestamp (int) — sense header
+                total += lines
+            except OSError:
+                pass
+        return total
+
     def get_earliest_timestamp(self, symbol: str) -> Optional[datetime]:
         """
         Get timestamp of first stored candle (P5 coverage).

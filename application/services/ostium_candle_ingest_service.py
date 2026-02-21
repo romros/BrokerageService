@@ -131,11 +131,31 @@ class OstiumCandleIngestService:
         # first_seen_ts: timestamp del primer tick per símbol (per calcular symbol_uptime_s)
         self._first_seen_ts: Dict[str, int] = {}
 
+        # Inicialitza candles_written amb el recompte real en disc (si el store ho suporta).
+        # Així la UI mostra el total acumulat, no 0 en cada restart.
+        self._init_candles_written_from_store()
+
         logger.info(
             "OstiumCandleIngestService initialized: symbols=%s poll_s=%s",
             self.symbols,
             poll_interval_s,
         )
+
+    def _init_candles_written_from_store(self) -> None:
+        """Inicialitza el comptador candles_written des del disc per cada símbol."""
+        count_fn = getattr(self.store, "count_stored_candles", None)
+        if count_fn is None:
+            return
+        metrics = get_data_layer_metrics()
+        if metrics is None:
+            return
+        for symbol in self.symbols:
+            try:
+                count = count_fn(symbol)
+                if count > 0:
+                    metrics.inc_candles_written(symbol, count=count)
+            except Exception:
+                pass  # best-effort: no bloqueja el startup
 
     async def start(self) -> None:
         """Arrenca loop de polling."""
