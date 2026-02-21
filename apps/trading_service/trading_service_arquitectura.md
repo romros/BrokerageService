@@ -78,8 +78,30 @@ Errors domain-level (sense HTTP):
 - `DataQualityGateBadError` — gate=BAD → 422 `DATA_QUALITY_GATE_BAD` (fail-closed)
 - `MarketNotFoundError` — símbol no trobat → 404
 
-Futures adapters d'execució (opt-in):
-- `OstiumExecutionAdapter` — pendent Phase F
+---
+
+## Venue Selection Policy (Phase F)
+
+| Env | Default | Descripció |
+|-----|---------|------------|
+| `VENUE` | `""` (paper) | paper \| ostium \| lighter\* \| gtrade\* |
+| `ENABLE_LEGACY_VENUES` | `0` | 1 per habilitar venues legacy (lighter, gtrade) |
+
+**Paper-first:** si `VENUE=""` o `VENUE=paper` → `PaperVenueAdapter` (default segur).
+
+**Ostium scaffold:** `VENUE=ostium` → `OstiumExecutionAdapter` (wired, exec = `NotImplementedError` fins Phase G).
+
+**Legacy opt-in:** `VENUE=lighter` o `VENUE=gtrade` requereixen `ENABLE_LEGACY_VENUES=1`.
+Sense opt-in, `adapter_factory=None` → `AdapterNotAvailableError` → 503.
+
+| Venue | Adapter | Disponible |
+|-------|---------|------------|
+| `paper` (default) | `PaperVenueAdapter` | ✅ sempre |
+| `ostium` | `OstiumExecutionAdapter` (scaffold) | ✅ wired; exec NotImplementedError |
+| `lighter` | `LighterVenueAdapter` | opt-in (`ENABLE_LEGACY_VENUES=1`) |
+| `gtrade` | — | opt-in (`ENABLE_LEGACY_VENUES=1`); sense adapter exec |
+
+Adapter: [`infrastructure/venues/ostium/ostium_execution_adapter.py`](../../infrastructure/venues/ostium/ostium_execution_adapter.py)
 
 ---
 

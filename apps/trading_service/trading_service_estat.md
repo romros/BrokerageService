@@ -12,7 +12,8 @@
 
 **No fa:** ingest en temps real (→ realtime_datalayer), backfill Dukascopy (→ historical_datalayer), emmagatzematge de candles (→ realtime/historical datalayer).
 
-**Pendent Phase E:** refactor execució venue Ostium (exec Ostium NO implementat; Lighter era l'antic venue exec).
+**Phase E (completada):** TradingCore extret de broker_routes. Quality gate + venue dispatch desacoblats de HTTP.
+**Phase F (completada):** Paper-first com a default. Venues legacy (lighter, gtrade) opt-in via `ENABLE_LEGACY_VENUES=1`. OstiumExecutionAdapter scaffold wired (exec = NotImplementedError fins Phase G).
 
 ---
 
@@ -33,6 +34,10 @@
 | Backtest API REST | ✅ | Phase 12: `POST /backtests/run` + `GET /backtests/runs/{run_id}` |
 | Ingest propi | ✅ N/A | NO té ingest ni writer (per disseny) |
 | Tests curts | ✅ | `./scripts/run_tests.sh trading_service` |
+| TradingCore (Phase E) | ✅ | broker_routes delega a TradingCore; errors domain-level |
+| Paper-first (Phase F) | ✅ | VENUE="" → paper adapter per defecte |
+| OstiumExecutionAdapter scaffold (Phase F) | ✅ | VENUE=ostium → scaffold wired; exec NotImplementedError |
+| Legacy venues opt-in (Phase F) | ✅ | ENABLE_LEGACY_VENUES=1 per lighter/gtrade |
 
 ---
 
@@ -111,6 +116,10 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 - [x] BacktestMarketDataProvider registry-aware (Phase 10)
 - [x] Backtest runner offline + KPIs (Phase 11)
 - [x] Backtest API REST (Phase 12)
+- [x] TradingCore (Phase E): broker_routes delega, errors domain-level
+- [x] Paper-first (Phase F): VENUE="" → paper adapter
+- [x] OstiumExecutionAdapter scaffold (Phase F): wired, exec NotImplementedError
+- [x] Legacy venues opt-in (Phase F): ENABLE_LEGACY_VENUES=1
 - [ ] Reconcile i guards completament validats
 - [ ] Tests de role wiring passen (no /orders en realtime_datalayer)
 
@@ -127,6 +136,9 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 
 ## Notes
 
+- **Paper-first (Phase F):** Per defecte `VENUE=""` → paper adapter. Segur i funcional sense config de venue.
+- **Legacy venues opt-in:** `VENUE=lighter` o `VENUE=gtrade` requereixen `ENABLE_LEGACY_VENUES=1`. Sense opt-in → 503.
+- **Ostium scaffold:** `VENUE=ostium` → OstiumExecutionAdapter wired; exec NotImplementedError fins Phase G.
 - **Mode paper:** Per defecte `MODE=paper`. Live trading requereix `ENABLE_LIVE_TRADING=1` explícit.
 - **Venue Lighter:** MVP 100% completat. gTrade i Ostium execution pendents.
 - **Quality gate env vars:** `QUALITY_GATE_MAX_FRESHNESS_SEC` (default 300s), `QUALITY_GATE_MIN_COMPLETENESS` (default 0.95), `QUALITY_GATE_MAX_GAP_S_GATE` (default 180s).

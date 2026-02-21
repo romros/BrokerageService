@@ -31,7 +31,11 @@ MAX_CANDLES_LIMIT = 10_000
 DEFAULT_OHLCV_LIMIT = 1000  # /ohlcv/{symbol} default
 DEFAULT_TRADES_LIMIT = 500
 MAX_TRADES_LIMIT = 5000
-KNOWN_VENUES = ("lighter", "gtrade", "paper")
+KNOWN_VENUES = ("paper", "ostium", "lighter", "gtrade")
+
+# Phase F: venues legacy opt-in (lighter, gtrade requereixen ENABLE_LEGACY_VENUES=1)
+ENABLE_LEGACY_VENUES_ENV = "ENABLE_LEGACY_VENUES"
+LEGACY_VENUES = ("lighter", "gtrade")  # Venues que requereixen opt-in explícit
 
 # ============================================
 # FINANCIAL & TRADING

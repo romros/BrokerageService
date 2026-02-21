@@ -25,7 +25,9 @@ from foundation.config.constants import (
     BROKER_DIAG_ENV,
     DATA_LAYER_ENABLED_ENV,
     DATA_LAYER_STARTUP_GATE_ENV,
+    ENABLE_LEGACY_VENUES_ENV,
     HEARTBEAT_INTERVAL_S,
+    LEGACY_VENUES,
     OSTIUM_ENABLED_ENV,
     REALTIME_DATALAYER_BASE_URL_ENV,
     REALTIME_DATALAYER_ROOT_ENV,
@@ -131,7 +133,14 @@ def create_app(role: str | None = None) -> FastAPI:
         use_fake_feed = os.getenv(USE_FAKE_PRICE_FEED_ENV, "").strip() == "1"
         enable_live = config["enable_live_trading"]
         mode_lower = (config["mode"] or "").lower()
-        use_paper_execution = (mode_lower == "paper" or not enable_live) and venue in ("", "lighter", "paper")
+        enable_legacy_venues = os.getenv(ENABLE_LEGACY_VENUES_ENV, "0").strip() == "1"
+
+        # Phase F: paper-first — sense VENUE explícit o VENUE=paper → paper adapter
+        # Legacy venues (lighter, gtrade) requereixen ENABLE_LEGACY_VENUES=1
+        use_paper_execution = venue in ("", "paper")
+        use_ostium_execution = venue == "ostium"
+        use_lighter_execution = venue == "lighter" and enable_legacy_venues
+        # gtrade no té execution adapter: cau al bloc else → adapter_factory=None
 
         # --- Adapter + market data (només trading / monolithic) ---
         if _role_starts_adapter(role):
@@ -170,7 +179,23 @@ def create_app(role: str | None = None) -> FastAPI:
                     market_data_source=source,
                     fallback_provider=fallback_provider,
                 )
-            elif venue == "lighter":
+            elif use_ostium_execution:
+                # Phase F: scaffold — OstiumExecutionAdapter disponible, exec no implementat
+                from infrastructure.venues.ostium.ostium_execution_adapter import OstiumExecutionAdapter
+                ostium_adapter = OstiumExecutionAdapter()
+                await ostium_adapter.start()
+                adapter = ostium_adapter
+                logger.info("execution_mode=ostium_scaffold (NotImplementedError on trade calls)")
+                set_broker_deps(
+                    candle_store=candle_store,
+                    adapter_factory=lambda v: ostium_adapter if v == "ostium" else None,
+                    mode=config["mode"],
+                    venue="ostium",
+                    market_data_env=config["market_data_env"],
+                    market_data_source="n/a",
+                    fallback_provider=fallback_provider,
+                )
+            elif use_lighter_execution:
                 from infrastructure.builders.lighter_di import build_lighter_paper_adapter, build_lighter_paper_market_data
                 from infrastructure.venues.lighter.config import get_lighter_symbols_from_env, get_lighter_tick_interval_ms, get_price_cache_ttl_s
                 from infrastructure.venues.lighter.price_cache import PriceSnapshotCache
@@ -213,6 +238,13 @@ def create_app(role: str | None = None) -> FastAPI:
                     await market_data_service.start()
                     logger.info("MARKETDATA_START venue=%s source=%s symbols=%s", venue, source, symbols)
             else:
+                # Venue no configurat o legacy sense opt-in → adapter_factory=None
+                # TradingCore llançarà AdapterNotAvailableError o VenueNotConfiguredError
+                if venue in LEGACY_VENUES and not enable_legacy_venues:
+                    logger.warning(
+                        "venue=%s és legacy: requereix ENABLE_LEGACY_VENUES=1 (Phase F). "
+                        "Adapter no disponible.", venue
+                    )
                 set_broker_deps(
                     candle_store=candle_store,
                     adapter_factory=None,
