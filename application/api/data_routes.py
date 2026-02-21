@@ -186,11 +186,13 @@ async def get_coverage(
 
     from application.data.coverage_index import CoverageIndex
     idx = CoverageIndex(root_path=datafiles_root, symbol=sym)
+    has_index = idx._path.exists()
     summary = idx.summary()
 
     return JSONResponse(content={
         "symbol": sym,
         "timeframe": tf,
+        "has_index": has_index,
         "summary": summary,
         "months": idx._data.get("months", {}),
     })

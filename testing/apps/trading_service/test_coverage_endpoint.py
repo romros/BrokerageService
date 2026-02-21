@@ -47,6 +47,7 @@ def test_coverage_empty_when_no_index():
     assert data["symbol"] == "EURUSD"
     assert data["timeframe"] == "1m"
     assert data["months"] == {}
+    assert data["has_index"] is False
     assert data["summary"]["months_done"] == 0
     assert data["summary"]["months_failed"] == 0
     assert data["summary"]["total_rows"] == 0
@@ -67,6 +68,7 @@ def test_coverage_summary_correct():
             resp = client.get("/api/v1/data/coverage/EURUSD")
     assert resp.status_code == 200
     data = resp.json()
+    assert data["has_index"] is True
     s = data["summary"]
     assert s["months_done"] == 2
     assert s["months_failed"] == 1
