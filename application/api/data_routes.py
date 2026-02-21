@@ -210,3 +210,31 @@ async def get_coverage(
         "summary": summary,
         "months": idx._data.get("months", {}),
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase C: Historical DataLayer — router sense prefix /api/v1/data
+# Montat pel historical_datalayer (nginx fa strip de /data/, arriba com /)
+# Endpoints: /ohlcv/{symbol}  /coverage/{symbol}
+# ---------------------------------------------------------------------------
+
+def get_historical_router() -> APIRouter:
+    """
+    Retorna un APIRouter sense prefix per a historical_datalayer.
+    Els mateixos handlers que `router` (/api/v1/data/*) però a / directament.
+    Nginx fa: /data/ohlcv/EURUSD → strip → /ohlcv/EURUSD → historical:8002
+    """
+    hist_router = APIRouter(tags=["historical-data"])
+    hist_router.add_api_route(
+        "/ohlcv/{symbol}",
+        get_ohlcv,
+        methods=["GET"],
+        summary="OHLCV (historical)",
+    )
+    hist_router.add_api_route(
+        "/coverage/{symbol}",
+        get_coverage,
+        methods=["GET"],
+        summary="Coverage index (historical)",
+    )
+    return hist_router

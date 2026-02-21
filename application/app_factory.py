@@ -431,13 +431,21 @@ def create_app(role: str | None = None) -> FastAPI:
         if adapter:
             await adapter.stop()
 
-    _title = "Realtime DataLayer API" if role == "realtime_datalayer" else "BrokerageService"
-    _desc = (
-        "Realtime DataLayer v1 — Ostium ingest 24/7, candles/ticks, hot-reload símbols. "
-        "Endpoints: /health, /status, /symbols (GET/PUT), /docs, /ui"
-        if role == "realtime_datalayer"
-        else "Trading brokerage service (role=%s)" % (role or "monolithic")
-    )
+    if role == "realtime_datalayer":
+        _title = "Realtime DataLayer API"
+        _desc = (
+            "Realtime DataLayer v1 — Ostium ingest 24/7, candles/ticks, hot-reload símbols. "
+            "Endpoints: /health, /status, /symbols (GET/PUT), /docs, /ui"
+        )
+    elif role == "historical_datalayer":
+        _title = "Historical DataLayer API"
+        _desc = (
+            "Historical DataLayer v1 — Parquet/DuckDB backfill, coverage, mixed stitching. "
+            "Endpoints: /health, /status, /ohlcv/{symbol}, /coverage/{symbol}"
+        )
+    else:
+        _title = "BrokerageService"
+        _desc = "Trading brokerage service (role=%s)" % (role or "monolithic")
     app = FastAPI(
         title=_title,
         description=_desc,
@@ -467,10 +475,16 @@ def create_app(role: str | None = None) -> FastAPI:
         from application.api.backtest_routes import router as backtest_router
         app.include_router(backtest_router)
 
-    # Phase 14: OHLCV data API registry-aware (trading_service i monolithic)
+    # Phase 14/C: OHLCV + Coverage data API
+    # - trading_service + monolithic: prefix /api/v1/data (registry-aware backtest)
+    # - historical_datalayer: munta data_routes sense prefix afegit
+    #   → nginx fa /data/* → strip → /ohlcv/{sym} i /coverage/{sym}
     if role in (None, "trading_service"):
         from application.api.data_routes import router as data_router
         app.include_router(data_router)
+    elif role == "historical_datalayer":
+        from application.api.data_routes import get_historical_router
+        app.include_router(get_historical_router())
 
     if _role_starts_adapter(role):
         app.include_router(ws_router, prefix="/api/v1")
@@ -479,12 +493,103 @@ def create_app(role: str | None = None) -> FastAPI:
     async def root():
         if role == "realtime_datalayer":
             return RedirectResponse(url="/ui", status_code=302)
+        if role == "historical_datalayer":
+            return {
+                "service": "Historical DataLayer",
+                "role": "historical_datalayer",
+                "version": "0.1.0",
+                "endpoints": ["/health", "/status", "/ohlcv/{symbol}", "/coverage/{symbol}", "/docs"],
+            }
         return {
             "service": "BrokerageService",
             "role": role or "monolithic",
             "version": "0.1.0",
             "docs": "/docs",
         }
+
+    # Historical DataLayer: /health i /status
+    if role == "historical_datalayer":
+        _historical_start = time.time()
+
+        @app.get("/health")
+        async def _historical_health():
+            """
+            Health del historical_datalayer.
+            ok       → sense failed months (o index no creat encara)
+            degraded → hi ha mesos amb status=failed
+            """
+            datafiles_root = os.getenv("DATAFILES_ROOT", "/datafiles")
+            symbols_env = os.getenv("SYMBOLS", "EURUSD,XAUUSD")
+            symbols = [s.strip().upper() for s in symbols_env.split(",") if s.strip()]
+
+            from application.data.coverage_index import CoverageIndex
+            total_failed = 0
+            for sym in symbols:
+                idx = CoverageIndex(root_path=datafiles_root, symbol=sym)
+                summary = idx.summary()
+                total_failed += summary.get("months_failed", 0)
+
+            if total_failed > 0:
+                return JSONResponse(
+                    status_code=200,
+                    content={"status": "degraded", "reason": f"{total_failed} failed month(s)"},
+                )
+            return {"status": "ok"}
+
+        @app.get("/status")
+        async def _historical_status():
+            """
+            Status del historical_datalayer: coverage per símbol + cron metadata.
+            """
+            datafiles_root = os.getenv("DATAFILES_ROOT", "/datafiles")
+            symbols_env = os.getenv("SYMBOLS", "EURUSD,XAUUSD")
+            symbols = [s.strip().upper() for s in symbols_env.split(",") if s.strip()]
+            canonical_tz = os.getenv("CANONICAL_TZ", "America/New_York")
+
+            from application.data.coverage_index import CoverageIndex
+            from application.data.cron_metadata import read_cron_metadata
+
+            now_utc = datetime.now(timezone.utc)
+            try:
+                tz_obj = zoneinfo.ZoneInfo(canonical_tz)
+                now_local = now_utc.astimezone(tz_obj).strftime("%Y-%m-%d %H:%M:%S %Z")
+            except Exception:
+                now_local = "—"
+
+            symbols_data = {}
+            for sym in symbols:
+                idx = CoverageIndex(root_path=datafiles_root, symbol=sym)
+                has_index = idx._path.exists()
+                summary = idx.summary()
+                # latest done month
+                months = idx._data.get("months", {})
+                done_months = sorted(
+                    [k for k, v in months.items() if v.get("status") == "done"],
+                    reverse=True,
+                )
+                failed_months = sorted(
+                    [k for k, v in months.items() if v.get("status") == "failed"]
+                )
+                symbols_data[sym] = {
+                    "has_index": has_index,
+                    "months_done": summary.get("months_done", 0),
+                    "months_failed": summary.get("months_failed", 0),
+                    "months_empty": summary.get("months_empty", 0),
+                    "total_rows": summary.get("total_rows", 0),
+                    "latest_done_month": done_months[0] if done_months else None,
+                    "failed_months": failed_months[:10],  # màxim 10 per no inflar
+                }
+
+            cron_meta = read_cron_metadata(datafiles_root)
+
+            return {
+                "effective_tz": canonical_tz,
+                "now_utc": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "now_local": now_local,
+                "uptime_s": int(time.time() - _historical_start),
+                "symbols": symbols_data,
+                "cron": cron_meta.get("runs", {}),
+            }
 
     # Realtime DataLayer v1: /health i /status (root)
     if role == "realtime_datalayer":
