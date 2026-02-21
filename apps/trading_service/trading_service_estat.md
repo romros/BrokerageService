@@ -170,8 +170,8 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 - ✅ `get_open_positions` → brute-force `getOpenTrade` (0-9 per pair, 10 RPC calls)
 - ✅ `health_check` → `OstiumClient.health()` (fetch EUR/USD price)
 - ✅ `get_latest_price` → `OstiumClient.get_price(base, quote)`
-- ⚠️ `get_trade_history` → `[]` (subgraph testnet no indexa)
-- ⚠️ `get_pairs` → `[]` (subgraph testnet no indexa)
+- ⚠️ `get_trade_history` → `[]` (subgraph no funciona (ni testnet ni mainnet))
+- ⚠️ `get_pairs` → `[]` (subgraph no funciona (ni testnet ni mainnet))
 - ⚠️ `get_balance` → `NotImplementedError` (pendent)
 - ⚠️ `get_position_metrics` → `NotImplementedError` (pendent)
 
@@ -179,7 +179,7 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 
 - SL/TP via `update_sl`/`update_tp`: no-op MVP (SDK testnet no exposa endpoint)
 - `get_open_positions` requereix conèixer trader_address (disponible en `OstiumClient` real)
-- Subgraph testnet buit → `get_trade_history` / `get_pairs` retornen `[]`
+- Subgraph no disponible (ni testnet ni mainnet) → `get_trade_history` / `get_pairs` retornen `[]`
 - `percent` en `close_position` ignorat MVP (sempre 100%)
 
 ### Smoke test (opt-in)

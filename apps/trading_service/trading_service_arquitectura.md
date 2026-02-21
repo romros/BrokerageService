@@ -147,7 +147,7 @@ curl -s http://localhost:8010/api/v1/broker/health
 
 **get_open_positions**: brute-force `getOpenTrade` via Web3 contract call (0..9 per pair)
 
-**Subgraph**: NO disponible en testnet → `get_trade_history` / `get_pairs` retornen `[]`
+**Subgraph**: NO disponible (ni testnet ni mainnet) → `get_trade_history` / `get_pairs` retornen `[]`
 
 **Smoke opt-in**: `ENABLE_OSTIUM_LIVE_SMOKE=1 ./scripts/smoke_ostium_exec.sh`
 

@@ -10,8 +10,8 @@ Patrons:
 - close_position → IOstiumClient.close_trade
 - update_sl / update_tp → IOstiumClient.update_sl / update_tp (no-op SDK testnet MVP)
 - get_open_positions → IOstiumClient.get_open_trades (brute-force via contract)
-- get_trade_history → [] (subgraph no funciona testnet)
-- get_pairs → [] (subgraph no funciona)
+- get_trade_history → [] (subgraph no funciona ni testnet ni mainnet)
+- get_pairs → [] (subgraph no funciona ni testnet ni mainnet)
 - get_latest_price → IOstiumClient.get_price
 - health_check → IOstiumClient.health
 
