@@ -6,7 +6,9 @@
 
 ## Responsabilitat
 
-**Fa:** backfill Dukascopy (mes a mes, idempotent), emmagatzematge Parquet particionat mensual, Coverage API (index per mes), OHLCV long-range via DuckDB, mixed stitching parquet+realtime (policy `HISTORICAL_MIXED_ALLOWED`), cron operatiu (`run_historical_cron.sh`).
+**Fa:** backfill Dukascopy (mes a mes, idempotent), emmagatzematge Parquet particionat mensual, Coverage API (index per mes), OHLCV long-range via DuckDB, mixed stitching parquet+realtime (policy `HISTORICAL_MIXED_ALLOWED`), cron operatiu (`run_historical_cron.sh`), endpoints `/health` i `/status` (Phase C), cron metadata (`_cron/last_runs.json`).
+
+**Accés extern:** via nginx `datalayer-proxy` → `host:8081/data/*` (strip prefix → port intern 8002).
 
 **No fa:** ingest en temps real (→ realtime_datalayer), execució d'ordres (→ trading_service), market-hours gating (→ realtime_datalayer).
 
@@ -16,16 +18,18 @@
 
 | Aspecte | Estat | Notes |
 |---------|-------|-------|
-| Servei autònom | 🟡 | Entrypoint creat; pendent validació health complet |
-| GET /health | 🟡 | Pendent |
+| Servei autònom | ✅ | Port intern 8002; accés extern via nginx :8081/data/* |
+| GET /health | ✅ | Phase C: ok/degraded per failed months |
+| GET /status | ✅ | Phase C: coverage per símbol + cron metadata |
 | Backfill Dukascopy | ✅ | Phase 15: `run_historical_backfill.py` + Parquet particionat mensual, idempotent |
 | Parquet storage | ✅ | Phase 15: `infrastructure/storage/parquet_store.py` |
 | DuckDB query layer | ✅ | Phase 16: `infrastructure/query/duckdb_query_service.py`; predicate pushdown |
 | Coverage index | ✅ | Phase 18: `application/data/coverage_index.py`; done/failed/empty per mes |
-| Coverage API | ✅ | Phase 19: `GET /api/v1/data/coverage/{symbol}?tf=1m` |
-| OHLCV long-range | ✅ | Phase 19: DuckDB cursor `next_ts` multi-mes; routing automàtic |
+| Coverage API | ✅ | Phase 19/C: `GET /coverage/{symbol}?tf=1m` (via nginx: `:8081/data/coverage/{symbol}`) |
+| OHLCV long-range | ✅ | Phase 19/C: DuckDB cursor `next_ts`; via nginx: `:8081/data/ohlcv/{symbol}` |
 | Mixed stitching | ✅ | Phase 20: `mixed_ohlcv_stitcher.py`; realtime guanya en overlap |
-| Cron operatiu | ✅ | Phase 20: `scripts/run_historical_cron.sh` daily/retry-failed/gap-repair |
+| Cron operatiu | ✅ | Phase 20/C: `scripts/run_historical_cron.sh` daily/retry-failed/gap-repair + escriu metadata |
+| Cron metadata | ✅ | Phase C: `application/data/cron_metadata.py`; `_cron/last_runs.json` (atomic) |
 | Backfill ops robustos | ✅ | Phase 18: retries/backoff, resume per coverage index, `--dry-run`, `--stop-after` |
 | Compat engine | 🟡 | Existent al LAB; pendent integrar al servei |
 | Compat registry | 🟡 | `compat_reports/ostium_compat_registry.json` via `run_compat.sh` |
@@ -58,12 +62,18 @@ datafiles/compat_reports/                        # Compat Ostium↔Dukascopy (op
 ## Comandes canòniques
 
 ```bash
-# Arrencar servei
-docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml up -d historical_datalayer
+# Arrencar servei (+ nginx proxy per tenir :8081/data/*)
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml up -d historical_datalayer datalayer-proxy
 
-# Verificar
-curl -s http://localhost:8082/health
-curl -s "http://localhost:8082/api/v1/data/coverage/EURUSD?tf=1m"
+# Verificar via nginx (port públic unificat)
+curl -s http://localhost:8081/data/health
+curl -s http://localhost:8081/data/status
+curl -s "http://localhost:8081/data/coverage/EURUSD?tf=1m"
+curl -s "http://localhost:8081/data/ohlcv/EURUSD?tf=1m&limit=5"
+
+# Verificar directament al servei (port intern, sense nginx)
+curl -s http://localhost:8002/health
+curl -s "http://localhost:8002/coverage/EURUSD?tf=1m"
 
 # Backfill (dry-run primer!)
 docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml run --rm \
@@ -103,7 +113,9 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 - [x] OHLCV long-range cursor multi-mes (Phase 19)
 - [x] Mixed stitching parquet+realtime (Phase 20)
 - [x] Cron operatiu (Phase 20)
-- [ ] `/health` operatiu (pendent)
+- [x] `/health` i `/status` operatius (Phase C)
+- [x] Cron metadata persistida `_cron/last_runs.json` (Phase C)
+- [x] Nginx proxy `datalayer-proxy` — port 8081 unificat (Phase C)
 - [ ] Compat report genera registry correcte (opt-in LAB)
 - [ ] Tests de role wiring passen
 
