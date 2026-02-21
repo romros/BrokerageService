@@ -104,7 +104,7 @@ class TradingCore:
         """
         if self._adapter_factory is None:
             raise AdapterNotAvailableError(
-                "adapter_factory not configured (VENUE=...). Set VENUE=lighter to enable."
+                "adapter_factory not configured; configure a venue adapter (e.g. VENUE=paper)."
             )
         adapter = self._adapter_factory(venue)
         if adapter is None:
