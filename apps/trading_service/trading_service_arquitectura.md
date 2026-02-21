@@ -125,3 +125,30 @@ curl -s http://localhost:8010/api/v1/broker/health
 ```bash
 ./scripts/run_tests.sh trading_service
 ```
+
+---
+
+## OstiumExecutionAdapter (Phase G)
+
+| Component | Fitxer |
+|-----------|--------|
+| `IOstiumClient` | [`infrastructure/venues/ostium/ostium_client.py`](../../infrastructure/venues/ostium/ostium_client.py) |
+| `OstiumClient` | idem — implementació real (ostium_python_sdk + web3) |
+| `FakeOstiumClient` | idem — stub per 0-network tests |
+| `OstiumExecutionAdapter` | [`infrastructure/venues/ostium/ostium_execution_adapter.py`](../../infrastructure/venues/ostium/ostium_execution_adapter.py) |
+
+**Position ID**: `ostium:{pair_id}:{trade_index}`
+
+**Open**: `IOstiumClient.open_trade(pair_id, is_long, collateral, leverage, at_price)` → receipt → position_id
+
+**Close**: `IOstiumClient.close_trade(pair_id, trade_index, at_price)` (preu obtingut automàticament)
+
+**SL/TP**: `IOstiumClient.update_sl / update_tp` (no-op MVP — SDK testnet no suporta)
+
+**get_open_positions**: brute-force `getOpenTrade` via Web3 contract call (0..9 per pair)
+
+**Subgraph**: NO disponible en testnet → `get_trade_history` / `get_pairs` retornen `[]`
+
+**Smoke opt-in**: `ENABLE_OSTIUM_LIVE_SMOKE=1 ./scripts/smoke_ostium_exec.sh`
+
+**Tests**: `testing/apps/trading_service/test_ostium_execution_adapter_unit.py` (23 tests, 0-network)

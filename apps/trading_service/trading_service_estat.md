@@ -144,3 +144,46 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 - **Quality gate env vars:** `QUALITY_GATE_MAX_FRESHNESS_SEC` (default 300s), `QUALITY_GATE_MIN_COMPLETENESS` (default 0.95), `QUALITY_GATE_MAX_GAP_S_GATE` (default 180s).
 - **Sense REALTIME_DATALAYER_BASE_URL:** usa `LocalDataLayerReader` (dades locals); quality gate retorna `ok` directament.
 - **Phase 2 (completada):** trading_service llegeix candles del realtime_datalayer via HTTP. `HttpDataLayerReader` + `QualityGateEvaluator` fail-closed. Si no configurat, usa data layer local.
+
+---
+
+## Phase G — OstiumExecutionAdapter MVP (2026-02-21)
+
+**Status**: ✅ Implementat (0-network tests verds, smoke opt-in disponible)
+
+### Implementació
+
+| Component | Fitxer | Estat |
+|-----------|--------|-------|
+| `IOstiumClient` | `infrastructure/venues/ostium/ostium_client.py` | ✅ |
+| `OstiumClient` (real) | idem | ✅ (requereix SDK + web3) |
+| `FakeOstiumClient` (test stub) | idem | ✅ |
+| `OstiumExecutionAdapter` | `infrastructure/venues/ostium/ostium_execution_adapter.py` | ✅ MVP |
+| Tests 0-network (23) | `testing/apps/trading_service/test_ostium_execution_adapter_unit.py` | ✅ |
+| Smoke opt-in | `scripts/smoke_ostium_exec.sh` | ✅ |
+
+### Capacitats MVP
+
+- ✅ `open_position` → `OstiumClient.open_trade` → `OrderResult(success=True, position_id='ostium:{pair_id}:{trade_index}')`
+- ✅ `close_position` → `OstiumClient.close_trade` (obté preu automàticament)
+- ✅ `update_sl` / `update_tp` → no-op (SDK testnet no suporta; log WARNING)
+- ✅ `get_open_positions` → brute-force `getOpenTrade` (0-9 per pair, 10 RPC calls)
+- ✅ `health_check` → `OstiumClient.health()` (fetch EUR/USD price)
+- ✅ `get_latest_price` → `OstiumClient.get_price(base, quote)`
+- ⚠️ `get_trade_history` → `[]` (subgraph testnet no indexa)
+- ⚠️ `get_pairs` → `[]` (subgraph testnet no indexa)
+- ⚠️ `get_balance` → `NotImplementedError` (pendent)
+- ⚠️ `get_position_metrics` → `NotImplementedError` (pendent)
+
+### Limitacions conegudes
+
+- SL/TP via `update_sl`/`update_tp`: no-op MVP (SDK testnet no exposa endpoint)
+- `get_open_positions` requereix conèixer trader_address (disponible en `OstiumClient` real)
+- Subgraph testnet buit → `get_trade_history` / `get_pairs` retornen `[]`
+- `percent` en `close_position` ignorat MVP (sempre 100%)
+
+### Smoke test (opt-in)
+
+```bash
+ENABLE_OSTIUM_LIVE_SMOKE=1 OSTIUM_PRIVATE_KEY=0x... ./scripts/smoke_ostium_exec.sh
+```

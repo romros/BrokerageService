@@ -4,11 +4,11 @@ Phase F — Venue selection policy tests (0-network, sense FastAPI).
 
 Verifica:
 1. paper-first: VENUE="" o VENUE=paper → paper adapter disponible
-2. ostium scaffold: VENUE=ostium → OstiumExecutionAdapter (NotImplementedError en trading)
+2. ostium: VENUE=ostium → OstiumExecutionAdapter disponible i funcionant (Phase G)
 3. lighter legacy opt-in: VENUE=lighter sense ENABLE_LEGACY_VENUES → adapter=None
 4. lighter legacy opt-in: VENUE=lighter amb ENABLE_LEGACY_VENUES=1 → adapter importable
-5. OstiumExecutionAdapter: scaffold implementa IVenueAdapter, venue_name="ostium"
-6. OstiumExecutionAdapter: open_position → NotImplementedError
+5. OstiumExecutionAdapter: implementa IVenueAdapter, venue_name="ostium"
+6. OstiumExecutionAdapter: open_position sense client → VenueAPIError (Phase G MVP)
 """
 
 import asyncio
@@ -26,6 +26,7 @@ from foundation.config.constants import (
     KNOWN_VENUES,
     LEGACY_VENUES,
 )
+from domain.errors import VenueAPIError
 from infrastructure.venues.ostium.ostium_execution_adapter import OstiumExecutionAdapter
 
 
@@ -86,8 +87,8 @@ def test_ostium_scaffold_adapter():
 
 
 def test_ostium_scaffold_open_raises():
-    """OstiumExecutionAdapter.open_position → NotImplementedError."""
-    adapter = OstiumExecutionAdapter()
+    """OstiumExecutionAdapter.open_position sense client → VenueAPIError (Phase G MVP)."""
+    adapter = OstiumExecutionAdapter()  # client=None, sense start()
 
     async def run():
         try:
@@ -97,24 +98,24 @@ def test_ostium_scaffold_open_raises():
                 collateral=100.0,
                 leverage=2.0,
             )
-            assert False, "Hauria d'haver llançat NotImplementedError"
-        except NotImplementedError as e:
-            assert "open_position" in str(e)
+            assert False, "Hauria d'haver llançat VenueAPIError"
+        except VenueAPIError as e:
+            assert "inicialitzat" in str(e) or "client" in str(e).lower()
 
     asyncio.run(run())
     print("✓ test_ostium_scaffold_open_raises passed")
 
 
 def test_ostium_scaffold_close_raises():
-    """OstiumExecutionAdapter.close_position → NotImplementedError."""
-    adapter = OstiumExecutionAdapter()
+    """OstiumExecutionAdapter.close_position sense client → VenueAPIError (Phase G MVP)."""
+    adapter = OstiumExecutionAdapter()  # client=None, sense start()
 
     async def run():
         try:
-            await adapter.close_position("ostium:1")
-            assert False, "Hauria d'haver llançat NotImplementedError"
-        except NotImplementedError as e:
-            assert "close_position" in str(e)
+            await adapter.close_position("ostium:0:0")
+            assert False, "Hauria d'haver llançat VenueAPIError"
+        except VenueAPIError as e:
+            assert "inicialitzat" in str(e) or "client" in str(e).lower()
 
     asyncio.run(run())
     print("✓ test_ostium_scaffold_close_raises passed")
