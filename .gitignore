@@ -28,6 +28,9 @@ ENV/
 # Environment variables
 .env
 .env.local
+.env.secrets
+.env.secrets.*
+!.env.secrets.example
 
 # IDE
 .vscode/
