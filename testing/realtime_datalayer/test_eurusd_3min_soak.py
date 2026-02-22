@@ -20,15 +20,28 @@ if str(ROOT) not in sys.path:
 
 BASE_URL = os.getenv("BASE_URL", "").strip()
 
+REALTIME_PREFIX = os.getenv("REALTIME_PREFIX", "/realtime").strip()
+if not REALTIME_PREFIX.startswith("/"):
+    REALTIME_PREFIX = "/" + REALTIME_PREFIX
+if REALTIME_PREFIX.endswith("/"):
+    REALTIME_PREFIX = REALTIME_PREFIX[:-1]
+if not REALTIME_PREFIX:
+    REALTIME_PREFIX = "/realtime"
+
 
 def _fetch(client, path):
     if BASE_URL:
         import urllib.request
+        import urllib.error
         try:
             with urllib.request.urlopen(f"{BASE_URL}{path}", timeout=10) as r:
                 return r.status == 200, __import__("json").loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            return False, {"error": str(e) or f"HTTP {e.code}", "http_status": e.code}
+        except urllib.error.URLError as e:
+            return False, {"error": str(getattr(e, "reason", None) or e), "http_status": None}
         except Exception as e:
-            return False, {"error": str(e)}
+            return False, {"error": str(e), "http_status": None}
     r = client.get(path)
     return r.status_code == 200, r.json() if r.status_code == 200 else {}
 
@@ -38,22 +51,27 @@ def main() -> int:
     interval_s = 10
     samples = []
 
+    symbols_path = f"{REALTIME_PREFIX}/symbols" if BASE_URL else "/symbols"
+
     if BASE_URL:
         client = None
-        ok, _ = _fetch(client, "/symbols")
+        ok, data = _fetch(client, symbols_path)
         if not ok:
-            print(f"Error: no es pot connectar a {BASE_URL}")
+            err_msg = data.get("error", "unknown")
+            status = data.get("http_status")
+            status_str = f" (status={status})" if status is not None else ""
+            print(f"Error: no es pot obtenir 200 a {BASE_URL}{symbols_path}{status_str} error={err_msg}")
             return 1
     else:
         from application.app_factory import create_app
         from fastapi.testclient import TestClient
         app = create_app(role="realtime_datalayer")
         client = TestClient(app)
-        client.get("/symbols")
+        client.get(symbols_path)
 
     start = time.time()
     while time.time() - start < duration_s:
-        ok, data = _fetch(client, "/symbols")
+        ok, data = _fetch(client, symbols_path)
         if not ok:
             samples.append({"t": int(time.time() - start), "error": "fetch failed"})
         else:
