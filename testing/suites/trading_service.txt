@@ -1,4 +1,5 @@
-# trading_service — execució/venue adapters/trade flows + Phase 5 quality gate enforçat + Phase 6 soak e2e (0-network) + Phase 10 backtest registry-aware + Phase 11 backtest runner offline + Phase 12 backtest API + Phase 19 OHLCV long-range Parquet + Coverage API + Phase 20 Mixed Stitching + Phase E TradingCore + Phase F paper-first/legacy opt-in/OstiumScaffold + Phase G OstiumExecutionAdapter MVP + Phase I live guardrails
+# trading_service — execució/venue adapters/trade flows + Phase 5 quality gate enforçat + Phase 6 soak e2e (0-network) + Phase 10 backtest registry-aware + Phase 11 backtest runner offline + Phase 12 backtest API + Phase 19 OHLCV long-range Parquet + Coverage API + Phase 20 Mixed Stitching + Phase E TradingCore + Phase F paper-first/legacy opt-in/OstiumScaffold + Phase G OstiumExecutionAdapter MVP + Phase I live guardrails + Phase J client_order_id plumbing
+testing/apps/trading_service/test_client_order_id_plumbing.py
 testing/apps/trading_service/test_live_trading_guardrails.py
 testing/apps/trading_service/test_trading_core.py
 testing/apps/trading_service/test_venue_selection_policy.py

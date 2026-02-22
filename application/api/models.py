@@ -180,6 +180,7 @@ class OrderOpenRequest(BaseModel):
     leverage: float = Field(ge=1, le=100, description="Leverage 1-100")
     sl_price: Optional[float] = Field(default=None, description="Stop loss price")
     tp_price: Optional[float] = Field(default=None, description="Take profit price")
+    client_order_id: Optional[str] = Field(default=None, description="Clau d'idempotència (opcional). Si s'envia, l'adapter reutilitza la posició existent si el mateix ID ja va ser processat.")
 
     @field_validator("side")
     @classmethod

@@ -166,7 +166,7 @@ class TradingCore:
             leverage=req.leverage,
             sl_price=req.sl_price,
             tp_price=req.tp_price,
-            client_order_id=None,
+            client_order_id=getattr(req, "client_order_id", None),
         )
 
         # 4. Normalitzar position_id (prefix paper: per paper venue)

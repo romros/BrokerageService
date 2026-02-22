@@ -235,3 +235,39 @@ ENABLE_LIVE_TRADING=1 ENABLE_OSTIUM_LIVE_SMOKE=1 OSTIUM_PRIVATE_KEY=0x... \
   ./scripts/smoke_trade_ostium_gateway.sh
 ```
 Flux: preflight → open (via `:8081/trade/*`) → close → confirm tancament via `/positions`.
+
+---
+
+## Phase J — client_order_id end-to-end (2026-02-22)
+
+**Status**: ✅ Implementat (0-network tests verds)
+
+### Canvis
+
+| Component | Fitxer | Canvi |
+|-----------|--------|-------|
+| `OrderOpenRequest` | `application/api/models.py` | Camp `client_order_id: Optional[str] = None` (backward compat) |
+| `TradingCore.open_order()` | `application/trading/trading_core.py` | Passa `client_order_id=getattr(req, "client_order_id", None)` al adapter |
+| Tests 0-network (5) | `testing/apps/trading_service/test_client_order_id_plumbing.py` | ✅ |
+| Smoke idempotència | `scripts/smoke_trade_idempotency_gateway.sh` | opt-in via gateway |
+
+### Per què `client_order_id`
+
+`OstiumExecutionAdapter.open_position()` ja tenia idempotència basada en `client_order_id` (disc `datafiles/trade_ids.jsonl`), però `TradingCore` passava `client_order_id=None` hardcoded. Ara el camp és visible a l'API i flueix fins al venue adapter:
+
+```
+POST /orders/open { ..., "client_order_id": "my_order_uuid" }
+  → TradingCore.open_order(req)
+    → adapter.open_position(..., client_order_id=req.client_order_id)
+      → OstiumExecutionAdapter: si ID ja vist → retorna position_id existent (no nova TX)
+```
+
+**Sense `client_order_id`** (default None): comportament anterior, sense idempotència.
+
+### Smoke idempotència (opt-in)
+
+```bash
+ENABLE_LIVE_TRADING=1 ENABLE_OSTIUM_LIVE_SMOKE=1 OSTIUM_PRIVATE_KEY=0x... \
+  ./scripts/smoke_trade_idempotency_gateway.sh
+```
+Flux: open × 2 amb same `client_order_id` → assert `position_id` igual → close.
