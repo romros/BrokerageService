@@ -98,6 +98,24 @@ Statuses del report Ostium: `PASS` / `FAIL` / `INFO` / `SKIP`. `INFO` no increme
 Categories addicionals: `CHAIN_MISMATCH` (chain_id != OSTIUM_CHAIN_ID), `SUBGRAPH_STALE` (subgraph respon però no indexa).
 **Nota subgraph testnet:** known-broken (no indexa noves TX). Per defecte és `INFO SUBGRAPH_STALE`, no `FAIL`. Workaround: `lab/ostium/scripts/test_full_cycle_no_subgraph.py`.
 
+**Network smokes Ostium preflight call (Ops-1c) — eth_call getOpenTrade, 0 TX, opt-in, NO CI:**
+```bash
+# Simulació eth_call al contract (sense enviar cap TX):
+OSTIUM_RPC_URL=https://... OSTIUM_CHAIN_ID=421614 OSTIUM_CONTRACT_ADDRESS=0x... OSTIUM_WALLET_ADDRESS=0x... \
+  ./scripts/network_smokes/run_network_smokes.sh --only-ostium-preflight
+```
+Categories addicionals: `CONTRACT_REVERT` (revert reason si el RPC el retorna). Next_action per FAIL indica revisar adreça contract/chain/wallet.
+
+**Verificació Ops-1c (DoD, fil per fil):**
+- [x] Script `scripts/network_smokes/smoke_ostium_preflight_call.py` creat i executable (0 TX, eth_call getOpenTrade).
+- [x] Runner `run_network_smokes.sh` amb flag `--only-ostium-preflight`.
+- [x] ENV: OSTIUM_RPC_URL (obligatori), OSTIUM_CHAIN_ID (recomanat), OSTIUM_CONTRACT_ADDRESS (default testnet), OSTIUM_WALLET_ADDRESS (dummy 0x0), OSTIUM_MARKET_SYMBOL (EURUSD→pair_id=0). Sense secrets a logs.
+- [x] Report: PASS/FAIL/INFO/SKIP + category + next_action. Exit 0 sense FAIL, 1 amb FAIL.
+- [x] Categories: AUTH_MISSING_ENV, AUTH_INVALID_FORMAT, CHAIN_MISMATCH, CONTRACT_REVERT, DNS, CONNECT_*, UNEXPECTED_PAYLOAD.
+- [x] Tests 0-network: `testing/apps/trading_service/test_ostium_preflight_call.py` (14 tests, suite trading_service). Payload determinista i classificació CONTRACT_REVERT coberta.
+- [x] No integrat a CI (opt-in). ABI/adreces: font canònica `infrastructure/venues/ostium/ostium_client.py`; default testnet al script.
+- Observabilitat: check de la crida view = `ostium.pf.call.getOpenTrade` (equivalent a "preflight call open").
+
 **Nota:** exec Ostium (venue trading) NO implementat. Refactor trading_service pendent **Phase E**.
 
 ### Boundaries ràpides per servei
