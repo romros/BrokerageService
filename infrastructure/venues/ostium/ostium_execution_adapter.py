@@ -27,6 +27,8 @@ Configuració via ENV:
 
 import json
 import os
+import sys
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncIterator, Dict, List, Optional
@@ -173,7 +175,7 @@ class OstiumExecutionAdapter(IVenueAdapter):
 
     async def start(self) -> None:
         if self._client is None:
-            pk = self._private_key or os.getenv(OSTIUM_PRIVATE_KEY_ENV)
+            pk = (self._private_key or os.getenv(OSTIUM_PRIVATE_KEY_ENV) or "").strip()
             if not pk:
                 logger.warning(
                     "OstiumExecutionAdapter.start: %s no configurat — adapter inactiu",
@@ -380,11 +382,8 @@ class OstiumExecutionAdapter(IVenueAdapter):
         if self._client is None:
             return []
 
-        # Necessitem l'adreça del trader (disponible en OstiumClient real)
+        # Adreça del trader: si no la tenim, passem "" i el client farà servir la seva (després de _ensure_sdk)
         trader_address = getattr(self._client, "_trader_address", None) or ""
-        if not trader_address:
-            logger.warning("get_open_positions: trader_address desconeguda, retornant []")
-            return []
 
         try:
             raw_trades = await self._client.get_open_trades(
@@ -392,7 +391,15 @@ class OstiumExecutionAdapter(IVenueAdapter):
                 pair_ids=KNOWN_PAIR_IDS,
             )
         except Exception as e:
-            logger.warning("OstiumExecutionAdapter.get_open_positions error: %s", e)
+            logger.warning(
+                "OstiumExecutionAdapter.get_open_positions error: %s (%s)",
+                e,
+                type(e).__name__,
+                exc_info=True,
+            )
+            # Per diagnòstic: mostrar traceback a stderr (ex.: adreça invàlida, RPC, checksum)
+            print(type(e).__name__ + ":", str(e), file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
             return []
 
         positions: List[Position] = []

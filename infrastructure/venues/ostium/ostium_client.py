@@ -70,7 +70,7 @@ ORDER_OPENED_TOPIC = "0x" + "b1c6bd0c9c6a36fbb3b8cccda60a0ad29e2f28fb6e5c7c6b6a6
 # Nota: el valor real és Web3.keccak(text='OrderOpened(uint256,address,uint8)').hex()
 # — es recalcula a l'inici si web3 disponible (veure OstiumClient.__init__)
 
-FIND_TRADE_MAX_INDEX = 10  # 0-9 per testnet (256 per seguretat màxima)
+FIND_TRADE_MAX_INDEX = 32  # lab scripts cerquen 0..N; 32 cobreix diversos trades per pair
 
 # ── USDC ERC-20 (per get_balance) ────────────────────────────────────────────
 
@@ -353,14 +353,22 @@ class OstiumClient(IOstiumClient):
                 "open_trade: no OrderOpened event trobar; usant pair_id passat: %d", pair_id
             )
 
-        trade_index = await loop.run_in_executor(
-            None,
-            lambda: self._find_trade_index_sync(self._trader_address, found_pair_id),
-        )
+        # Seguint lab scripts (test_full_cycle_multicall): "Esperar confirmació (30s)" abans de find.
+        # El node/oracle pot tardar a reflectir l'estat; open → wait → find.
+        trade_index: Optional[int] = None
+        for attempt in range(7):  # 0..6: espera 0s, 5s, 5s, ... → ~30s total
+            trade_index = await loop.run_in_executor(
+                None,
+                lambda: self._find_trade_index_sync(self._trader_address, found_pair_id),
+            )
+            if trade_index is not None:
+                break
+            if attempt < 6:
+                await asyncio.sleep(5.0)
         if trade_index is None:
             raise RuntimeError(
                 f"OstiumClient: no s'ha trobat trade actiu per pair_id={found_pair_id} "
-                f"trader={self._trader_address}"
+                f"trader={self._trader_address} (després d'esperar ~30s)"
             )
 
         logger.info(
@@ -433,8 +441,11 @@ class OstiumClient(IOstiumClient):
         """
         Cerca tots els trades oberts via getOpenTrade brute-force.
         Itera pair_ids × indices (0..FIND_TRADE_MAX_INDEX).
+        Si trader_address és buida, s'usa l'adreça del client (després de _ensure_sdk).
         """
         self._ensure_sdk()
+        if not (trader_address or "").strip():
+            trader_address = self._trader_address
         loop = asyncio.get_event_loop()
         if pair_ids is None:
             # Si no hi ha pair_ids, retornem buit (no sabem quins pairs buscar)

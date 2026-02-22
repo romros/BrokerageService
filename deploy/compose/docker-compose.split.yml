@@ -1,6 +1,10 @@
 # Compose scaffold — Split vNext (3 serveis + nginx datalayer proxy)
 # Reutilitza mateixa imatge/codi; ports i env diferenciats.
 #
+# ⚠️ PRODUCCIÓ REALTIME: No aturar ni fer rebuild/restart de realtime_datalayer
+#    sense planificar — és crític per capturar canales en temps real (Ostium 24/7).
+#    Per canvis de codi: desplegar sense reiniciar realtime_datalayer o en finestra de manteniment.
+#
 # Arquitectura ports:
 #   8081 → datalayer-proxy (nginx) — single-port gateway
 #            /realtime/*  → realtime_datalayer:8082  (strip prefix)

@@ -67,6 +67,16 @@ cp .env.example .env
 python3 scripts/test_full_cycle_no_subgraph.py
 ```
 
+**Tancar posició oberta (des del repo root):**  
+El mateix `.env` (o `PRIVATE_KEY`/`OSTIUM_PRIVATE_KEY` a l’arrel) s’usa per llistar i tancar posicions. `./test.sh` carrega `lab/ostium/.env` quan el script és sota `lab/ostium`.
+
+```bash
+# Des del directori arrel del projecte
+./test.sh lab/ostium/scripts/close_open_position.py --symbol BTCUSD --dry-run   # només llistar
+./test.sh lab/ostium/scripts/close_open_position.py --symbol BTCUSD             # tancar
+./test.sh lab/ostium/scripts/close_open_position.py --all --dry-run              # llistar totes
+```
+
 ### Price Monitoring
 
 **Canònic (recomanat):** servei supervisat amb restart policy
@@ -151,6 +161,8 @@ lab/ostium/
     ├── simple_compat_6h.sh                ✅ Compat ràpid 6h (sense esperar 24h)
     │
     │  — TRADING (Testnet) —
+    ├── open_wait_close_btc.py             ✅ Obrir posició → esperar N s → tancar (default BTC 10s)
+    ├── close_open_position.py             ✅ Llistar/tancar posicions obertes (--symbol, --all, --dry-run)
     ├── test_full_cycle_no_subgraph.py     ✅ Open/close sense subgraph (workaround brute force)
     ├── test_full_cycle_multicall.py       ✅ Full cycle amb Multicall3 (optimitzat)
     ├── test_full_cycle.py                 ✅ Full cycle bàsic

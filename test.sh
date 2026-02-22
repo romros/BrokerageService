@@ -8,9 +8,13 @@ CONTAINER_NAME="brokerage-test-$$"
 
 echo "Running tests with live code mounting..."
 
+# Ordre important: lab/ostium/.env primer, després .env arrel — així la clau del .env arrel no queda sobreescrita per un placeholder
 ENV_ARGS=""
+if [[ "$*" == *lab/ostium* ]] && [ -f lab/ostium/.env ]; then
+  ENV_ARGS="--env-file lab/ostium/.env"
+fi
 if [ -f .env ]; then
-  ENV_ARGS="--env-file .env"
+  ENV_ARGS="$ENV_ARGS --env-file .env"
 fi
 
 docker run --rm \
