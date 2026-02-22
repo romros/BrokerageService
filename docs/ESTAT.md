@@ -60,11 +60,28 @@
 | `/nginx-health` | nginx intern | — | healthcheck proxy |
 | `/` | — | — | 302 → `/realtime/ui` |
 
-**Smoke:**
+**Smoke (routing):**
 ```bash
 ./scripts/smoke_gateway.sh                   # localhost:8081
 ./scripts/smoke_gateway.sh <host> <port>     # remot
 ```
+
+**Network smokes opt-in (Ops-1a) — connectivity + read-only, NO CI:**
+```bash
+# Tot (connectivity + gateway read-only):
+./scripts/network_smokes/run_network_smokes.sh
+
+# Només connectivitat i config (0 transaccions):
+./scripts/network_smokes/run_network_smokes.sh --only-connectivity
+
+# Només gateway read-only (GETs):
+./scripts/network_smokes/run_network_smokes.sh --only-gateway
+
+# Amb host/port remot o timeout personalitzat:
+BASE_URL=http://10.0.0.1:8081 SMOKE_TIMEOUT=3 ./scripts/network_smokes/run_network_smokes.sh
+```
+
+Categories d'error del report: `DNS`, `CONNECT_TIMEOUT`, `CONNECT_REFUSED`, `HTTP_4XX`, `HTTP_5XX`, `AUTH_MISSING_ENV`, `AUTH_INVALID_FORMAT`, `UNEXPECTED_PAYLOAD`. Cada FAIL inclou `next_action` accionable.
 
 **Nota:** exec Ostium (venue trading) NO implementat. Refactor trading_service pendent **Phase E**.
 
