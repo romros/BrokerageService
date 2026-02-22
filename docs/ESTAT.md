@@ -116,7 +116,7 @@ Categories addicionals: `CONTRACT_REVERT` (revert reason si el RPC el retorna). 
 - [x] No integrat a CI (opt-in). ABI/adreces: font canònica `infrastructure/venues/ostium/ostium_client.py`; default testnet al script.
 - Observabilitat: check de la crida view = `ostium.pf.call.getOpenTrade` (equivalent a "preflight call open").
 
-**Nota:** exec Ostium (venue trading) NO implementat. Refactor trading_service pendent **Phase E**.
+**Nota:** exec Ostium (venue trading) NO implementat. Refactor trading_service pendent **Phase E**. Estat i reproducció d’errors del trade-cycle testnet: [scripts/network_smokes/ESTAT.md](../scripts/network_smokes/ESTAT.md).
 
 ### Boundaries ràpides per servei
 
