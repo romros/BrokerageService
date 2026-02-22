@@ -271,3 +271,71 @@ ENABLE_LIVE_TRADING=1 ENABLE_OSTIUM_LIVE_SMOKE=1 OSTIUM_PRIVATE_KEY=0x... \
   ./scripts/smoke_trade_idempotency_gateway.sh
 ```
 Flux: open × 2 amb same `client_order_id` → assert `position_id` igual → close.
+
+---
+
+## Phase K — Canary routing + Single-position guard + Reconciliació (2026-02-22)
+
+**Status**: ✅ Implementat (0-network tests verds)
+
+### Components nous
+
+| Component | Fitxer | Estat |
+|-----------|--------|-------|
+| `resolve_effective_venue` | `application/services/canary_router.py` | ✅ |
+| `assert_no_open_position_for_symbol` | `application/services/position_guard.py` | ✅ |
+| `reconcile_open` / `reconcile_close` | `application/services/reconcile.py` | ✅ |
+| Integració a `TradingCore` | `application/trading/trading_core.py` | ✅ |
+| `POSITION_ALREADY_OPEN` error code | `application/api/error_codes.py` | ✅ |
+| Captura 409 a `broker_routes` | `application/api/broker_routes.py` | ✅ |
+| Tests 0-network (18) | `testing/apps/trading_service/test_canary_routing.py` | ✅ |
+
+### Canary routing
+
+Env vars:
+| Var | Default | Descripció |
+|-----|---------|------------|
+| `TRADING_CANARY_MODE` | `paper` | `paper` \| `ostium` \| `split` |
+| `OSTIUM_CANARY_SYMBOLS` | `""` (tots) | Símbolss que van a ostium en mode `split` |
+
+**Mode `paper`** (default segur): totes les ordres a paper venue.
+**Mode `ostium`**: totes les ordres a ostium (live real).
+**Mode `split`**: ostium si symbol en `OSTIUM_CANARY_SYMBOLS`, paper altrament.
+
+El canary **no interfereix** si el venue demanat NO és `ostium` (e.g. `venue=paper`).
+
+**Flux open_order** (ordre de guards):
+```
+1. Quality gate (data quality)
+2. Canary routing: resolve_effective_venue(req.venue, req.symbol)
+3. Live guards (kill switch + risk caps) — live only
+4. Single-position guard: no duplicats per symbol
+5. adapter.open_position(...)
+6. Reconcile post-open (best-effort)
+```
+
+### Single-position guard
+
+`assert_no_open_position_for_symbol(adapter, symbol, venue)`:
+- Crida `adapter.get_open_positions()` i comprova si ja n'hi ha per `symbol`
+- Si sí → `PositionAlreadyOpenError` → HTTP 409 + `POSITION_ALREADY_OPEN`
+- Actiu en **tots els modes** (paper i live)
+
+### Reconciliació mínima (best-effort)
+
+- `reconcile_open`: post-open, confirma que la posició apareix → WARNING si no
+- `reconcile_close`: post-close, confirma que desapareix → WARNING si no
+- **Mai bloquejant**: qualsevol error → `WARNING` i continua
+
+### Recomanació rollout
+
+```bash
+# Pas 1: paper (segur, default)
+TRADING_CANARY_MODE=paper
+
+# Pas 2: split — EURUSD a ostium, resta paper
+TRADING_CANARY_MODE=split OSTIUM_CANARY_SYMBOLS=EURUSD
+
+# Pas 3: ostium — tot a ostium (live real)
+TRADING_CANARY_MODE=ostium ENABLE_LIVE_TRADING=1
+```

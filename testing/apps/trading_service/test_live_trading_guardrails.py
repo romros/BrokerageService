@@ -182,6 +182,9 @@ async def _open_via_core(
         from application.trading.trading_core import TradingCore
 
         class _FakeAdapter:
+            async def get_open_positions(self):
+                return []  # Cap posició oberta (per position_guard)
+
             async def open_position(self, symbol, is_long, collateral, leverage, **kw):
                 from domain.models import OrderResult
                 return OrderResult(
@@ -205,7 +208,8 @@ async def _open_via_core(
         req.tp_price = None
 
         core = TradingCore(
-            adapter_factory=lambda v: _FakeAdapter() if v == "ostium" else None,
+            # Factory retorna adapter per qualsevol venue (canary pot redirigir a paper)
+            adapter_factory=lambda v: _FakeAdapter(),
             mode=mode,
         )
         return await core.open_order(req)

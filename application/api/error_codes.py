@@ -22,6 +22,7 @@ BACKTEST_NOT_FOUND = "BACKTEST_NOT_FOUND"        # Phase 12: run_id no trobat
 BACKTEST_INVALID_PARAMS = "BACKTEST_INVALID_PARAMS"  # Phase 12: params invàlids
 LIVE_TRADING_DISABLED = "LIVE_TRADING_DISABLED"  # Phase I: ENABLE_LIVE_TRADING != 1 (kill switch)
 RISK_LIMIT_EXCEEDED = "RISK_LIMIT_EXCEEDED"      # Phase I: cap de collateral/leverage/posicions superat
+POSITION_ALREADY_OPEN = "POSITION_ALREADY_OPEN"  # Phase K: ja hi ha posició oberta per symbol
 
 ERROR_CODES = frozenset({
     ADAPTER_NOT_AVAILABLE,
@@ -42,4 +43,5 @@ ERROR_CODES = frozenset({
     BACKTEST_INVALID_PARAMS,
     LIVE_TRADING_DISABLED,
     RISK_LIMIT_EXCEEDED,
+    POSITION_ALREADY_OPEN,
 })

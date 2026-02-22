@@ -39,6 +39,9 @@ def _make_fake_adapter():
     open_calls = []
 
     class _FakeAdapter:
+        async def get_open_positions(self):
+            return []  # Cap posició oberta (per position_guard)
+
         async def open_position(self, symbol, is_long, collateral, leverage,
                                 sl_price=None, tp_price=None, client_order_id=None, **kw):
             open_calls.append({
@@ -76,8 +79,9 @@ def _make_req(venue="ostium", symbol="EURUSD", side="long",
 
 
 def _make_core(adapter, mode="paper"):
+    # La factory retorna l'adapter per qualsevol venue (test de plumbing, no de routing)
     return TradingCore(
-        adapter_factory=lambda v: adapter if v == "ostium" else None,
+        adapter_factory=lambda v: adapter,
         mode=mode,
     )
 
@@ -126,6 +130,9 @@ def test_idempotency_same_client_order_id_single_adapter_call():
     position_id_store = {}
 
     class _IdempotentFakeAdapter:
+        async def get_open_positions(self):
+            return []  # Cap posició oberta (per position_guard)
+
         async def open_position(self, symbol, is_long, collateral, leverage,
                                 sl_price=None, tp_price=None, client_order_id=None, **kw):
             calls.append(client_order_id)

@@ -27,6 +27,7 @@ from application.api.error_codes import (
     SYMBOL_NOT_FOUND,
     POSITION_NOT_FOUND,
     MIXED_SOURCE_NOT_ALLOWED,
+    POSITION_ALREADY_OPEN,
 )
 from application.api.models import (
     HealthResponse,
@@ -855,6 +856,7 @@ async def _do_order_open(req: OrderOpenRequest) -> OrderOpenResponse:
     )
     from application.errors import DataQualityGateBadError, LiveTradingDisabledError, RiskLimitExceededError
     from application.api.error_codes import LIVE_TRADING_DISABLED, RISK_LIMIT_EXCEEDED
+    from application.services.position_guard import PositionAlreadyOpenError
 
     core = TradingCore(
         adapter_factory=_adapter_factory,
@@ -874,6 +876,8 @@ async def _do_order_open(req: OrderOpenRequest) -> OrderOpenResponse:
         _http_error(403, LIVE_TRADING_DISABLED, str(e))
     except RiskLimitExceededError as e:
         _http_error(422, RISK_LIMIT_EXCEEDED, str(e))
+    except PositionAlreadyOpenError as e:
+        _http_error(409, POSITION_ALREADY_OPEN, str(e))
     except AdapterNotAvailableError as e:
         _http_error(503, ADAPTER_NOT_AVAILABLE, str(e))
     except VenueNotConfiguredError as e:
