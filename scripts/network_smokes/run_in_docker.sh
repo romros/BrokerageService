@@ -60,4 +60,4 @@ for var in \
     ENV_OPTS+=( -e "$var" )
 done
 
-exec docker compose run --rm "${ENV_OPTS[@]}" brokerage /app/scripts/network_smokes/run_network_smokes.sh "$@"
+exec docker compose -p brokerage_smokes run --rm --no-deps -v "${ROOT_DIR}:/app" -w /app "${ENV_OPTS[@]}" brokerage /app/scripts/network_smokes/run_network_smokes.sh "$@"
