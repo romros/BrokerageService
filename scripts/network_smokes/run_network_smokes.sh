@@ -82,6 +82,7 @@ for arg in "$@"; do
             echo "  OSTIUM_FROM_ADDRESS=0x...                  (obligatori amb --only-ostium-estimate-gas)"
             echo "  OSTIUM_MARKET_SYMBOL=EURUSD                (opcional; default EURUSD)"
             echo "  (trade-cycle: OSTIUM_ENABLE_TX=1 OSTIUM_NETWORK=testnet OSTIUM_PRIVATE_KEY=0x... OSTIUM_MAX_COLLATERAL_USDC OSTIUM_COLLATERAL_USDC OSTIUM_LEVERAGE)"
+            echo "  OSTIUM_CLOSE_PRICE_MODE=fresh|same (default fresh)  OSTIUM_POST_OPEN_SLEEP_S=0.. (default 0)"
             exit 0
             ;;
     esac

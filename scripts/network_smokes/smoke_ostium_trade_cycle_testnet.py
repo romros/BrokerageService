@@ -71,6 +71,15 @@ def _skip(name: str, detail: str = "") -> CheckResult:
     return r
 
 
+def _info(name: str, category: str, detail: str, next_action: str = "") -> CheckResult:
+    r = CheckResult(
+        name=name, status="INFO", category=category,
+        detail=detail, next_action=next_action,
+    )
+    results.append(r)
+    return r
+
+
 # ── Guardrails (abans de network) ──────────────────────────────────────────────
 
 
@@ -197,6 +206,36 @@ def check_guardrails() -> dict | None:
 
     _pass("ostium.tx.guard.leverage", f"OSTIUM_LEVERAGE={leverage}")
 
+    close_price_mode = os.environ.get("OSTIUM_CLOSE_PRICE_MODE", "fresh").strip().lower()
+    if close_price_mode not in ("fresh", "same"):
+        _fail(
+            "ostium.tx.guard.close_price_mode",
+            "AUTH_INVALID_FORMAT",
+            f"OSTIUM_CLOSE_PRICE_MODE ha de ser 'fresh' o 'same' (got {close_price_mode!r})",
+            next_action="Defineix OSTIUM_CLOSE_PRICE_MODE=fresh o OSTIUM_CLOSE_PRICE_MODE=same",
+        )
+        return None
+    _pass("ostium.tx.guard.close_price_mode", f"OSTIUM_CLOSE_PRICE_MODE={close_price_mode}")
+
+    sleep_raw = os.environ.get("OSTIUM_POST_OPEN_SLEEP_S", "0").strip()
+    if not sleep_raw:
+        post_open_sleep_s = 0.0
+    else:
+        try:
+            post_open_sleep_s = float(sleep_raw)
+        except (ValueError, TypeError):
+            post_open_sleep_s = -1.0
+        if post_open_sleep_s < 0:
+            _fail(
+                "ostium.tx.guard.post_open_sleep",
+                "AUTH_INVALID_FORMAT",
+                f"OSTIUM_POST_OPEN_SLEEP_S ha de ser un nombre >= 0 (got {sleep_raw!r})",
+                next_action="Defineix OSTIUM_POST_OPEN_SLEEP_S=0 o un nombre positiu (segons)",
+            )
+            return None
+    if post_open_sleep_s > 0:
+        _pass("ostium.tx.guard.post_open_sleep", f"OSTIUM_POST_OPEN_SLEEP_S={post_open_sleep_s}s")
+
     is_long_str = os.environ.get("OSTIUM_IS_LONG", "true").strip().lower()
     is_long = is_long_str in ("1", "true", "yes")
 
@@ -212,6 +251,8 @@ def check_guardrails() -> dict | None:
         "collateral": collateral,
         "leverage": leverage,
         "is_long": is_long,
+        "close_price_mode": close_price_mode,
+        "post_open_sleep_s": post_open_sleep_s,
     }
 
 
@@ -292,13 +333,35 @@ async def _run_cycle(cfg: dict) -> None:
         f"tx={tx_open_prefix}... pair_id={receipt_open.pair_id} trade_index={receipt_open.trade_index}",
     )
 
+    sleep_s = cfg.get("post_open_sleep_s", 0) or 0
+    if sleep_s > 0:
+        await asyncio.sleep(sleep_s)
+        _pass("ostium.tx.sleep", f"slept {sleep_s}s")
+
     print(f"\n[3] CLOSE (pair_id={receipt_open.pair_id}, trade_index={receipt_open.trade_index})")
+
+    close_price_mode = cfg.get("close_price_mode", "fresh")
+    mid_close = mid
+    if close_price_mode == "fresh":
+        try:
+            mid_close, _, _ = await client.get_price(base, quote)
+            _pass("ostium.tx.close_price", f"fresh mid={mid_close} ({base}/{quote})")
+        except Exception:
+            _info(
+                "ostium.tx.close_price",
+                "OK",
+                "get_price failed, fallback to open mid",
+                next_action="",
+            )
+            mid_close = mid
+    else:
+        _pass("ostium.tx.close_price", "same (reuse open mid)")
 
     try:
         receipt_close = await client.close_trade(
             pair_id=receipt_open.pair_id,
             trade_index=receipt_open.trade_index,
-            at_price=mid,
+            at_price=mid_close,
         )
     except Exception as e:
         _fail(
