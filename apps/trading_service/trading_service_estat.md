@@ -189,3 +189,49 @@ Valida: health → open → close → **get_open_positions confirma que la posic
 ```bash
 ENABLE_OSTIUM_LIVE_SMOKE=1 OSTIUM_PRIVATE_KEY=0x... ./scripts/smoke_ostium_exec.sh
 ```
+
+---
+
+## Phase I — Live Trading Guardrails + Preflight (2026-02-22)
+
+**Status**: ✅ Implementat (0-network tests verds)
+
+### Components nous
+
+| Component | Fitxer | Estat |
+|-----------|--------|-------|
+| `assert_order_caps_ok` | `application/services/live_guards.py` | ✅ |
+| `assert_symbol_allowed` | idem | ✅ |
+| `MAX_COLLATERAL_USD`, `MAX_LEVERAGE`, `LIVE_SYMBOL_ALLOWLIST` | `application/config/live_guards_config.py` | ✅ |
+| `LIVE_TRADING_DISABLED`, `RISK_LIMIT_EXCEEDED` | `application/api/error_codes.py` | ✅ |
+| Integració guards a `TradingCore.open_order()` | `application/trading/trading_core.py` | ✅ |
+| `GET /preflight` endpoint | `application/api/broker_routes.py` | ✅ |
+| Tests 0-network (15) | `testing/apps/trading_service/test_live_trading_guardrails.py` | ✅ |
+| Smoke e2e via gateway | `scripts/smoke_trade_ostium_gateway.sh` | ✅ (opt-in) |
+
+### Guards actius (mode live)
+
+| Guard | Env var | Default | Comportament |
+|-------|---------|---------|--------------|
+| Kill switch | `ENABLE_LIVE_TRADING` | `0` | `LiveTradingDisabledError` si 0 |
+| Max collateral | `MAX_COLLATERAL_USD` | `50.0` | `RiskLimitExceededError` si superat |
+| Max leverage | `MAX_LEVERAGE` | `10.0` | `RiskLimitExceededError` si superat |
+| Symbol allowlist | `LIVE_SYMBOL_ALLOWLIST` | `"EURUSD,XAUUSD"` | `RiskLimitExceededError` si no a la llista |
+| Max posicions | `MAX_OPEN_POSITIONS` | `1` | `RiskLimitExceededError` si superat |
+
+**Mode paper → tots els guards desactivats** (bypass automàtic).
+
+### Endpoint preflight
+
+```
+GET /api/v1/broker/preflight?venue=ostium&symbol=EURUSD
+```
+Retorna: `venue`, `mode`, `live_enabled`, `risk_caps`, `checks` (data_quality, venue_health, live_enabled), `ready` (boolean).
+
+### Smoke via gateway (opt-in)
+
+```bash
+ENABLE_LIVE_TRADING=1 ENABLE_OSTIUM_LIVE_SMOKE=1 OSTIUM_PRIVATE_KEY=0x... \
+  ./scripts/smoke_trade_ostium_gateway.sh
+```
+Flux: preflight → open (via `:8081/trade/*`) → close → confirm tancament via `/positions`.

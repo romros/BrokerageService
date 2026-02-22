@@ -87,16 +87,19 @@ class TradingCore:
         adapter_factory: Optional[Callable[[str], Any]],
         data_layer_reader: Optional[Any] = None,
         known_venues: Optional[List[str]] = None,
+        mode: str = "paper",
     ):
         """
         Args:
             adapter_factory: Callable que accepta venue str i retorna adapter o None.
             data_layer_reader: IDataLayerReader opcional. Si None, el gate no s'aplica.
             known_venues: Llista de venues coneguts (per missatge d'error). Default: KNOWN_VENUES.
+            mode: mode de trading ("paper", "live", "backtest"). Usada per live guards.
         """
         self._adapter_factory = adapter_factory
         self._reader = data_layer_reader
         self._known_venues = known_venues if known_venues is not None else list(KNOWN_VENUES)
+        self._mode = mode
 
     def _get_adapter(self, venue: str) -> Any:
         """
@@ -127,13 +130,30 @@ class TradingCore:
             AdapterNotAvailableError: adapter_factory no configurat
             VenueNotConfiguredError: venue no disponible
             MarketNotFoundError: símbol no trobat al venue
+            LiveTradingDisabledError: si mode==live i ENABLE_LIVE_TRADING!=1
+            RiskLimitExceededError: si caps de collateral/leverage/posicions superats
         """
         # 1. Quality gate fail-closed
         if self._reader is not None:
             from application.services.data_quality_guard import assert_data_quality_ok
             await assert_data_quality_ok(self._reader, symbol=req.symbol)
 
-        # 2. Adapter
+        # 2. Live guards (kill switch + risk caps) — només per mode live
+        adapter_mode = getattr(req, "mode", None) or self._mode
+        if str(adapter_mode).lower() == "live":
+            from application.services.live_guards import (
+                assert_live_trading_enabled,
+                assert_order_caps_ok,
+                assert_symbol_allowed,
+            )
+            assert_live_trading_enabled(adapter_mode)
+            assert_order_caps_ok(
+                collateral=float(req.collateral),
+                leverage=float(req.leverage),
+            )
+            assert_symbol_allowed(req.symbol)
+
+        # 3. Adapter
         adapter = self._get_adapter(req.venue)
 
         is_long = req.side.lower() == "long"

@@ -853,12 +853,14 @@ async def _do_order_open(req: OrderOpenRequest) -> OrderOpenResponse:
         AdapterNotAvailableError,
         VenueNotConfiguredError,
     )
-    from application.errors import DataQualityGateBadError
+    from application.errors import DataQualityGateBadError, LiveTradingDisabledError, RiskLimitExceededError
+    from application.api.error_codes import LIVE_TRADING_DISABLED, RISK_LIMIT_EXCEEDED
 
     core = TradingCore(
         adapter_factory=_adapter_factory,
         data_layer_reader=_data_layer_reader,
         known_venues=list(KNOWN_VENUES),
+        mode=_mode,
     )
     try:
         result = await core.open_order(req)
@@ -868,6 +870,10 @@ async def _do_order_open(req: OrderOpenRequest) -> OrderOpenResponse:
             DATA_QUALITY_GATE_BAD,
             f"NO_TRADE: quality gate BAD for {e.symbol} — {e.reason}",
         )
+    except LiveTradingDisabledError as e:
+        _http_error(403, LIVE_TRADING_DISABLED, str(e))
+    except RiskLimitExceededError as e:
+        _http_error(422, RISK_LIMIT_EXCEEDED, str(e))
     except AdapterNotAvailableError as e:
         _http_error(503, ADAPTER_NOT_AVAILABLE, str(e))
     except VenueNotConfiguredError as e:
@@ -924,6 +930,83 @@ async def order_open(body: OrderOpenRequest = Body(...)):
 async def order_close(body: OrderCloseRequest = Body(...)):
     """Tancar posició. JSON body. percent dins (0, 100]."""
     return await _do_order_close(body)
+
+
+@trading_router.get("/preflight")
+async def get_preflight(
+    venue: str = Query(default="paper", description="Venue a comprovar (paper, ostium, lighter)"),
+    symbol: str = Query(default="EURUSD", description="Símbol per data_quality check"),
+):
+    """
+    Phase I: Preflight check — retorna l'estat del sistema per operar.
+
+    Comprova:
+    - mode i venue configurats
+    - live_enabled (ENABLE_LIVE_TRADING)
+    - data_quality per symbol (si data_layer_reader disponible)
+    - ostium_health (si venue==ostium i adapter disponible)
+    - ready: True si tots els checks OK
+
+    Retorna 200 sempre (may_trade camp indica si és segur operar).
+    """
+    from application.config.live_guards_config import (
+        enable_live_trading_from_env,
+        max_collateral_usd_from_env,
+        max_leverage_from_env,
+        live_symbol_allowlist_from_env,
+    )
+
+    sym_upper = symbol.upper()
+    result: dict = {
+        "venue": _venue,
+        "requested_venue": venue,
+        "mode": _mode,
+        "live_enabled": enable_live_trading_from_env(),
+        "risk_caps": {
+            "max_collateral_usd": max_collateral_usd_from_env(),
+            "max_leverage": max_leverage_from_env(),
+            "live_symbol_allowlist": live_symbol_allowlist_from_env(),
+        },
+        "symbol": sym_upper,
+        "checks": {},
+        "ready": False,
+    }
+
+    checks: dict = {}
+
+    # Check: data_quality
+    if _data_layer_reader is not None:
+        try:
+            from application.services.data_quality_guard import assert_data_quality_ok
+            await assert_data_quality_ok(_data_layer_reader, symbol=sym_upper)
+            checks["data_quality"] = {"ok": True}
+        except Exception as e:
+            checks["data_quality"] = {"ok": False, "reason": str(e)}
+    else:
+        checks["data_quality"] = {"ok": True, "note": "no data_layer_reader (skip)"}
+
+    # Check: venue_adapter + health
+    adapter = _adapter_factory(venue) if _adapter_factory else None
+    if adapter is not None:
+        try:
+            healthy = await adapter.health_check()
+            checks["venue_health"] = {"ok": healthy, "venue": venue}
+        except Exception as e:
+            checks["venue_health"] = {"ok": False, "error": str(e)}
+    else:
+        checks["venue_health"] = {"ok": False, "note": f"adapter '{venue}' no disponible"}
+
+    # Check: live_enabled (si mode==live)
+    if str(_mode).lower() == "live":
+        live_ok = enable_live_trading_from_env()
+        checks["live_enabled"] = {"ok": live_ok, "note": "ENABLE_LIVE_TRADING" if not live_ok else ""}
+    else:
+        checks["live_enabled"] = {"ok": True, "note": f"mode={_mode} (no live)"}
+
+    result["checks"] = checks
+    result["ready"] = all(c.get("ok", False) for c in checks.values())
+
+    return result
 
 
 # ============ Internal helpers (SRP) ============
