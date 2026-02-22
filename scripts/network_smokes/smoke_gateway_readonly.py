@@ -196,16 +196,16 @@ def check_realtime() -> None:
     print("\n[2] Realtime DataLayer (/realtime/*)")
     check_endpoint("realtime:health", "/realtime/health",
                    check_json_keys=["status"])
-    check_endpoint("realtime:status", "/realtime/status",
-                   check_json_keys=["status"])
+    # /status retorna dades detallades per símbol (sense clau top-level "status")
+    check_endpoint("realtime:status", "/realtime/status")
 
 
 def check_historical() -> None:
     print("\n[3] Historical DataLayer (/data/*)")
     check_endpoint("data:health", "/data/health",
                    check_json_keys=["status"])
-    check_endpoint("data:status", "/data/status",
-                   check_json_keys=["status"])
+    # /status retorna dades de coverage per símbol (sense clau top-level "status")
+    check_endpoint("data:status", "/data/status")
 
 
 def check_trading() -> None:
@@ -220,7 +220,8 @@ def check_trading() -> None:
 def _check_preflight() -> None:
     """
     /preflight pot retornar 200 (tot OK) o 503 (servei degradat).
-    Ambdós són respostes vàlides — el que volem és que respongui (no DNS/timeout).
+    404 → SKIP (endpoint Phase I, pot no existir en totes les versions).
+    Ambdós 200/503 són respostes vàlides — el que volem és que respongui (no DNS/timeout).
     """
     url = f"{BASE_URL}/trade/api/v1/broker/preflight"
     status, body, net_err = _fetch(url)
@@ -239,10 +240,12 @@ def _check_preflight() -> None:
             if preview:
                 detail += f" — {preview!r}"
         _pass(name, detail)
+    elif status == 404:
+        _skip(name, "HTTP 404 — endpoint /preflight no disponible en aquesta versió (Phase I opt-in)")
     elif status is not None and 400 <= status < 500:
         _fail(name, "HTTP_4XX",
               f"HTTP {status} a {url}",
-              next_action="Comprova que l'endpoint /preflight existeixi (Phase I)")
+              next_action="Comprova autenticació o configuració de l'endpoint")
     else:
         _fail(name, "HTTP_5XX",
               f"HTTP {status} a {url}",
@@ -251,9 +254,35 @@ def _check_preflight() -> None:
 
 def check_backtests() -> None:
     print("\n[5] Backtests alias (/backtests/*)")
-    # /backtests/runs pot ser llista buida (200) — vàlid
-    check_endpoint("backtests:runs", "/backtests/runs",
-                   check_json_keys=["runs"])
+    # /backtests/runs pot ser llista buida (200) — vàlid; 404 → SKIP (mòdul opcional)
+    url = f"{BASE_URL}/backtests/runs"
+    status, body, net_err = _fetch(url)
+    name = "backtests:runs"
+    if net_err:
+        _fail(name, net_err,
+              f"Error de xarxa a {url}",
+              next_action=_next_action_for_net_error(net_err, url))
+    elif status == 404:
+        _skip(name, "HTTP 404 — mòdul backtests no disponible en aquesta instància")
+    elif status == 200:
+        detail = f"HTTP 200"
+        if body:
+            try:
+                data = json.loads(body)
+                n_runs = len(data.get("runs", []))
+                detail += f" — {n_runs} runs"
+            except (json.JSONDecodeError, TypeError):
+                preview = body[:80].decode("utf-8", errors="replace").strip()
+                detail += f" — {preview!r}"
+        _pass(name, detail)
+    elif status is not None and 500 <= status < 600:
+        _fail(name, "HTTP_5XX",
+              f"HTTP {status} a {url}",
+              next_action="Comprova logs del trading_service")
+    else:
+        _fail(name, "HTTP_4XX",
+              f"HTTP {status} a {url}",
+              next_action="Comprova la configuració nginx de l'alias /backtests/*")
 
 
 # ── Report ────────────────────────────────────────────────────────────────────
