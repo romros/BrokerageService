@@ -1,19 +1,29 @@
 #!/usr/bin/env bash
 # run_network_smokes.sh — Orquestrador de network smokes (opt-in, NO CI)
 #
-# Executa els dos nivells de smoke:
-#   1. smoke_connectivity.py  — Connectivity & Config (0 transaccions)
+# Executa els nivells de smoke:
+#   1. smoke_connectivity.py     — Connectivity & Config (0 transaccions)
 #   2. smoke_gateway_readonly.py — Gateway read-only via BASE_URL
+#   3. smoke_ostium_readonly.py  — Ostium RPC + subgraph read-only (opt-in)
 #
 # Ús:
-#   ./scripts/network_smokes/run_network_smokes.sh [--only-connectivity] [--only-gateway]
+#   ./scripts/network_smokes/run_network_smokes.sh [FLAGS]
+#
+# Flags:
+#   --only-connectivity   Executa només smoke_connectivity.py
+#   --only-gateway        Executa només smoke_gateway_readonly.py
+#   --only-ostium         Executa només smoke_ostium_readonly.py
+#   --require-subgraph    Passat a smoke_ostium_readonly: subgraph FAIL → exit 1
 #
 # Variables d'entorn:
-#   BASE_URL          Base del gateway (default: http://localhost:8081)
-#   SMOKE_TIMEOUT     Timeout per check en segons (default: 5)
+#   BASE_URL              Base del gateway (default: http://localhost:8081)
+#   SMOKE_TIMEOUT         Timeout per check en segons (default: 5)
+#   OSTIUM_RPC_URL        RPC Arbitrum (requerit per smoke Ostium)
+#   OSTIUM_CHAIN_ID       Chain ID esperat (recomanat; 421614=testnet, 42161=mainnet)
+#   OSTIUM_SUBGRAPH_URL   URL subgraph (opcional; absent → SKIP subgraph probe)
 #
 # Exit codes:
-#   0 — tot PASS
+#   0 — tot PASS (INFO no és FAIL)
 #   1 — algun FAIL
 #
 # IMPORTANT: Opt-in. NO integrar a CI ni a suites 0-network.
@@ -25,20 +35,29 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 ONLY_CONNECTIVITY=0
 ONLY_GATEWAY=0
+ONLY_OSTIUM=0
+REQUIRE_SUBGRAPH=""
 
 for arg in "$@"; do
     case "$arg" in
         --only-connectivity) ONLY_CONNECTIVITY=1 ;;
         --only-gateway)      ONLY_GATEWAY=1 ;;
+        --only-ostium)       ONLY_OSTIUM=1 ;;
+        --require-subgraph)  REQUIRE_SUBGRAPH="--require-subgraph" ;;
         --help|-h)
-            echo "Ús: $0 [--only-connectivity] [--only-gateway]"
+            echo "Ús: $0 [--only-connectivity] [--only-gateway] [--only-ostium] [--require-subgraph]"
             echo ""
             echo "  --only-connectivity  Executa només smoke_connectivity.py"
             echo "  --only-gateway       Executa només smoke_gateway_readonly.py"
+            echo "  --only-ostium        Executa només smoke_ostium_readonly.py"
+            echo "  --require-subgraph   Subgraph no-OK → FAIL (default: INFO)"
             echo ""
             echo "Variables d'entorn:"
             echo "  BASE_URL=http://localhost:8081   (default)"
             echo "  SMOKE_TIMEOUT=5                  (default, en segons)"
+            echo "  OSTIUM_RPC_URL=https://...       (requerit per --only-ostium)"
+            echo "  OSTIUM_CHAIN_ID=421614           (recomanat; 42161=mainnet)"
+            echo "  OSTIUM_SUBGRAPH_URL=https://...  (opcional)"
             exit 0
             ;;
     esac
@@ -51,11 +70,12 @@ EXIT_CODE=0
 _run_smoke() {
     local label="$1"
     local script="$2"
+    shift 2
     echo ""
     echo "══════════════════════════════════════════════════"
     echo "  ${label}"
     echo "══════════════════════════════════════════════════"
-    if python3 "${SCRIPT_DIR}/${script}"; then
+    if python3 "${SCRIPT_DIR}/${script}" "$@"; then
         PASS_TOTAL=$((PASS_TOTAL + 1))
     else
         FAIL_TOTAL=$((FAIL_TOTAL + 1))
@@ -73,6 +93,22 @@ echo "  BASE_URL     : ${BASE_URL:-http://localhost:8081}"
 echo "  SMOKE_TIMEOUT: ${SMOKE_TIMEOUT:-5}s"
 echo "  Data/hora    : $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 
+# Mode --only-ostium: executa NOMÉS el smoke Ostium
+if [[ $ONLY_OSTIUM -eq 1 ]]; then
+    _run_smoke "Smoke: Ostium read-only" "smoke_ostium_readonly.py" ${REQUIRE_SUBGRAPH}
+    echo ""
+    echo "══════════════════════════════════════════════════"
+    if [[ $EXIT_CODE -eq 0 ]]; then
+        echo "  ✓ Tots els smokes PASS"
+    else
+        echo "  ✗ ${FAIL_TOTAL} smoke(s) FAIL — revisa el report anterior"
+    fi
+    echo "══════════════════════════════════════════════════"
+    echo ""
+    exit $EXIT_CODE
+fi
+
+# Mode normal: connectivity + gateway (+ ostium si no hi ha --only-*)
 if [[ $ONLY_GATEWAY -eq 0 ]]; then
     _run_smoke "Smoke 1: Connectivity & Config" "smoke_connectivity.py"
 fi

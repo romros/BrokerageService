@@ -83,6 +83,21 @@ BASE_URL=http://10.0.0.1:8081 SMOKE_TIMEOUT=3 ./scripts/network_smokes/run_netwo
 
 Categories d'error del report: `DNS`, `CONNECT_TIMEOUT`, `CONNECT_REFUSED`, `HTTP_4XX`, `HTTP_5XX`, `AUTH_MISSING_ENV`, `AUTH_INVALID_FORMAT`, `UNEXPECTED_PAYLOAD`. Cada FAIL inclou `next_action` accionable.
 
+**Network smokes Ostium read-only (Ops-1b) — RPC + subgraph, opt-in, NO CI:**
+```bash
+# Smoke Ostium (RPC liveness + chain guard + subgraph probe):
+OSTIUM_RPC_URL=https://... OSTIUM_CHAIN_ID=421614 \
+  ./scripts/network_smokes/run_network_smokes.sh --only-ostium
+
+# Amb subgraph probe (stale → FAIL en comptes d'INFO):
+OSTIUM_RPC_URL=https://... OSTIUM_SUBGRAPH_URL=https://... \
+  ./scripts/network_smokes/run_network_smokes.sh --only-ostium --require-subgraph
+```
+
+Statuses del report Ostium: `PASS` / `FAIL` / `INFO` / `SKIP`. `INFO` no incrementa exit code.
+Categories addicionals: `CHAIN_MISMATCH` (chain_id != OSTIUM_CHAIN_ID), `SUBGRAPH_STALE` (subgraph respon però no indexa).
+**Nota subgraph testnet:** known-broken (no indexa noves TX). Per defecte és `INFO SUBGRAPH_STALE`, no `FAIL`. Workaround: `lab/ostium/scripts/test_full_cycle_no_subgraph.py`.
+
 **Nota:** exec Ostium (venue trading) NO implementat. Refactor trading_service pendent **Phase E**.
 
 ### Boundaries ràpides per servei
