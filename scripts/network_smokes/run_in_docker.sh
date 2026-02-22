@@ -60,4 +60,9 @@ for var in \
     ENV_OPTS+=( -e "$var" )
 done
 
+if [[ -n "${BASE_URL:-}" ]] && [[ "$BASE_URL" =~ (localhost|127\.0\.0\.1) ]]; then
+    echo "AVÍS: dins Docker, BASE_URL amb localhost/127.0.0.1 apunta al contenidor, no al host." >&2
+    echo "      Usa per exemple: BASE_URL=http://host.docker.internal:8081 ./scripts/network_smokes/run_in_docker.sh ..." >&2
+fi
+
 exec docker compose -p brokerage_smokes run --rm --no-deps -v "${ROOT_DIR}:/app" -w /app "${ENV_OPTS[@]}" brokerage /app/scripts/network_smokes/run_network_smokes.sh "$@"
