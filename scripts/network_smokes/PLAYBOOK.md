@@ -61,3 +61,21 @@ OSTIUM_RPC_URL=... OSTIUM_CONTRACT_ADDRESS=0x... OSTIUM_FROM_ADDRESS=0x... ./scr
 ```bash
 OSTIUM_ENABLE_TX=1 OSTIUM_NETWORK=testnet OSTIUM_PRIVATE_KEY=0x... OSTIUM_MAX_COLLATERAL_USDC=1 OSTIUM_COLLATERAL_USDC=0.5 OSTIUM_LEVERAGE=5 ./scripts/network_smokes/run_network_smokes.sh --only-ostium-trade-cycle
 ```
+
+---
+
+## Realtime soak regression (3 min)
+
+**EURUSD:**
+```bash
+BASE_URL=http://localhost:8081 REALTIME_PREFIX=/realtime SOAK_SYMBOL=EURUSD python3 testing/realtime_datalayer/test_eurusd_3min_soak.py
+```
+
+**USDJPY:**
+```bash
+BASE_URL=http://localhost:8081 REALTIME_PREFIX=/realtime SOAK_SYMBOL=USDJPY python3 testing/realtime_datalayer/test_eurusd_3min_soak.py
+```
+
+*(Des de l'arrel del repo. Prefix per defecte `/realtime`.)*
+
+**Si falla:** enganxa el bloc des de `=== Soak ... ===` fins al final. Si surt `degraded` o "molts ticks però poques candles", mira `GET /realtime/status`.
