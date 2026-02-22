@@ -308,30 +308,43 @@ def test_preflight_call_network_error():
     print("✓ test_preflight_call_network_error passed")
 
 
-# ── Test 13: Calldata ABI encoding — selector correcte ───────────────────────
+# ── Test 13: Selector constant (EVM Keccak-256) ───────────────────────────────
+
+
+def test_selector_is_keccak_correct_constant():
+    """Verifica que GET_OPEN_TRADE_SELECTOR_HEX és el valor correcte (getOpenTrade(address,uint16,uint8))."""
+    import smoke_ostium_preflight_call as mod
+    assert hasattr(mod, "GET_OPEN_TRADE_SELECTOR_HEX"), "Ha d'existir GET_OPEN_TRADE_SELECTOR_HEX"
+    assert mod.GET_OPEN_TRADE_SELECTOR_HEX == "4f786488", (
+        f"Selector ha de ser 4f786488 (EVM Keccak-256), got {mod.GET_OPEN_TRADE_SELECTOR_HEX!r}"
+    )
+    assert len(mod.GET_OPEN_TRADE_SELECTOR_HEX) == 8, "Selector = 8 hex chars (4 bytes)"
+    print("✓ test_selector_is_keccak_correct_constant passed")
+
+
+# ── Test 14: Calldata comença amb 0x{selector} ───────────────────────────────
 
 
 def test_calldata_abi_selector():
     """
-    Verifica que el selector de getOpenTrade(address,uint16,uint8) és correcte.
-
-    Selector esperat (keccak256 dels primers 4 bytes):
-      keccak256("getOpenTrade(address,uint16,uint8)") = 0xe7d9a0...
-      Però usem sha3_256 (Python) com a aproximació — el test verifica
-      que el calldata té 100 bytes (4 selector + 32×3 params) i el selector
-      és consistent entre crides.
+    Verifica que la calldata comença amb el selector correcte i té 100 bytes.
     """
     import smoke_ostium_preflight_call as mod
     wallet = "0x" + "a" * 40
     cd1 = mod.build_get_open_trade_calldata(wallet, 0, 0)
     cd2 = mod.build_get_open_trade_calldata(wallet, 0, 0)
 
+    # Calldata ha de començar amb 0x + GET_OPEN_TRADE_SELECTOR_HEX
+    expected_prefix = "0x" + mod.GET_OPEN_TRADE_SELECTOR_HEX
+    cd_hex = "0x" + cd1.hex()
+    assert cd_hex.startswith(expected_prefix), (
+        f"Calldata ha de començar amb {expected_prefix}, got {cd_hex[:12]}..."
+    )
+    assert cd1[:4] == mod.GET_OPEN_TRADE_SELECTOR, "Primers 4 bytes = GET_OPEN_TRADE_SELECTOR"
+
     # 4 (selector) + 32 (address) + 32 (pair_id) + 32 (index) = 100 bytes
     assert len(cd1) == 100, f"Calldata hauria de ser 100 bytes, got {len(cd1)}"
     assert cd1 == cd2, "Calldata hauria de ser determinista"
-
-    # El selector (primers 4 bytes) ha de ser sempre el mateix
-    assert cd1[:4] == cd2[:4], "Selector hauria de ser consistent"
 
     # L'adreça ha d'estar en els bytes 16-36 (12 zeros + 20 bytes adreça)
     addr_bytes = cd1[16:36]
@@ -341,7 +354,7 @@ def test_calldata_abi_selector():
     print("✓ test_calldata_abi_selector passed")
 
 
-# ── Test 14: Calldata amb pair_id diferent → selectors iguals, params dif ────
+# ── Test 15: Calldata amb pair_id diferent → selectors iguals, params dif ────
 
 
 def test_calldata_pair_id_encoding():
@@ -378,6 +391,7 @@ if __name__ == "__main__":
         test_preflight_call_ok_empty_trade,
         test_preflight_call_contract_revert,
         test_preflight_call_network_error,
+        test_selector_is_keccak_correct_constant,
         test_calldata_abi_selector,
         test_calldata_pair_id_encoding,
     ]

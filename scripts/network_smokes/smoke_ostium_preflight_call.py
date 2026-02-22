@@ -21,7 +21,7 @@ ABI de getOpenTrade (del codi de producció):
   stateMutability: view
 
 Encoding ABI manual (stdlib):
-  selector = keccak256("getOpenTrade(address,uint16,uint8)")[:4]
+  selector = GET_OPEN_TRADE_SELECTOR (constant Keccak-256, 4 bytes)
   data = selector + pad32(address) + pad32(uint16) + pad32(uint8)
 
 Categories d'error:
@@ -44,7 +44,6 @@ Variables d'entorn:
   python3 scripts/network_smokes/smoke_ostium_preflight_call.py
 """
 
-import hashlib
 import json
 import os
 import re
@@ -72,6 +71,10 @@ CHAIN_IDS = {
     42161: "Arbitrum One (mainnet)",
     421614: "Arbitrum Sepolia (testnet)",
 }
+
+# Selector EVM (Keccak-256) de getOpenTrade(address,uint16,uint8). Obtingut amb Web3.keccak al repo (test.sh + requirements).
+GET_OPEN_TRADE_SELECTOR_HEX = "4f786488"
+GET_OPEN_TRADE_SELECTOR = bytes.fromhex(GET_OPEN_TRADE_SELECTOR_HEX)
 
 # ── Configuració ──────────────────────────────────────────────────────────────
 
@@ -141,17 +144,7 @@ def _net_next(cat: str) -> str:
     return "Comprova connectivitat de xarxa"
 
 
-# ── ABI encoding manual (keccak4 + ABI pad32) ────────────────────────────────
-
-
-def _keccak256(data: bytes) -> bytes:
-    """Keccak-256 via hashlib (Python 3.6+)."""
-    return hashlib.new("sha3_256", data).digest()
-
-
-def _function_selector(signature: str) -> bytes:
-    """Retorna els primers 4 bytes del keccak256 de la signatura de la funció."""
-    return _keccak256(signature.encode("ascii"))[:4]
+# ── ABI encoding manual (selector constant + ABI pad32) ────────────────────────
 
 
 def _encode_address(addr: str) -> bytes:
@@ -171,10 +164,14 @@ def build_get_open_trade_calldata(trader: str, pair_id: int, index: int) -> byte
     Construeix el calldata per a getOpenTrade(address, uint16, uint8).
 
     Encoding ABI:
-      selector (4 bytes) + address (32 bytes) + uint16 (32 bytes) + uint8 (32 bytes)
+      selector (4 bytes, constant GET_OPEN_TRADE_SELECTOR) + address (32 bytes) + uint16 (32 bytes) + uint8 (32 bytes)
     """
-    selector = _function_selector("getOpenTrade(address,uint16,uint8)")
-    return selector + _encode_address(trader) + _encode_uint(pair_id) + _encode_uint(index)
+    return (
+        GET_OPEN_TRADE_SELECTOR
+        + _encode_address(trader)
+        + _encode_uint(pair_id)
+        + _encode_uint(index)
+    )
 
 
 # ── JSON-RPC eth_call ─────────────────────────────────────────────────────────
