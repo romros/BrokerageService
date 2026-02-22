@@ -7,6 +7,7 @@
 #   3. smoke_ostium_readonly.py       — Ostium RPC + subgraph read-only (opt-in)
 #   4. smoke_ostium_preflight_call.py     — Ostium eth_call → getOpenTrade (view, 0 TX)
 #   5. smoke_ostium_preflight_estimate_gas.py — Ostium eth_estimateGas only (0 TX)
+#   6. smoke_ostium_trade_cycle_testnet.py   — Ostium testnet 1 OPEN + 1 CLOSE (opt-in, sense subgraph)
 #
 # Ús:
 #   ./scripts/network_smokes/run_network_smokes.sh [FLAGS]
@@ -17,6 +18,7 @@
 #   --only-ostium               Executa només smoke_ostium_readonly.py
 #   --only-ostium-preflight     Executa només smoke_ostium_preflight_call.py
 #   --only-ostium-estimate-gas  Executa només smoke_ostium_preflight_estimate_gas.py
+#   --only-ostium-trade-cycle   Executa només smoke_ostium_trade_cycle_testnet.py (TX reals testnet)
 #   --require-subgraph          Passat a smoke_ostium_readonly: subgraph FAIL → exit 1
 #
 # Variables d'entorn:
@@ -46,24 +48,27 @@ ONLY_GATEWAY=0
 ONLY_OSTIUM=0
 ONLY_OSTIUM_PREFLIGHT=0
 ONLY_OSTIUM_ESTIMATE_GAS=0
+ONLY_OSTIUM_TRADE_CYCLE=0
 REQUIRE_SUBGRAPH=""
 
 for arg in "$@"; do
     case "$arg" in
-        --only-connectivity)       ONLY_CONNECTIVITY=1 ;;
-        --only-gateway)            ONLY_GATEWAY=1 ;;
-        --only-ostium)             ONLY_OSTIUM=1 ;;
-        --only-ostium-preflight)   ONLY_OSTIUM_PREFLIGHT=1 ;;
+        --only-connectivity)        ONLY_CONNECTIVITY=1 ;;
+        --only-gateway)             ONLY_GATEWAY=1 ;;
+        --only-ostium)              ONLY_OSTIUM=1 ;;
+        --only-ostium-preflight)    ONLY_OSTIUM_PREFLIGHT=1 ;;
         --only-ostium-estimate-gas) ONLY_OSTIUM_ESTIMATE_GAS=1 ;;
-        --require-subgraph)        REQUIRE_SUBGRAPH="--require-subgraph" ;;
+        --only-ostium-trade-cycle)  ONLY_OSTIUM_TRADE_CYCLE=1 ;;
+        --require-subgraph)         REQUIRE_SUBGRAPH="--require-subgraph" ;;
         --help|-h)
-            echo "Ús: $0 [--only-connectivity] [--only-gateway] [--only-ostium] [--only-ostium-preflight] [--only-ostium-estimate-gas] [--require-subgraph]"
+            echo "Ús: $0 [--only-connectivity] [--only-gateway] [--only-ostium] [--only-ostium-preflight] [--only-ostium-estimate-gas] [--only-ostium-trade-cycle] [--require-subgraph]"
             echo ""
             echo "  --only-connectivity        Executa només smoke_connectivity.py"
             echo "  --only-gateway             Executa només smoke_gateway_readonly.py"
             echo "  --only-ostium              Executa només smoke_ostium_readonly.py"
             echo "  --only-ostium-preflight    Executa només smoke_ostium_preflight_call.py"
             echo "  --only-ostium-estimate-gas Executa només smoke_ostium_preflight_estimate_gas.py"
+            echo "  --only-ostium-trade-cycle  Executa només smoke_ostium_trade_cycle_testnet.py (1 OPEN + 1 CLOSE testnet)"
             echo "  --require-subgraph         Subgraph no-OK → FAIL (default: INFO)"
             echo ""
             echo "Variables d'entorn:"
@@ -76,6 +81,7 @@ for arg in "$@"; do
             echo "  OSTIUM_WALLET_ADDRESS=0x...                (opcional; default 0x0 dummy)"
             echo "  OSTIUM_FROM_ADDRESS=0x...                  (obligatori amb --only-ostium-estimate-gas)"
             echo "  OSTIUM_MARKET_SYMBOL=EURUSD                (opcional; default EURUSD)"
+            echo "  (trade-cycle: OSTIUM_ENABLE_TX=1 OSTIUM_NETWORK=testnet OSTIUM_PRIVATE_KEY=0x... OSTIUM_MAX_COLLATERAL_USDC OSTIUM_COLLATERAL_USDC OSTIUM_LEVERAGE)"
             exit 0
             ;;
     esac
@@ -150,6 +156,21 @@ if [[ $ONLY_OSTIUM_ESTIMATE_GAS -eq 1 ]]; then
         echo "  ✓ Tots els smokes PASS"
     else
         echo "  ✗ ${FAIL_TOTAL} smoke(s) FAIL — revisa el report anterior"
+    fi
+    echo "══════════════════════════════════════════════════"
+    echo ""
+    exit $EXIT_CODE
+fi
+
+# Mode --only-ostium-trade-cycle: executa NOMÉS el smoke 1 OPEN + 1 CLOSE testnet
+if [[ $ONLY_OSTIUM_TRADE_CYCLE -eq 1 ]]; then
+    _run_smoke "Smoke: Ostium testnet trade-cycle (1 OPEN + 1 CLOSE)" "smoke_ostium_trade_cycle_testnet.py"
+    echo ""
+    echo "══════════════════════════════════════════════════"
+    if [[ $EXIT_CODE -eq 0 ]]; then
+        echo "  ✓ Smoke trade-cycle PASS o SKIP"
+    else
+        echo "  ✗ Smoke trade-cycle FAIL — revisa el report anterior"
     fi
     echo "══════════════════════════════════════════════════"
     echo ""
