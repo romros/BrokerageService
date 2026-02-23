@@ -60,16 +60,19 @@ async def find_trade_index(sdk, pair_id, private_key, max_attempts=10):
     """
     Find trade_index by checking recent indexes (0-9).
     Most recent trades will have low indexes.
+    Uses tradingStorage contract (getOpenTrade does not revert there).
     """
     max_attempts = int(os.getenv("PAIR_ID_MAX_ATTEMPTS", str(max_attempts)))
     from web3 import Web3
     from eth_account import Account
+    from ostium_python_sdk import NetworkConfig
 
-    w3 = Web3(Web3.HTTPProvider('https://sepolia-rollup.arbitrum.io/rpc'))
+    rpc_url = os.getenv("RPC_URL", "https://sepolia-rollup.arbitrum.io/rpc")
+    w3 = Web3(Web3.HTTPProvider(rpc_url))
     account = Account.from_key(private_key)
     trader = account.address
 
-    # Minimal ABI for getOpenTrade
+    # Minimal ABI for getOpenTrade (same on tradingStorage)
     trading_abi = [{
         "inputs": [
             {"name": "trader", "type": "address"},
@@ -89,9 +92,12 @@ async def find_trade_index(sdk, pair_id, private_key, max_attempts=10):
         "type": "function"
     }]
 
-    trading_contract = "0x2A9B9c988393f46a2537B0ff11E98c2C15a95afe"
-    contract = w3.eth.contract(address=Web3.to_checksum_address(trading_contract), abi=trading_abi)
+    cfg = NetworkConfig.testnet()
+    default_storage = cfg.contracts["tradingStorage"]
+    trading_storage_contract = os.getenv("TRADING_STORAGE_CONTRACT", default_storage)
+    contract = w3.eth.contract(address=Web3.to_checksum_address(trading_storage_contract), abi=trading_abi)
 
+    print(f"  getOpenTrade via tradingStorage={trading_storage_contract} rpc={rpc_url[:60]}..." if len(rpc_url) > 60 else f"  getOpenTrade via tradingStorage={trading_storage_contract} rpc={rpc_url}")
     print(f"  Searching for trade_index (checking 0-{max_attempts-1})...")
 
     for index in range(max_attempts):

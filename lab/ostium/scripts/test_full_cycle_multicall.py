@@ -63,18 +63,20 @@ TRADING_ABI = [{
     "type": "function"
 }]
 
-TRADING_CONTRACT = "0x2A9B9c988393f46a2537B0ff11E98c2C15a95afe"
+# getOpenTrade on "trading" reverts; use tradingStorage for reads
+DEFAULT_STORAGE = NetworkConfig.testnet().contracts["tradingStorage"]
+TRADING_STORAGE_CONTRACT = os.getenv("TRADING_STORAGE_CONTRACT", DEFAULT_STORAGE)
 MULTICALL3_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11"
 
 def find_trade_with_multicall(w3, trader, pair_id, max_attempts=10):
-    """Troba trade index amb multicall (1 RPC call)"""
+    """Troba trade index amb multicall (1 RPC call). Uses tradingStorage (getOpenTrade does not revert)."""
     print(f"\n⚡ Buscant trade amb MULTICALL...")
     
     start = time.time()
     
-    # Setup contracts
-    trading_contract = w3.eth.contract(
-        address=Web3.to_checksum_address(TRADING_CONTRACT),
+    # Setup contracts (tradingStorage for getOpenTrade reads)
+    storage_contract = w3.eth.contract(
+        address=Web3.to_checksum_address(TRADING_STORAGE_CONTRACT),
         abi=TRADING_ABI
     )
     
@@ -86,12 +88,12 @@ def find_trade_with_multicall(w3, trader, pair_id, max_attempts=10):
     # Prepare multicall
     calls = []
     for index in range(max_attempts):
-        call_data = trading_contract.functions.getOpenTrade(
+        call_data = storage_contract.functions.getOpenTrade(
             Web3.to_checksum_address(trader),
             pair_id,
             index
         )._encode_transaction_data()
-        calls.append((TRADING_CONTRACT, call_data))
+        calls.append((TRADING_STORAGE_CONTRACT, call_data))
     
     # Execute
     results = multicall_contract.functions.tryAggregate(False, calls).call()
@@ -154,7 +156,7 @@ async def main():
 
     print("Config (env):")
     print(f"  PAIR_ID={pair_id}  MAX_ATTEMPTS={max_attempts}  SCAN_ONLY={scan_only}  ORACLE_WAIT_S={oracle_wait_s}")
-    print(f"  TRADING_CONTRACT={TRADING_CONTRACT}")
+    print(f"  TRADING_STORAGE_CONTRACT={TRADING_STORAGE_CONTRACT}")
     print(f"  MULTICALL3={MULTICALL3_ADDRESS}")
     print(f"  RPC_URL={rpc_url[:60]}..." if len(rpc_url) > 60 else f"  RPC_URL={rpc_url}")
     print()
