@@ -33,12 +33,16 @@ Categories d'error:
   UNEXPECTED_PAYLOAD   — resposta inesperada del RPC
 
 Variables d'entorn:
-  OSTIUM_RPC_URL           (obligatori)
-  OSTIUM_CHAIN_ID          (recomanat: 421614=testnet, 42161=mainnet)
-  OSTIUM_CONTRACT_ADDRESS  (obligatori; default: 0x2A9B9... testnet)
-  OSTIUM_WALLET_ADDRESS    (recomanat; si absent usa 0x0...0 dummy)
-  OSTIUM_MARKET_SYMBOL     (opcional; default EURUSD → pair_id=0)
-  SMOKE_TIMEOUT            (default: 5s)
+  OSTIUM_RPC_URL                 (obligatori)
+  OSTIUM_CHAIN_ID                (recomanat: 421614=testnet, 42161=mainnet)
+  OSTIUM_TRADING_STORAGE_ADDRESS (opcional; si absent es prova NetworkConfig; default = TradingStorage getOpenTrade Trade(9))
+  OSTIUM_LEGACY_TRADING_CALL     (opcional; si =1 força eth_call al contract de trading en lloc de TradingStorage)
+  OSTIUM_CONTRACT_ADDRESS        (només mode Legacy; default testnet)
+  TRADER_ADDRESS / OSTIUM_WALLET_ADDRESS (recomanat; si absent usa 0x0 dummy)
+  PAIR_ID / OSTIUM_PAIR_ID       (opcional; default 2)
+  INDEX / OSTIUM_INDEX           (opcional; default 0)
+  OSTIUM_MARKET_SYMBOL           (opcional; default EURUSD → pair_id=2)
+  SMOKE_TIMEOUT                  (default: 5s)
 
 Ús:
   python3 scripts/network_smokes/smoke_ostium_preflight_call.py
@@ -60,12 +64,20 @@ from urllib.parse import urlparse
 
 TRADING_CONTRACT_TESTNET = "0x2A9B9c988393f46a2537B0ff11E98c2C15a95afe"
 TRADING_CONTRACT_MAINNET = "0x2A9B9c988393f46a2537B0ff11E98c2C15a95afe"  # TODO: verificar mainnet
+# Default testnet TradingStorage (no SDK required); mateix patró que TRADING_CONTRACT_TESTNET
+DEFAULT_TESTNET_TRADING_STORAGE = "0x0b9F5243B29938668c9Cfbd7557A389EC7Ef88b8"
 
+# Alineat amb core: EURUSD=2 (testnet); PAIR_ID/INDEX via env (default 2, 0).
 SYMBOL_TO_PAIR_ID = {
-    "EURUSD": 0, "XAUUSD": 1, "BTCUSD": 2, "ETHUSD": 3,
+    "EURUSD": 2, "XAUUSD": 1, "BTCUSD": 0, "ETHUSD": 3,
     "GBPUSD": 4, "GBPJPY": 5, "USDJPY": 6, "USDCHF": 7,
     "AUDUSD": 8, "USDCAD": 9,
 }
+DEFAULT_PAIR_ID = 2
+DEFAULT_INDEX = 0
+
+# Legacy: només si l'usuari força OSTIUM_LEGACY_TRADING_CALL=1 (sino default = TradingStorage)
+OSTIUM_LEGACY_TRADING_CALL_ENV = "OSTIUM_LEGACY_TRADING_CALL"
 
 CHAIN_IDS = {
     42161: "Arbitrum One (mainnet)",
@@ -272,8 +284,8 @@ def _jsonrpc_simple(rpc_url: str, method: str, params: list) -> tuple[Optional[o
 
 def check_env() -> dict:
     """
-    Valida les ENV vars. Retorna dict amb valors resolts (rpc_url, contract, wallet, pair_id).
-    Valors None si la validació falla per a aquell camp.
+    Valida les ENV vars. Retorna dict amb valors resolts (rpc_url, contract, trading_storage, wallet, pair_id, index).
+    Default: mode TradingStorage si es pot resoldre; Legacy només si OSTIUM_LEGACY_TRADING_CALL=1.
     """
     print("\n[1] ENV vars Ostium preflight")
 
@@ -281,8 +293,11 @@ def check_env() -> dict:
         "rpc_url": None,
         "chain_id_expected": None,
         "contract": None,
+        "trading_storage": None,
         "wallet": None,
-        "pair_id": 0,
+        "pair_id": DEFAULT_PAIR_ID,
+        "index": DEFAULT_INDEX,
+        "storage_mode": False,
     }
 
     # OSTIUM_RPC_URL (obligatori)
@@ -316,51 +331,100 @@ def check_env() -> dict:
                   f"OSTIUM_CHAIN_ID={chain_str!r} no és un enter",
                   next_action="OSTIUM_CHAIN_ID ha de ser un enter (ex: 421614)")
 
-    # OSTIUM_CONTRACT_ADDRESS (obligatori; fallback testnet)
-    contract = os.environ.get("OSTIUM_CONTRACT_ADDRESS", "").strip()
-    if not contract:
-        contract = TRADING_CONTRACT_TESTNET
-        _info("ostium.pf.env.contract", "AUTH_MISSING_ENV",
-              f"OSTIUM_CONTRACT_ADDRESS absent — usant default testnet: {contract}",
-              next_action="Defineix OSTIUM_CONTRACT_ADDRESS per usar una adreça específica")
-    elif not re.match(r"^0x[0-9a-fA-F]{40}$", contract):
-        _fail("ostium.pf.env.contract", "AUTH_INVALID_FORMAT",
-              f"OSTIUM_CONTRACT_ADDRESS format incorrecte: {contract!r}",
-              next_action="L'adreça ha de ser 0x + 40 caràcters hex")
-        contract = None
+    # TradingStorage: env → NetworkConfig (si SDK) → default testnet si chain testnet o no definit
+    storage = os.environ.get("OSTIUM_TRADING_STORAGE_ADDRESS", "").strip()
+    if not storage:
+        try:
+            from ostium_python_sdk import NetworkConfig  # noqa: PLC0415
+            storage = NetworkConfig.testnet().contracts.get("tradingStorage") or ""
+        except Exception:
+            pass
+    if not storage:
+        chain_val = out.get("chain_id_expected")
+        if chain_val is None or chain_val == 421614:
+            storage = DEFAULT_TESTNET_TRADING_STORAGE
+            _info("ostium.pf.env.trading_storage", "AUTH_MISSING_ENV",
+                  "OSTIUM_TRADING_STORAGE_ADDRESS absent — usant default testnet TradingStorage (no SDK required)",
+                  next_action="Opcional: defineix OSTIUM_TRADING_STORAGE_ADDRESS per adreça específica")
+    if storage and re.match(r"^0x[0-9a-fA-F]{40}$", storage):
+        if storage == DEFAULT_TESTNET_TRADING_STORAGE and not os.environ.get("OSTIUM_TRADING_STORAGE_ADDRESS", "").strip():
+            pass  # detail ja a _info abans
+        else:
+            _pass("ostium.pf.env.trading_storage", f"TradingStorage={storage}")
+        out["trading_storage"] = storage
     else:
-        _pass("ostium.pf.env.contract", f"OSTIUM_CONTRACT_ADDRESS={contract}")
-    out["contract"] = contract
+        out["trading_storage"] = None
 
-    # OSTIUM_WALLET_ADDRESS (recomanat; fallback 0x0)
-    wallet = os.environ.get("OSTIUM_WALLET_ADDRESS", "").strip()
+    # Mode: Legacy només si l'usuari força OSTIUM_LEGACY_TRADING_CALL=1
+    legacy_force = os.environ.get(OSTIUM_LEGACY_TRADING_CALL_ENV, "").strip() == "1"
+    out["storage_mode"] = (out["trading_storage"] is not None) and (not legacy_force)
+
+    # OSTIUM_CONTRACT_ADDRESS: només rellevant en mode Legacy; en mode Storage no mostrar INFO/SKIP
+    if out["storage_mode"]:
+        _skip("ostium.pf.env.contract", "mode TradingStorage")
+        out["contract"] = None
+    else:
+        contract = os.environ.get("OSTIUM_CONTRACT_ADDRESS", "").strip()
+        if not contract:
+            contract = TRADING_CONTRACT_TESTNET
+            _info("ostium.pf.env.contract", "AUTH_MISSING_ENV",
+                  "OSTIUM_CONTRACT_ADDRESS absent — usant default testnet (mode Legacy)",
+                  next_action="Defineix OSTIUM_CONTRACT_ADDRESS o usa mode TradingStorage sense OSTIUM_LEGACY_TRADING_CALL")
+        elif not re.match(r"^0x[0-9a-fA-F]{40}$", contract):
+            _fail("ostium.pf.env.contract", "AUTH_INVALID_FORMAT",
+                  f"OSTIUM_CONTRACT_ADDRESS format incorrecte: {contract!r}",
+                  next_action="L'adreça ha de ser 0x + 40 caràcters hex")
+            contract = None
+        else:
+            _pass("ostium.pf.env.contract", f"OSTIUM_CONTRACT_ADDRESS={contract}")
+        out["contract"] = contract
+
+    # Wallet: TRADER_ADDRESS o OSTIUM_WALLET_ADDRESS
+    wallet = (os.environ.get("TRADER_ADDRESS", "") or os.environ.get("OSTIUM_WALLET_ADDRESS", "")).strip()
     ZERO_ADDR = "0x" + "0" * 40
     if not wallet:
         wallet = ZERO_ADDR
         _info("ostium.pf.env.wallet", "AUTH_MISSING_ENV",
-              f"OSTIUM_WALLET_ADDRESS absent — usant 0x0 dummy (getOpenTrade retornarà zeros)",
-              next_action="Defineix OSTIUM_WALLET_ADDRESS per veure trades reals de la wallet")
+              "TRADER_ADDRESS/OSTIUM_WALLET_ADDRESS absent — usant 0x0 dummy (getOpenTrade retornarà zeros)",
+              next_action="Defineix TRADER_ADDRESS o OSTIUM_WALLET_ADDRESS per veure trades reals")
     elif not re.match(r"^0x[0-9a-fA-F]{40}$", wallet, re.IGNORECASE):
         _fail("ostium.pf.env.wallet", "AUTH_INVALID_FORMAT",
-              "OSTIUM_WALLET_ADDRESS format incorrecte",
+              "TRADER_ADDRESS/OSTIUM_WALLET_ADDRESS format incorrecte",
               next_action="L'adreça ha de ser 0x + 40 caràcters hex")
         wallet = ZERO_ADDR
     else:
-        _pass("ostium.pf.env.wallet", f"OSTIUM_WALLET_ADDRESS={wallet}")
+        _pass("ostium.pf.env.wallet", f"TRADER_ADDRESS/OSTIUM_WALLET_ADDRESS={wallet[:10]}...")
     out["wallet"] = wallet
 
-    # OSTIUM_MARKET_SYMBOL (opcional; default EURUSD → pair_id=0)
-    symbol = os.environ.get("OSTIUM_MARKET_SYMBOL", "EURUSD").strip().upper()
-    pair_id = SYMBOL_TO_PAIR_ID.get(symbol)
-    if pair_id is None:
-        known = ", ".join(SYMBOL_TO_PAIR_ID.keys())
-        _fail("ostium.pf.env.symbol", "AUTH_INVALID_FORMAT",
-              f"OSTIUM_MARKET_SYMBOL={symbol!r} desconegut. Coneguts: {known}",
-              next_action=f"Usa un symbol vàlid: {known}")
-        out["pair_id"] = 0  # fallback
+    # pair_id: PAIR_ID, després OSTIUM_PAIR_ID, després default 2 (i OSTIUM_MARKET_SYMBOL si no hi ha PAIR_ID/OSTIUM_PAIR_ID)
+    pair_id_str = (os.environ.get("PAIR_ID", "") or os.environ.get("OSTIUM_PAIR_ID", "")).strip()
+    if pair_id_str:
+        try:
+            out["pair_id"] = int(pair_id_str)
+            _pass("ostium.pf.env.pair_id", f"PAIR_ID/OSTIUM_PAIR_ID={out['pair_id']}")
+        except ValueError:
+            _fail("ostium.pf.env.pair_id", "AUTH_INVALID_FORMAT",
+                  f"PAIR_ID/OSTIUM_PAIR_ID={pair_id_str!r} no és enter",
+                  next_action="PAIR_ID o OSTIUM_PAIR_ID ha de ser un enter (ex: 2)")
     else:
-        _pass("ostium.pf.env.symbol", f"OSTIUM_MARKET_SYMBOL={symbol} → pair_id={pair_id}")
-        out["pair_id"] = pair_id
+        symbol = os.environ.get("OSTIUM_MARKET_SYMBOL", "EURUSD").strip().upper()
+        pair_id = SYMBOL_TO_PAIR_ID.get(symbol)
+        if pair_id is None:
+            out["pair_id"] = DEFAULT_PAIR_ID
+            _info("ostium.pf.env.symbol", "AUTH_MISSING_ENV",
+                  f"OSTIUM_MARKET_SYMBOL={symbol!r} desconegut — usant pair_id={DEFAULT_PAIR_ID}",
+                  next_action="Defineix PAIR_ID=2, OSTIUM_PAIR_ID=2 o OSTIUM_MARKET_SYMBOL=EURUSD")
+        else:
+            out["pair_id"] = pair_id
+            _pass("ostium.pf.env.symbol", f"OSTIUM_MARKET_SYMBOL={symbol} → pair_id={pair_id}")
+
+    # index: INDEX, després OSTIUM_INDEX, després default 0
+    index_str = (os.environ.get("INDEX", "") or os.environ.get("OSTIUM_INDEX", str(DEFAULT_INDEX))).strip()
+    try:
+        out["index"] = int(index_str)
+    except ValueError:
+        out["index"] = DEFAULT_INDEX
+    _pass("ostium.pf.env.index", f"INDEX/OSTIUM_INDEX={out['index']}")
 
     return out
 
@@ -401,33 +465,80 @@ def check_chain(rpc_url: str, chain_id_expected: Optional[int]) -> bool:
     return True
 
 
-# ── Secció 3: eth_call → getOpenTrade ────────────────────────────────────────
+# ── Secció 3: eth_call → getOpenTrade (TradingStorage Trade(9) o legacy) ──────
+
+# Trade(9) ABI: 9 × 32 bytes — collateral, openPrice, tp, sl, trader, leverage, pairIndex, index, buy
+TRADE9_NUM_WORDS = 9
+TRADE9_BYTES = TRADE9_NUM_WORDS * 32
 
 
-def check_preflight_call(rpc_url: str, contract: str, wallet: str, pair_id: int) -> None:
+def _decode_trade9(raw: bytes) -> Optional[dict]:
+    """Decodifica retorn getOpenTrade TradingStorage (Trade(9)). Retorna dict o None si payload curt."""
+    if len(raw) < TRADE9_BYTES:
+        return None
+    collateral = int.from_bytes(raw[0:32], "big")
+    open_price = int.from_bytes(raw[32:64], "big")
+    tp = int.from_bytes(raw[64:96], "big")
+    sl = int.from_bytes(raw[96:128], "big")
+    trader_bytes = raw[128:160]
+    trader = "0x" + trader_bytes[-20:].hex() if len(trader_bytes) >= 20 else "0x" + "0" * 40
+    leverage = int.from_bytes(raw[160:192], "big")
+    pair_index = int.from_bytes(raw[192:224], "big")
+    index = int.from_bytes(raw[224:256], "big")
+    buy = int.from_bytes(raw[256:288], "big") != 0
+    return {
+        "collateral": collateral,
+        "openPrice": open_price,
+        "tp": tp,
+        "sl": sl,
+        "trader": trader,
+        "leverage": leverage,
+        "pairIndex": pair_index,
+        "index": index,
+        "buy": buy,
+    }
+
+
+def check_preflight_call(
+    rpc_url: str,
+    contract: str,
+    wallet: str,
+    pair_id: int,
+    index: int = 0,
+    trading_storage: Optional[str] = None,
+) -> None:
     """
-    Fa eth_call a getOpenTrade(wallet, pair_id, 0) — funció view, 0 TX.
-
-    PASS: el contract respon (trade pot ser buit/zeros = vàlid)
-    FAIL CONTRACT_REVERT: el contract reverteix (adreça errònia, chain errònia, etc.)
+    Fa eth_call a getOpenTrade(wallet, pair_id, index) — view, 0 TX.
+    Si trading_storage és donat, crida TradingStorage i decodifica Trade(9);
+    sinó crida contract (legacy) i decodifica 6 camps.
+    Si no hi ha trade obert: imprimeix "no open trade at idx ..." i PASS (no error).
     """
-    print(f"\n[3] eth_call → getOpenTrade({wallet[:10]}..., pair_id={pair_id}, index=0)")
-    print(f"    Contract: {contract}")
+    target = trading_storage or contract
+    target_name = "TradingStorage" if trading_storage else "contract"
+    print(f"\n[3] eth_call → getOpenTrade({wallet[:10]}..., pair_id={pair_id}, index={index})")
+    print(f"    {target_name}: {target}")
 
-    calldata = build_get_open_trade_calldata(wallet, pair_id, 0)
+    calldata = build_get_open_trade_calldata(wallet, pair_id, index)
     data_hex = "0x" + calldata.hex()
 
-    result_hex, err = _jsonrpc_eth_call(rpc_url, contract, data_hex)
+    result_hex, err = _jsonrpc_eth_call(rpc_url, target, data_hex)
 
     name = "ostium.pf.call.getOpenTrade"
 
     if err is None:
-        # Resposta vàlida — decodifiquem per mostrar info útil (best-effort)
-        detail = f"eth_call OK"
+        detail = "eth_call OK"
         if result_hex and len(result_hex) > 2:
             raw = bytes.fromhex(result_hex.removeprefix("0x"))
-            # 6 camps: uint192×4, uint32, bool → 6 × 32 bytes = 192 bytes esperats
-            if len(raw) >= 192:
+            if trading_storage and len(raw) >= TRADE9_BYTES:
+                t9 = _decode_trade9(raw)
+                if t9:
+                    print(f"    getOpenTrade(trader, pair, index): collateral={t9['collateral']} openPrice={t9['openPrice']} pairIndex={t9['pairIndex']} index={t9['index']} trader={t9['trader']}")
+                    if t9["collateral"] > 0 and t9["openPrice"] > 0:
+                        detail += f" — trade actiu: collateral={t9['collateral']} openPrice={t9['openPrice']} pairIndex={t9['pairIndex']} index={t9['index']} trader={t9['trader']}"
+                    else:
+                        print(f"    no open trade at idx {index}")
+                        detail += f" — no open trade at idx {index}"
+            elif len(raw) >= 192:
                 collateral_raw = int.from_bytes(raw[96:128], "big")
                 is_long_raw = int.from_bytes(raw[160:192], "big")
                 if collateral_raw > 0:
@@ -435,9 +546,9 @@ def check_preflight_call(rpc_url: str, contract: str, wallet: str, pair_id: int)
                     side = "LONG" if is_long_raw else "SHORT"
                     detail += f" — trade actiu: collateral={collateral:.4f} USDC ({side})"
                 else:
-                    detail += f" — trade index 0 buit (collateral=0, normal si no hi ha trade obert)"
+                    detail += f" — no open trade at idx {index}"
             else:
-                detail += f" — resposta {len(raw)} bytes (payload curt)"
+                detail += f" — resposta {len(raw)} bytes"
         _pass(name, detail)
 
     elif err and err.startswith("CONTRACT_REVERT:"):
@@ -445,8 +556,8 @@ def check_preflight_call(rpc_url: str, contract: str, wallet: str, pair_id: int)
         _fail(name, "CONTRACT_REVERT",
               f"eth_call revertida: {revert_msg}",
               next_action=(
-                  "Possible causa: OSTIUM_CONTRACT_ADDRESS incorrecta, chain errònia, "
-                  "o adreça de wallet malformada. Comprova OSTIUM_CONTRACT_ADDRESS i OSTIUM_CHAIN_ID"
+                  "Possible causa: adreça contract/TradingStorage incorrecta, chain errònia, "
+                  "o adreça de wallet malformada. Comprova OSTIUM_TRADING_STORAGE_ADDRESS i OSTIUM_CHAIN_ID"
               ))
     else:
         cat = err or "UNEXPECTED_PAYLOAD"
@@ -503,9 +614,11 @@ def main() -> int:
         _skip("ostium.pf.call.getOpenTrade", "SKIP — OSTIUM_RPC_URL absent")
         return print_report()
 
-    if cfg["contract"] is None:
-        _skip("ostium.pf.chain_id", "SKIP — OSTIUM_CONTRACT_ADDRESS invàlid")
-        _skip("ostium.pf.call.getOpenTrade", "SKIP — OSTIUM_CONTRACT_ADDRESS invàlid")
+    # Target: TradingStorage (storage_mode) o contract (legacy); cal tenir almenys un
+    has_target = (cfg.get("trading_storage") is not None) or (cfg.get("contract") is not None)
+    if not has_target:
+        _skip("ostium.pf.chain_id", "SKIP — cap adreça (TradingStorage ni contract)")
+        _skip("ostium.pf.call.getOpenTrade", "SKIP — cap adreça (TradingStorage ni contract)")
         return print_report()
 
     chain_ok = check_chain(rpc_url, cfg["chain_id_expected"])
@@ -515,9 +628,11 @@ def main() -> int:
 
     check_preflight_call(
         rpc_url=rpc_url,
-        contract=cfg["contract"],
+        contract=cfg.get("contract"),  # None en mode Storage
         wallet=cfg["wallet"],
         pair_id=cfg["pair_id"],
+        index=cfg.get("index", DEFAULT_INDEX),
+        trading_storage=cfg.get("trading_storage"),
     )
 
     return print_report()
