@@ -77,7 +77,7 @@ curl -s http://localhost:8010/api/v1/broker/health
 
 | Doc | Descripció |
 |-----|------------|
-| [lab/ostium/README.md](../lab/ostium/README.md) | Inventari scripts, resultats trading + price monitoring, path to prod |
+| [lab/ostium/README.md](../lab/ostium/README.md) | Runbook Ostium LAB (E2E + neteja canònics), inventari scripts, path to prod |
 | [lab/ostium/RESULTS.md](../lab/ostium/RESULTS.md) | Validació trading testnet (fees, multicall, open/close) |
 | [docs/LAB_OSTIUM_PRICE_MONITORING.md](LAB_OSTIUM_PRICE_MONITORING.md) | Investigació tècnica compat Ostium vs Dukascopy |
 

@@ -141,6 +141,41 @@ docker run --rm -v $(pwd):/workspace -w /workspace \
 
 ---
 
+## Runbook (canonical)
+
+Comandes canòniques per E2E i neteja (chain-based, sense subgraph). Des de l’arrel del repo.
+
+**E2E full cycle:**
+```bash
+docker compose -p lab_ostium run --rm \
+  -e PRIVATE_KEY="$PRIVATE_KEY" -e RPC_URL="$RPC_URL" \
+  -e SCAN_ONLY=0 -e SANITY_CHECK=1 \
+  -e PAIR_ID=2 -e INDEX_BASE=0 -e MAX_ATTEMPTS=64 -e ORACLE_WAIT_S=30 \
+  ostium-cli python3 scripts/test_full_cycle_multicall.py
+```
+
+**Neteja (scan-only, sense PK):**
+```bash
+docker compose -p lab_ostium run --rm \
+  -e RPC_URL="$RPC_URL" \
+  -e TRADER_ADDRESS="$TRADER_ADDRESS" \
+  -e SCAN_ONLY=1 -e PAIR_ID=2 -e INDEX_BASE=0 -e MAX_ATTEMPTS=64 \
+  ostium-cli python3 scripts/close_all_open_trades.py
+```
+
+**Neteja (close real, limitat):**
+```bash
+docker compose -p lab_ostium run --rm \
+  -e RPC_URL="$RPC_URL" -e PRIVATE_KEY="$PRIVATE_KEY" \
+  -e SCAN_ONLY=0 -e PAIR_ID=2 -e INDEX_BASE=0 -e MAX_ATTEMPTS=64 \
+  -e MAX_CLOSE=1 \
+  ostium-cli python3 scripts/close_all_open_trades.py
+```
+
+Legacy / subgraph-dependent scripts are archived in `lab/ostium/_archive/`.
+
+---
+
 ## Descobriments
 
 ### Trading
@@ -187,8 +222,8 @@ lab/ostium/
     ├── open_wait_close_btc.py             ✅ Obrir posició → esperar N s → tancar (default BTC 10s)
     ├── close_open_position.py             ✅ Llistar/tancar posicions obertes (--symbol, --all, --dry-run)
     ├── test_full_cycle_no_subgraph.py     ✅ Open/close sense subgraph (workaround brute force)
-    ├── test_full_cycle_multicall.py       ✅ Full cycle amb Multicall3 (optimitzat)
-    ├── test_full_cycle.py                 ✅ Full cycle bàsic
+    ├── test_full_cycle_multicall.py       ✅ Full cycle canònic: open→wait→find→close (multicall + tradingStorage)
+    ├── _archive/scripts/test_full_cycle.py   (legacy, depèn del subgraph; arxivat)
     ├── test_multicall_optimized.py        ✅ Multicall3: 1 RPC vs 10 (9.6× ràpid)
     ├── test_market_fees.py                ✅ Fees ~$0.56/RT (45× més barat que gTrade)
     ├── test_limit_with_abi.py             ✅ Test limit orders via ABI

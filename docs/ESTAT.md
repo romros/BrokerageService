@@ -96,7 +96,7 @@ OSTIUM_RPC_URL=https://... OSTIUM_SUBGRAPH_URL=https://... \
 
 Statuses del report Ostium: `PASS` / `FAIL` / `INFO` / `SKIP`. `INFO` no incrementa exit code.
 Categories addicionals: `CHAIN_MISMATCH` (chain_id != OSTIUM_CHAIN_ID), `SUBGRAPH_STALE` (subgraph respon però no indexa).
-**Nota subgraph testnet:** known-broken (no indexa noves TX). Per defecte és `INFO SUBGRAPH_STALE`, no `FAIL`. Workaround: `lab/ostium/scripts/test_full_cycle_no_subgraph.py`.
+**Nota subgraph testnet:** known-broken (no indexa noves TX). Per defecte és `INFO SUBGRAPH_STALE`, no `FAIL`. Canonical Ostium LAB E2E: `lab/ostium/scripts/test_full_cycle_multicall.py`. Cleanup: `lab/ostium/scripts/close_all_open_trades.py`.
 
 **Network smokes Ostium preflight call (Ops-1c) — eth_call getOpenTrade, 0 TX, opt-in, NO CI:**
 ```bash
