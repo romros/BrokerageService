@@ -860,5 +860,5 @@ docker compose down && docker compose up -d brokerage
 | Data Layer | ✅ | P4–P7c; EURUSD REST candlestick no apte (zero_range) |
 | Ostium Data Layer | ✅ | prod v0: Ostium realtime + Dukascopy backfill; `run_smoke.sh ostium` |
 | Backtest | ⛔ | Pipeline pendent |
-| Ostium LAB | 🧪 | Validació RWA; [lab/ostium/README.md](../lab/ostium/README.md) |
+| Ostium LAB | 🧪 | Validació RWA; [lab/ostium/README.md](../lab/ostium/README.md). Multicall scan: decode Trade(9) amb `w3.codec.decode`; `SANITY_CHECK=1` imprimeix direct-call abans del multicall; `SCAN_ONLY=1` no exigeix PRIVATE_KEY (read-only, opcional `TRADER_ADDRESS`). |
 

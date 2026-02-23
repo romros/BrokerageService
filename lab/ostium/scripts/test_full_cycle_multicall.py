@@ -83,64 +83,66 @@ DEFAULT_STORAGE = NetworkConfig.testnet().contracts["tradingStorage"]
 TRADING_STORAGE_CONTRACT = os.getenv("TRADING_STORAGE_CONTRACT", DEFAULT_STORAGE)
 MULTICALL3_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11"
 
-def find_trade_with_multicall(w3, trader, pair_id, max_attempts=10, index_base=0):
-    """Troba trade index amb multicall (1 RPC call). Escaneja INDEX_BASE..INDEX_BASE+MAX_ATTEMPTS-1."""
+# Trade struct layout (IOstiumTradingStorage): (uint256,uint192,uint192,uint192,address,uint32,uint16,uint8,bool)
+TRADE_DECODE_TYPES = ["(uint256,uint192,uint192,uint192,address,uint32,uint16,uint8,bool)"]
+
+def find_trade_with_multicall(w3, trader, pair_id, max_attempts=10, index_base=0, sanity_check=False):
+    """Troba trade index amb multicall (1 RPC call). Decode amb codec; filtre open + coherència."""
     end = index_base + max_attempts - 1
     print(f"\n⚡ Buscant trade amb MULTICALL (rang {index_base}..{end})...")
     
     start = time.time()
+    trader_cs = Web3.to_checksum_address(trader) if isinstance(trader, str) else trader
     
-    # Setup contracts (tradingStorage for getOpenTrade reads)
     storage_contract = w3.eth.contract(
         address=Web3.to_checksum_address(TRADING_STORAGE_CONTRACT),
         abi=TRADING_STORAGE_ABI
     )
-    
     multicall_contract = w3.eth.contract(
         address=Web3.to_checksum_address(MULTICALL3_ADDRESS),
         abi=MULTICALL3_ABI
     )
     
-    # Prepare multicall (index = index_base + offset)
     calls = []
     for offset in range(max_attempts):
         index = index_base + offset
-        call_data = storage_contract.functions.getOpenTrade(
-            Web3.to_checksum_address(trader),
-            pair_id,
-            index
-        )._encode_transaction_data()
+        call_data = storage_contract.functions.getOpenTrade(trader_cs, pair_id, index)._encode_transaction_data()
         calls.append((TRADING_STORAGE_CONTRACT, call_data))
     
-    # Execute
     results = multicall_contract.functions.tryAggregate(False, calls).call()
     n_calls = len(results)
-    n_success = sum(1 for success, _ in results if success)
+    n_success = sum(1 for s, _ in results if s)
     print(f"  success={n_success}/{n_calls}")
     
-    # Find trades (decode via ABI: Trade = collateral, openPrice, tp, sl, trader, leverage, pairIndex, index, buy)
     found_indexes = []
     for offset, (success, data) in enumerate(results):
         if not success or len(data) == 0:
             continue
         index = index_base + offset
         try:
-            decoded = storage_contract.decode_function_output("getOpenTrade", data)
-            # decoded is tuple of one element (Trade struct) or single tuple
-            trade = decoded[0] if isinstance(decoded, tuple) and len(decoded) == 1 else decoded
+            raw = data if isinstance(data, bytes) else bytes(data)
+            trade = w3.codec.decode(TRADE_DECODE_TYPES, raw)[0]
             collateral = trade[0]
             open_price = trade[1]
-            leverage = trade[5]
-            is_open = (open_price > 0 and collateral > 0)
+            # coherència: trader, pairIndex, index
+            t_trader = trade[4]
+            t_pair = int(trade[6])
+            t_index = int(trade[7])
+            if Web3.to_checksum_address(t_trader) != trader_cs or t_pair != pair_id or t_index != index:
+                continue
+            is_open = (collateral > 0 and open_price > 0)
             if is_open:
                 found_indexes.append(index)
+                leverage = trade[5]
                 print(f"  ✅ Trobat index {index}: openPrice={open_price} collateral={collateral} leverage={leverage}")
         except Exception:
             continue
     
+    if not found_indexes and (sanity_check or max_attempts == 1):
+        print(f"  DEBUG no open trade at idx={index_base} (collateral>0 and openPrice>0)")
+    
     elapsed = time.time() - start
     print(f"  ⏱️  Temps: {elapsed:.3f}s (1 RPC call)")
-    
     return found_indexes
 
 async def main():
@@ -150,22 +152,33 @@ async def main():
     
     # Load env
     load_dotenv()
-    private_key = os.getenv('PRIVATE_KEY')
-    rpc_url = os.getenv('RPC_URL', 'https://sepolia-rollup.arbitrum.io/rpc')
-    
-    if not private_key:
-        print("❌ PRIVATE_KEY not set")
+    rpc_url = (os.getenv("RPC_URL") or "https://sepolia-rollup.arbitrum.io/rpc").strip()
+    if not rpc_url:
+        print("❌ RPC_URL required")
         return
-    
-    # Setup
-    config = NetworkConfig.testnet()
-    sdk = OstiumSDK(config, private_key, rpc_url)
-    
-    account = Account.from_key(private_key)
-    trader = account.address
-    
+
+    private_key = (os.getenv("PRIVATE_KEY") or "").strip()
+    scan_only = os.getenv("SCAN_ONLY", "1").strip() == "1"
+    sanity_check = os.getenv("SANITY_CHECK", "0").strip() == "1"
+
+    if not scan_only and not private_key:
+        print("❌ PRIVATE_KEY not set (required when SCAN_ONLY=0)")
+        return
+    if scan_only and not private_key:
+        trader_raw = (os.getenv("TRADER_ADDRESS") or "").strip()
+        if not trader_raw:
+            print("❌ SCAN_ONLY=1 requires RPC_URL and (PRIVATE_KEY or TRADER_ADDRESS)")
+            return
+        trader = Web3.to_checksum_address(trader_raw)
+        account = None
+        sdk = None
+    else:
+        account = Account.from_key(private_key)
+        trader = account.address
+        config = NetworkConfig.testnet()
+        sdk = OstiumSDK(config, private_key, rpc_url)
+
     w3 = Web3(Web3.HTTPProvider(rpc_url))
-    
     print(f"Wallet: {trader}")
     print(f"Network: Arbitrum Sepolia testnet")
     print()
@@ -173,11 +186,10 @@ async def main():
     pair_id = int(os.getenv("PAIR_ID", "2"))
     max_attempts = int(os.getenv("MAX_ATTEMPTS", "10"))
     index_base = int(os.getenv("INDEX_BASE", "0"))
-    scan_only = os.getenv("SCAN_ONLY", "1").strip() == "1"
     oracle_wait_s = int(os.getenv("ORACLE_WAIT_S", "30"))
 
     print("Config (env):")
-    print(f"  PAIR_ID={pair_id}  MAX_ATTEMPTS={max_attempts}  INDEX_BASE={index_base}  SCAN_ONLY={scan_only}  ORACLE_WAIT_S={oracle_wait_s}")
+    print(f"  PAIR_ID={pair_id}  MAX_ATTEMPTS={max_attempts}  INDEX_BASE={index_base}  SCAN_ONLY={scan_only}  SANITY_CHECK={sanity_check}  ORACLE_WAIT_S={oracle_wait_s}")
     print(f"  Rang efectiu: {index_base}..{index_base + max_attempts - 1}")
     print(f"  TRADING_STORAGE_CONTRACT={TRADING_STORAGE_CONTRACT}")
     print(f"  MULTICALL3={MULTICALL3_ADDRESS}")
@@ -262,9 +274,28 @@ async def main():
     print("="*80)
     print("STEP 3: TROBAR TRADE AMB MULTICALL")
     print("="*80 + "\n")
+
+    if sanity_check:
+        print("🧪 SANITY_CHECK=1 → direct call getOpenTrade(trader, pair_id, index_base)")
+        storage_contract = w3.eth.contract(
+            address=Web3.to_checksum_address(TRADING_STORAGE_CONTRACT),
+            abi=TRADING_STORAGE_ABI
+        )
+        direct = storage_contract.functions.getOpenTrade(
+            Web3.to_checksum_address(trader), pair_id, index_base
+        ).call()
+        # direct = (collateral, openPrice, tp, sl, trader, leverage, pairIndex, index, buy) from .call() decoded
+        if isinstance(direct, (list, tuple)) and len(direct) >= 9:
+            print(f"  collateral={direct[0]}  openPrice={direct[1]}  tp={direct[2]}  sl={direct[3]}")
+            print(f"  trader={direct[4]}  leverage={direct[5]}  pairIndex={direct[6]}  index={direct[7]}  buy={direct[8]}")
+        else:
+            print(f"  raw={direct}")
+        print()
     
     print(f"  PAIR_ID={pair_id}  MAX_ATTEMPTS={max_attempts}  INDEX_BASE={index_base} (rang {index_base}..{index_base + max_attempts - 1})")
-    found_indexes = find_trade_with_multicall(w3, trader, pair_id, max_attempts=max_attempts, index_base=index_base)
+    found_indexes = find_trade_with_multicall(
+        w3, trader, pair_id, max_attempts=max_attempts, index_base=index_base, sanity_check=sanity_check
+    )
     print(f"  Indexes trobats: {found_indexes}")
     print()
     
