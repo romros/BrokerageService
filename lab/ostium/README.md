@@ -56,14 +56,13 @@
 
 ## 🚀 Quick Start
 
+**Env:** El lab usa el `.env` de l’arrel del repo com a font de veritat. No cal `lab/ostium/.env` si executeu des de l’arrel (Docker o `./test.sh` amb variables a l’arrel). Per execució local dins `lab/ostium`: `cp .env.example .env` i editar.
+
 ### Trading (Testnet)
 
 ```bash
-# 1. Setup
-cp .env.example .env
-# Editar .env amb PRIVATE_KEY
-
-# 2. Full cycle test
+# 1. Setup (arrel repo: .env amb PRIVATE_KEY; o dins lab/ostium: cp .env.example .env)
+# 2. Full cycle test (local)
 python3 scripts/test_full_cycle_no_subgraph.py
 ```
 
@@ -115,6 +114,30 @@ docker run --rm -v $(pwd):/workspace -w /workspace \
     --ostium-dir lab/out/ostium_prices/continuous \
     --candles 1440
 ```
+
+---
+
+## Ús amb Docker (projecte aïllat lab_ostium)
+
+**Regla:** Totes les comandes del lab han d’usar `-p lab_ostium` per no afectar el stack prod (realtime, etc.). Prohibit `docker compose down` sense `-p lab_ostium`.
+
+- **Aixecar contenidor (bind mount; edició al host sense rebuild):**
+  ```bash
+  # Des de l’arrel del repo (el compose llegeix .env de l’arrel)
+  docker compose -p lab_ostium up -d ostium-cli
+  ```
+
+- **Executar scripts amb env del root (canvis al codi es reflecteixen sense rebuild):**
+  ```bash
+  docker compose -p lab_ostium run --rm ostium-cli python3 scripts/test_full_cycle_no_subgraph.py
+  # Amb variables explícites (opcional):
+  docker compose -p lab_ostium run --rm -e PRIVATE_KEY="$PRIVATE_KEY" -e RPC_URL="$RPC_URL" ostium-cli python3 scripts/test_full_cycle_no_subgraph.py
+  ```
+
+- **Netejar només el lab:**
+  ```bash
+  docker compose -p lab_ostium down --remove-orphans
+  ```
 
 ---
 

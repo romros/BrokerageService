@@ -92,12 +92,15 @@ services:
       - trading
     command: tail -f /dev/null
 
-  # Python CLI for Ostium SDK
+  # Python CLI for Ostium SDK (LAB — sempre amb -p lab_ostium per aïllament)
   ostium-cli:
     build:
       context: ./lab/ostium
       dockerfile: Dockerfile
     container_name: ostium-cli
+    working_dir: /app
+    env_file:
+      - .env
     environment:
       - E2E_TESTNET=${E2E_TESTNET:-1}
       - ENABLE_LIVE_TRADING=${ENABLE_LIVE_TRADING:-1}
