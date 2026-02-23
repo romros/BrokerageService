@@ -61,6 +61,7 @@ async def find_trade_index(sdk, pair_id, private_key, max_attempts=10):
     Find trade_index by checking recent indexes (0-9).
     Most recent trades will have low indexes.
     """
+    max_attempts = int(os.getenv("PAIR_ID_MAX_ATTEMPTS", str(max_attempts)))
     from web3 import Web3
     from eth_account import Account
 
@@ -195,9 +196,8 @@ async def main():
         pair_id, _ = extract_trade_info_from_receipt(tx_receipt)
 
         if not pair_id:
-            print("❌ Could not find OrderOpened event in receipt")
-            return
-
+            pair_id = int(os.getenv("PAIR_ID", "0"))
+            print(f"⚠ OrderOpened event not found → fallback PAIR_ID={pair_id}")
         print()
 
         # Find trade_index
