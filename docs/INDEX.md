@@ -13,6 +13,7 @@ Hub canònic. Tota la navegació comença aquí.
 |-----|------------|
 | [AGENTS_ARQUITECTURA.md](../AGENTS_ARQUITECTURA.md) | Arquitectura general, split vNext, boundaries |
 | [docs/ESTAT.md](ESTAT.md) | Estat del projecte, TL;DR, comandes canòniques |
+| [docs/runbook_trades_api.md](runbook_trades_api.md) | API canònica trades (rutes, mode LIVE/PAPER, models) — T2 positions |
 | [docs/SAFETY_RUNBOOK.md](SAFETY_RUNBOOK.md) | Runbook operatiu (guardes, riscos, rollback) |
 | [docs/LAB_OSTIUM_PRICE_MONITORING.md](LAB_OSTIUM_PRICE_MONITORING.md) | Investigació tècnica monitoratge de preus Ostium |
 | [docs/plantilla_tasca.md](plantilla_tasca.md) | Plantilla per definir tasques |
