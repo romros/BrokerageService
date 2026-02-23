@@ -11,13 +11,47 @@ Flow:
 """
 
 import asyncio
+import json
 import os
 import time
 from decimal import Decimal
+from pathlib import Path
 from dotenv import load_dotenv
 from ostium_python_sdk import OstiumSDK, NetworkConfig
 from eth_account import Account
 from web3 import Web3
+
+def _load_trading_storage_abi():
+    """Load getOpenTrade ABI from lab/ostium/abi (Trade struct from IOstiumTradingStorage)."""
+    abi_path = Path(__file__).resolve().parent.parent / "abi" / "tradingStorage_getOpenTrade.json"
+    if abi_path.exists():
+        with open(abi_path, encoding="utf-8") as f:
+            return json.load(f)
+    # Fallback: minimal ABI with correct Trade struct order
+    return [{
+        "inputs": [
+            {"name": "_trader", "type": "address"},
+            {"name": "_pairIndex", "type": "uint16"},
+            {"name": "_index", "type": "uint8"}
+        ],
+        "name": "getOpenTrade",
+        "outputs": [{
+            "type": "tuple",
+            "components": [
+                {"name": "collateral", "type": "uint256"},
+                {"name": "openPrice", "type": "uint192"},
+                {"name": "tp", "type": "uint192"},
+                {"name": "sl", "type": "uint192"},
+                {"name": "trader", "type": "address"},
+                {"name": "leverage", "type": "uint32"},
+                {"name": "pairIndex", "type": "uint16"},
+                {"name": "index", "type": "uint8"},
+                {"name": "buy", "type": "bool"}
+            ]
+        }],
+        "stateMutability": "view",
+        "type": "function"
+    }]
 
 # OrderOpened event signature
 ORDER_OPENED_TOPIC = Web3.keccak(text='OrderOpened(uint256,address,uint8)').hex()
@@ -72,34 +106,16 @@ async def find_trade_index(sdk, pair_id, private_key, max_attempts=10):
     account = Account.from_key(private_key)
     trader = account.address
 
-    # Minimal ABI for getOpenTrade (same on tradingStorage)
-    trading_abi = [{
-        "inputs": [
-            {"name": "trader", "type": "address"},
-            {"name": "pairId", "type": "uint16"},
-            {"name": "index", "type": "uint8"}
-        ],
-        "name": "getOpenTrade",
-        "outputs": [
-            {"name": "openPrice", "type": "uint192"},
-            {"name": "tp", "type": "uint192"},
-            {"name": "sl", "type": "uint192"},
-            {"name": "collateral", "type": "uint192"},
-            {"name": "leverage", "type": "uint32"},
-            {"name": "isLong", "type": "bool"}
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    }]
-
+    trading_storage_abi = _load_trading_storage_abi()
     cfg = NetworkConfig.testnet()
     default_storage = cfg.contracts["tradingStorage"]
     trading_storage_contract = os.getenv("TRADING_STORAGE_CONTRACT", default_storage)
-    contract = w3.eth.contract(address=Web3.to_checksum_address(trading_storage_contract), abi=trading_abi)
+    contract = w3.eth.contract(address=Web3.to_checksum_address(trading_storage_contract), abi=trading_storage_abi)
 
     print(f"  getOpenTrade via tradingStorage={trading_storage_contract} rpc={rpc_url[:60]}..." if len(rpc_url) > 60 else f"  getOpenTrade via tradingStorage={trading_storage_contract} rpc={rpc_url}")
     print(f"  Searching for trade_index (checking 0-{max_attempts-1})...")
 
+    # Trade struct: (collateral, openPrice, tp, sl, trader, leverage, pairIndex, index, buy)
     for index in range(max_attempts):
         try:
             result = contract.functions.getOpenTrade(
@@ -107,13 +123,13 @@ async def find_trade_index(sdk, pair_id, private_key, max_attempts=10):
                 pair_id,
                 index
             ).call()
-
-            collateral = result[3]
-
-            if collateral > 0:
-                print(f"  ✅ Found trade at index {index}")
+            collateral = result[0]
+            open_price = result[1]
+            leverage = result[5]
+            is_open = (open_price > 0 and collateral > 0)
+            if is_open:
+                print(f"  ✅ Found trade at index {index} openPrice={open_price} collateral={collateral} leverage={leverage}")
                 return index
-
         except Exception:
             continue
 

@@ -8,12 +8,46 @@ Ostium Testnet - Full Cycle amb MULTICALL
 """
 
 import asyncio
+import json
 import os
 import time
+from pathlib import Path
 from dotenv import load_dotenv
 from ostium_python_sdk import OstiumSDK, NetworkConfig
 from eth_account import Account
 from web3 import Web3
+
+def _load_trading_storage_abi():
+    """Load getOpenTrade ABI from lab/ostium/abi (Trade struct from IOstiumTradingStorage)."""
+    abi_path = Path(__file__).resolve().parent.parent / "abi" / "tradingStorage_getOpenTrade.json"
+    if abi_path.exists():
+        with open(abi_path, encoding="utf-8") as f:
+            return json.load(f)
+    # Fallback: minimal ABI with correct Trade struct order (collateral, openPrice, tp, sl, trader, leverage, pairIndex, index, buy)
+    return [{
+        "inputs": [
+            {"name": "_trader", "type": "address"},
+            {"name": "_pairIndex", "type": "uint16"},
+            {"name": "_index", "type": "uint8"}
+        ],
+        "name": "getOpenTrade",
+        "outputs": [{
+            "type": "tuple",
+            "components": [
+                {"name": "collateral", "type": "uint256"},
+                {"name": "openPrice", "type": "uint192"},
+                {"name": "tp", "type": "uint192"},
+                {"name": "sl", "type": "uint192"},
+                {"name": "trader", "type": "address"},
+                {"name": "leverage", "type": "uint32"},
+                {"name": "pairIndex", "type": "uint16"},
+                {"name": "index", "type": "uint8"},
+                {"name": "buy", "type": "bool"}
+            ]
+        }],
+        "stateMutability": "view",
+        "type": "function"
+    }]
 
 # Multicall3 ABI
 MULTICALL3_ABI = [{
@@ -43,27 +77,8 @@ MULTICALL3_ABI = [{
     "type": "function"
 }]
 
-# Trading contract ABI
-TRADING_ABI = [{
-    "inputs": [
-        {"name": "trader", "type": "address"},
-        {"name": "pairId", "type": "uint16"},
-        {"name": "index", "type": "uint8"}
-    ],
-    "name": "getOpenTrade",
-    "outputs": [
-        {"name": "openPrice", "type": "uint192"},
-        {"name": "tp", "type": "uint192"},
-        {"name": "sl", "type": "uint192"},
-        {"name": "collateral", "type": "uint192"},
-        {"name": "leverage", "type": "uint32"},
-        {"name": "isLong", "type": "bool"}
-    ],
-    "stateMutability": "view",
-    "type": "function"
-}]
-
-# getOpenTrade on "trading" reverts; use tradingStorage for reads
+# getOpenTrade on "trading" reverts; use tradingStorage for reads (ABI = Trade struct from IOstiumTradingStorage)
+TRADING_STORAGE_ABI = _load_trading_storage_abi()
 DEFAULT_STORAGE = NetworkConfig.testnet().contracts["tradingStorage"]
 TRADING_STORAGE_CONTRACT = os.getenv("TRADING_STORAGE_CONTRACT", DEFAULT_STORAGE)
 MULTICALL3_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11"
@@ -77,7 +92,7 @@ def find_trade_with_multicall(w3, trader, pair_id, max_attempts=10):
     # Setup contracts (tradingStorage for getOpenTrade reads)
     storage_contract = w3.eth.contract(
         address=Web3.to_checksum_address(TRADING_STORAGE_CONTRACT),
-        abi=TRADING_ABI
+        abi=TRADING_STORAGE_ABI
     )
     
     multicall_contract = w3.eth.contract(
@@ -101,19 +116,22 @@ def find_trade_with_multicall(w3, trader, pair_id, max_attempts=10):
     n_success = sum(1 for success, _ in results if success)
     print(f"  success={n_success}/{n_calls}")
     
-    # Find trades
+    # Find trades (decode via ABI: Trade = collateral, openPrice, tp, sl, trader, leverage, pairIndex, index, buy)
     found_indexes = []
     for index, (success, data) in enumerate(results):
         if not success or len(data) == 0:
             continue
-            
         try:
-            decoded = w3.codec.decode(['uint192', 'uint192', 'uint192', 'uint192', 'uint32', 'bool'], data)
-            collateral = decoded[3]
-            
-            if collateral > 0:
+            decoded = storage_contract.decode_function_output("getOpenTrade", data)
+            # decoded is tuple of one element (Trade struct) or single tuple
+            trade = decoded[0] if isinstance(decoded, tuple) and len(decoded) == 1 else decoded
+            collateral = trade[0]
+            open_price = trade[1]
+            leverage = trade[5]
+            is_open = (open_price > 0 and collateral > 0)
+            if is_open:
                 found_indexes.append(index)
-                print(f"  ✅ Trobat index {index}: collateral={collateral}")
+                print(f"  ✅ Trobat index {index}: openPrice={open_price} collateral={collateral} leverage={leverage}")
         except Exception:
             continue
     
