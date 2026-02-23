@@ -86,8 +86,13 @@ MULTICALL3_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11"
 # Trade struct layout (IOstiumTradingStorage): (uint256,uint192,uint192,uint192,address,uint32,uint16,uint8,bool)
 TRADE_DECODE_TYPES = ["(uint256,uint192,uint192,uint192,address,uint32,uint16,uint8,bool)"]
 
+# Paràmetres del trade que obrim a STEP 1 (per selecció determinista)
+EXPECTED_LEVERAGE_STORAGE = 200   # 2x → PRECISION_2
+EXPECTED_BUY = True               # LONG
+MIN_COLLATERAL_USDC_UNITS = 3_000_000  # ~3 USDC (PRECISION_6) per tolerar fees
+
 def find_trade_with_multicall(w3, trader, pair_id, max_attempts=10, index_base=0, sanity_check=False):
-    """Troba trade index amb multicall (1 RPC call). Decode amb codec; filtre open + coherència."""
+    """Troba trades oberts amb multicall. Retorna list[dict] amb index, collateral, open_price, leverage, buy."""
     end = index_base + max_attempts - 1
     print(f"\n⚡ Buscant trade amb MULTICALL (rang {index_base}..{end})...")
     
@@ -114,7 +119,7 @@ def find_trade_with_multicall(w3, trader, pair_id, max_attempts=10, index_base=0
     n_success = sum(1 for s, _ in results if s)
     print(f"  success={n_success}/{n_calls}")
     
-    found_indexes = []
+    found_trades = []
     for offset, (success, data) in enumerate(results):
         if not success or len(data) == 0:
             continue
@@ -124,7 +129,6 @@ def find_trade_with_multicall(w3, trader, pair_id, max_attempts=10, index_base=0
             trade = w3.codec.decode(TRADE_DECODE_TYPES, raw)[0]
             collateral = trade[0]
             open_price = trade[1]
-            # coherència: trader, pairIndex, index
             t_trader = trade[4]
             t_pair = int(trade[6])
             t_index = int(trade[7])
@@ -132,18 +136,25 @@ def find_trade_with_multicall(w3, trader, pair_id, max_attempts=10, index_base=0
                 continue
             is_open = (collateral > 0 and open_price > 0)
             if is_open:
-                found_indexes.append(index)
                 leverage = trade[5]
-                print(f"  ✅ Trobat index {index}: openPrice={open_price} collateral={collateral} leverage={leverage}")
+                buy = bool(trade[8])
+                found_trades.append({
+                    "index": index,
+                    "collateral": collateral,
+                    "open_price": open_price,
+                    "leverage": leverage,
+                    "buy": buy,
+                })
+                print(f"  ✅ Trobat index {index}: openPrice={open_price} collateral={collateral} leverage={leverage} buy={buy}")
         except Exception:
             continue
     
-    if not found_indexes and (sanity_check or max_attempts == 1):
+    if not found_trades and (sanity_check or max_attempts == 1):
         print(f"  DEBUG no open trade at idx={index_base} (collateral>0 and openPrice>0)")
     
     elapsed = time.time() - start
     print(f"  ⏱️  Temps: {elapsed:.3f}s (1 RPC call)")
-    return found_indexes
+    return found_trades
 
 async def main():
     print("\n" + "="*80)
@@ -237,15 +248,11 @@ async def main():
             
             # Open trade
             receipt = sdk.ostium.perform_trade(trade_params, at_price=latest_price)
-            
-            # Get TX hash
-            if isinstance(receipt, dict):
-                tx_hash = receipt.get('transactionHash', receipt.get('hash', 'unknown'))
-                if hasattr(tx_hash, 'hex'):
-                    tx_hash = tx_hash.hex()
+            tx_hash = receipt.get("transactionHash") or receipt.get("hash") if isinstance(receipt, dict) else None
+            if tx_hash is not None and hasattr(tx_hash, "hex"):
+                tx_hash = tx_hash.hex()
             else:
-                tx_hash = 'unknown'
-            
+                tx_hash = str(tx_hash) if tx_hash is not None else "unknown"
             print(f"✅ Trade obert!")
             print(f"   TX: {tx_hash}")
             print()
@@ -293,21 +300,32 @@ async def main():
         print()
     
     print(f"  PAIR_ID={pair_id}  MAX_ATTEMPTS={max_attempts}  INDEX_BASE={index_base} (rang {index_base}..{index_base + max_attempts - 1})")
-    found_indexes = find_trade_with_multicall(
+    found_trades = find_trade_with_multicall(
         w3, trader, pair_id, max_attempts=max_attempts, index_base=index_base, sanity_check=sanity_check
     )
-    print(f"  Indexes trobats: {found_indexes}")
+    print(f"  Indexes trobats: {[t['index'] for t in found_trades]}")
     print()
     
-    if not found_indexes:
+    if not found_trades:
         print(f"\n❌ No s'ha trobat cap trade obert!")
         print(f"   Potser el trade es va tancar automàticament?")
         if scan_only:
             print("  (SCAN_ONLY: no s'ha obert cap trade)")
         return
     
-    trade_index = found_indexes[0]
-    print(f"\n✅ Trade trobat a index: {trade_index}")
+    # Selecció determinista: trade nou (2x LONG, collateral ~5 USDC) o el d’index més alt
+    matches = [
+        t for t in found_trades
+        if t["buy"] == EXPECTED_BUY
+        and t["leverage"] == EXPECTED_LEVERAGE_STORAGE
+        and t["collateral"] >= MIN_COLLATERAL_USDC_UNITS
+    ]
+    if matches:
+        selected = max(matches, key=lambda t: t["index"])
+    else:
+        selected = max(found_trades, key=lambda t: t["index"])
+    trade_index = selected["index"]
+    print(f"\n✅ Trade seleccionat per tancar: index={trade_index} leverage={selected['leverage']} buy={selected['buy']} collateral={selected['collateral']}")
     print()
     
     if scan_only:
@@ -317,22 +335,47 @@ async def main():
         print("="*80 + "\n")
         return
     
-    # STEP 4: Close trade
+    # STEP 4: Close trade (requereix market_price)
     print("="*80)
     print("STEP 4: TANCAR TRADE")
     print("="*80 + "\n")
     
     try:
-        receipt = sdk.ostium.close_trade(pair_id, trade_index)
-        tx_hash = receipt['transactionHash'].hex()
-        
+        market_price, _, _ = await sdk.price.get_price("EUR", "USD")
+        print(f"  Preu actual EUR/USD: ${market_price:.5f}")
+        receipt = sdk.ostium.close_trade(pair_id, trade_index, market_price)
+        tx_hash = receipt.get("transactionHash") or receipt.get("hash")
+        if tx_hash is not None and hasattr(tx_hash, "hex"):
+            tx_hash = tx_hash.hex()
+        else:
+            tx_hash = str(tx_hash) if tx_hash is not None else "unknown"
+        gas_used = receipt.get("gasUsed")
+        gas_str = f"  gasUsed: {gas_used}" if gas_used is not None else ""
         print(f"✅ Trade tancat!")
         print(f"   TX: {tx_hash}")
+        if gas_str:
+            print(gas_str)
         print()
-        
     except Exception as e:
         print(f"❌ Error tancant trade: {e}")
         return
+    
+    # Post-check: re-scan i comprovar que l’index tancat ja no hi és
+    print("Post-check: verificant que l’index tancat ja no apareix...")
+    await asyncio.sleep(2)
+    for attempt in range(2):
+        check_trades = find_trade_with_multicall(
+            w3, trader, pair_id, max_attempts=max_attempts, index_base=index_base
+        )
+        still_open = [t for t in check_trades if t["index"] == trade_index]
+        if not still_open:
+            print(f"  ✅ L’index {trade_index} ja no apareix (tancat correctament)")
+            break
+        if attempt == 0:
+            await asyncio.sleep(2)
+        else:
+            print(f"  ⚠ L’index {trade_index} encara apareix després de 2 intents (pot ser retard chain)")
+    print()
     
     # Summary
     print("="*80)
@@ -343,7 +386,7 @@ async def main():
     print(f"  1. ✅ Trade obert")
     print(f"  2. ✅ Esperat {oracle_wait_s}s")
     print(f"  3. ✅ Trobat amb MULTICALL (1 RPC call)")
-    print(f"  4. ✅ Trade tancat")
+    print(f"  4. ✅ Trade tancat (market_price passat)")
     print()
     
     print(f"🎯 Multicall va trobar el trade en 1 sola crida!")
