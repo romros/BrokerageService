@@ -860,5 +860,5 @@ docker compose down && docker compose up -d brokerage
 | Data Layer | ✅ | P4–P7c; EURUSD REST candlestick no apte (zero_range) |
 | Ostium Data Layer | ✅ | prod v0: Ostium realtime + Dukascopy backfill; `run_smoke.sh ostium` |
 | Backtest | ⛔ | Pipeline pendent |
-| Ostium LAB | 🧪 | Validació RWA; [lab/ostium/README.md](../lab/ostium/README.md). **Test canònic full cycle:** `lab/ostium/scripts/test_full_cycle_multicall.py` (open→wait→find→close amb multicall + tradingStorage; no subgraph). Multicall scan: decode Trade(9), SANITY_CHECK, SCAN_ONLY sense PRIVATE_KEY. Legacy subgraph-dependent: `lab/ostium/_archive/scripts/test_full_cycle.py`. |
+| Ostium LAB | 🧪 | Validació RWA; [lab/ostium/README.md](../lab/ostium/README.md). **Test canònic full cycle:** `lab/ostium/scripts/test_full_cycle_multicall.py` (open→wait→find→close amb multicall + tradingStorage; no subgraph). Multicall scan: decode Trade(9), SANITY_CHECK, SCAN_ONLY sense PRIVATE_KEY. Legacy subgraph-dependent: `lab/ostium/_archive/scripts/test_full_cycle.py`. **Neteja testnet:** `lab/ostium/scripts/close_all_open_trades.py` (scan + close; SCAN_ONLY=1 llista sense PK; SCAN_ONLY=0 tanca fins a MAX_CLOSE). Run: `docker compose -p lab_ostium run --rm -e RPC_URL -e PRIVATE_KEY -e SCAN_ONLY=0 -e MAX_CLOSE=3 ostium-cli python3 scripts/close_all_open_trades.py`. |
 
