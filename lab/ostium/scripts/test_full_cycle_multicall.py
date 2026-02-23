@@ -83,9 +83,10 @@ DEFAULT_STORAGE = NetworkConfig.testnet().contracts["tradingStorage"]
 TRADING_STORAGE_CONTRACT = os.getenv("TRADING_STORAGE_CONTRACT", DEFAULT_STORAGE)
 MULTICALL3_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11"
 
-def find_trade_with_multicall(w3, trader, pair_id, max_attempts=10):
-    """Troba trade index amb multicall (1 RPC call). Uses tradingStorage (getOpenTrade does not revert)."""
-    print(f"\n⚡ Buscant trade amb MULTICALL...")
+def find_trade_with_multicall(w3, trader, pair_id, max_attempts=10, index_base=0):
+    """Troba trade index amb multicall (1 RPC call). Escaneja INDEX_BASE..INDEX_BASE+MAX_ATTEMPTS-1."""
+    end = index_base + max_attempts - 1
+    print(f"\n⚡ Buscant trade amb MULTICALL (rang {index_base}..{end})...")
     
     start = time.time()
     
@@ -100,9 +101,10 @@ def find_trade_with_multicall(w3, trader, pair_id, max_attempts=10):
         abi=MULTICALL3_ABI
     )
     
-    # Prepare multicall
+    # Prepare multicall (index = index_base + offset)
     calls = []
-    for index in range(max_attempts):
+    for offset in range(max_attempts):
+        index = index_base + offset
         call_data = storage_contract.functions.getOpenTrade(
             Web3.to_checksum_address(trader),
             pair_id,
@@ -118,9 +120,10 @@ def find_trade_with_multicall(w3, trader, pair_id, max_attempts=10):
     
     # Find trades (decode via ABI: Trade = collateral, openPrice, tp, sl, trader, leverage, pairIndex, index, buy)
     found_indexes = []
-    for index, (success, data) in enumerate(results):
+    for offset, (success, data) in enumerate(results):
         if not success or len(data) == 0:
             continue
+        index = index_base + offset
         try:
             decoded = storage_contract.decode_function_output("getOpenTrade", data)
             # decoded is tuple of one element (Trade struct) or single tuple
@@ -169,11 +172,13 @@ async def main():
 
     pair_id = int(os.getenv("PAIR_ID", "2"))
     max_attempts = int(os.getenv("MAX_ATTEMPTS", "10"))
+    index_base = int(os.getenv("INDEX_BASE", "0"))
     scan_only = os.getenv("SCAN_ONLY", "1").strip() == "1"
     oracle_wait_s = int(os.getenv("ORACLE_WAIT_S", "30"))
 
     print("Config (env):")
-    print(f"  PAIR_ID={pair_id}  MAX_ATTEMPTS={max_attempts}  SCAN_ONLY={scan_only}  ORACLE_WAIT_S={oracle_wait_s}")
+    print(f"  PAIR_ID={pair_id}  MAX_ATTEMPTS={max_attempts}  INDEX_BASE={index_base}  SCAN_ONLY={scan_only}  ORACLE_WAIT_S={oracle_wait_s}")
+    print(f"  Rang efectiu: {index_base}..{index_base + max_attempts - 1}")
     print(f"  TRADING_STORAGE_CONTRACT={TRADING_STORAGE_CONTRACT}")
     print(f"  MULTICALL3={MULTICALL3_ADDRESS}")
     print(f"  RPC_URL={rpc_url[:60]}..." if len(rpc_url) > 60 else f"  RPC_URL={rpc_url}")
@@ -258,8 +263,8 @@ async def main():
     print("STEP 3: TROBAR TRADE AMB MULTICALL")
     print("="*80 + "\n")
     
-    print(f"  PAIR_ID={pair_id}  MAX_ATTEMPTS={max_attempts}")
-    found_indexes = find_trade_with_multicall(w3, trader, pair_id, max_attempts=max_attempts)
+    print(f"  PAIR_ID={pair_id}  MAX_ATTEMPTS={max_attempts}  INDEX_BASE={index_base} (rang {index_base}..{index_base + max_attempts - 1})")
+    found_indexes = find_trade_with_multicall(w3, trader, pair_id, max_attempts=max_attempts, index_base=index_base)
     print(f"  Indexes trobats: {found_indexes}")
     print()
     
