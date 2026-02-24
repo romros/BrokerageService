@@ -5,14 +5,15 @@ test_ostium_preflight_call.py — Tests 0-network per smoke_ostium_preflight_cal
 Verifica:
 1. ENV absent (OSTIUM_RPC_URL) → FAIL AUTH_MISSING_ENV + SKIP chain/call
 2. ENV rpc_url format invàlid → FAIL AUTH_INVALID_FORMAT
-3. ENV contract format invàlid → FAIL AUTH_INVALID_FORMAT
+3. ENV contract format invàlid → FAIL (només en legacy: OSTIUM_LEGACY_TRADING_CALL=1)
 4. ENV wallet format invàlid → FAIL AUTH_INVALID_FORMAT
-5. ENV symbol desconegut → FAIL AUTH_INVALID_FORMAT
-6. Chain mismatch (stub) → FAIL CHAIN_MISMATCH + SKIP eth_call
-7. RPC liveness fail → FAIL + SKIP eth_call
-8. eth_call OK (zeros → no trade obert) → PASS
-9. eth_call CONTRACT_REVERT → FAIL CONTRACT_REVERT
-10. eth_call error xarxa → FAIL CONNECT_TIMEOUT
+5. ENV symbol desconegut → INFO + pair_id default (TradingStorage default)
+6. ENV vàlida (legacy) → cfg complet amb contract (OSTIUM_LEGACY_TRADING_CALL=1)
+7. Chain mismatch (stub) → FAIL CHAIN_MISMATCH + SKIP eth_call
+8. RPC liveness fail → FAIL + SKIP eth_call
+9. eth_call OK (zeros → no trade obert) → PASS
+10. eth_call CONTRACT_REVERT → FAIL CONTRACT_REVERT
+11. eth_call error xarxa → FAIL CONNECT_TIMEOUT
 
 Normes:
 - 0-network (cap crida real a RPC)
@@ -114,9 +115,10 @@ def test_env_rpc_url_invalid_format():
 
 
 def test_env_contract_invalid_format():
-    """OSTIUM_CONTRACT_ADDRESS format incorrecte → FAIL AUTH_INVALID_FORMAT."""
+    """OSTIUM_CONTRACT_ADDRESS format incorrecte → FAIL AUTH_INVALID_FORMAT (legacy path)."""
     results, cfg = _run_env_check({
         "OSTIUM_RPC_URL": "https://rpc.example.com",
+        "OSTIUM_LEGACY_TRADING_CALL": "1",
         "OSTIUM_CONTRACT_ADDRESS": "not-an-address",
     })
     contract_res = next((r for r in results if r.name == "ostium.pf.env.contract"), None)
@@ -147,15 +149,15 @@ def test_env_wallet_invalid_format():
 
 
 def test_env_symbol_unknown():
-    """OSTIUM_MARKET_SYMBOL=UNKNWN desconegut → FAIL AUTH_INVALID_FORMAT."""
+    """OSTIUM_MARKET_SYMBOL desconegut → INFO + pair_id default (TradingStorage default)."""
     results, cfg = _run_env_check({
         "OSTIUM_RPC_URL": "https://rpc.example.com",
         "OSTIUM_MARKET_SYMBOL": "UNKNWN",
     })
     symbol_res = next((r for r in results if r.name == "ostium.pf.env.symbol"), None)
     assert symbol_res is not None
-    assert symbol_res.status == "FAIL", f"Esperava FAIL, got {symbol_res.status}"
-    assert symbol_res.category == "AUTH_INVALID_FORMAT", f"Categoria: {symbol_res.category}"
+    assert symbol_res.status == "INFO", f"Esperava INFO (symbol desconegut → default), got {symbol_res.status}"
+    assert cfg["pair_id"] == 2, "pair_id hauria de ser default (2) quan symbol és desconegut"
     print("✓ test_env_symbol_unknown passed")
 
 
@@ -163,12 +165,13 @@ def test_env_symbol_unknown():
 
 
 def test_env_all_valid():
-    """ENV vàlida completa → tots PASS/INFO, cfg complet."""
+    """ENV vàlida completa (legacy) → tots PASS/INFO, cfg complet amb contract."""
     wallet = "0x" + "a" * 40
     contract = "0x" + "b" * 40
     results, cfg = _run_env_check({
         "OSTIUM_RPC_URL": "https://rpc.example.com",
         "OSTIUM_CHAIN_ID": "421614",
+        "OSTIUM_LEGACY_TRADING_CALL": "1",
         "OSTIUM_CONTRACT_ADDRESS": contract,
         "OSTIUM_WALLET_ADDRESS": wallet,
         "OSTIUM_MARKET_SYMBOL": "XAUUSD",
@@ -177,10 +180,12 @@ def test_env_all_valid():
     fails = [r for r in results if r.status == "FAIL"]
     assert len(fails) == 0, f"No hauria d'haver FAILs: {fails}"
     assert cfg["rpc_url"] == "https://rpc.example.com"
-    assert cfg["contract"] == contract
+    assert cfg["contract"] == contract, "legacy path ha de resoldre contract"
     assert cfg["wallet"] == wallet
     assert cfg["pair_id"] == 1  # XAUUSD = pair_id 1
     assert cfg["chain_id_expected"] == 421614
+    contract_res = next((r for r in results if r.name == "ostium.pf.env.contract"), None)
+    assert contract_res is not None and contract_res.status == "PASS", "legacy: contract ha de ser PASS"
     print("✓ test_env_all_valid passed")
 
 
