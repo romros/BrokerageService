@@ -5,6 +5,7 @@ Prefix: /api/v1/broker
 POST /orders/open i /orders/close amb JSON body.
 """
 
+import asyncio
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Callable, Any
@@ -29,6 +30,8 @@ from application.api.error_codes import (
     POSITION_NOT_FOUND,
     MIXED_SOURCE_NOT_ALLOWED,
     POSITION_ALREADY_OPEN,
+    OSTIUM_POSITIONS_TIMEOUT,
+    OSTIUM_POSITIONS_ERROR,
 )
 from application.api.models import (
     HealthResponse,
@@ -45,6 +48,9 @@ from application.errors import LiveTradingDisabledError
 from domain.errors import PositionNotFoundError, MarketNotFoundError
 from foundation.config.constants import (
     CANONICAL_TIMEZONE,
+    OSTIUM_POSITIONS_TIMEOUT_S,
+    TRADE_TX_WAIT_TIMEOUT_S_ENV,
+    DEFAULT_TRADE_TX_WAIT_TIMEOUT_S,
     CANONICAL_TIMEZONE_NAME,
     DATA_LAYER_ENABLED_ENV,
     DATA_LAYER_STARTUP_GATE_ENV,
@@ -106,6 +112,9 @@ _data_layer_write_mode: str = "realtime"
 _ostium_ingest_enabled: bool = False
 _ostium_ingest_poll_s: int = 2
 _data_layer_reader: Optional[Any] = None  # Split vNext Phase 2: IDataLayerReader (HTTP o local)
+
+# T5.11b: idempotència close — (venue, position_id, client_close_id) → result
+_close_idempotency_cache: dict = {}
 
 
 def set_broker_deps(
@@ -243,10 +252,14 @@ class OrderOpenResponse(BaseModel):
     executed_price: float
     executed_size: float
     tx_hash: str = ""
+    pending: Optional[bool] = None  # True si 202 (tx enviada, wait timeout)
 
 
 class OrderCloseResponse(BaseModel):
     success: bool
+    pending: Optional[bool] = None  # True si 202 (tx enviada, wait timeout)
+    tx_hash: str = ""
+    position_id: str = ""
 
 
 # ============ Core ============
@@ -779,28 +792,58 @@ async def get_balance(venue: str = Query(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def _fetch_positions(adapter: Any, venue: str) -> PositionsResponse:
+    """Helper: obté posicions i mark prices. Usat per get_positions."""
+    positions = await adapter.get_open_positions()
+    mark_prices: dict[str, float] = {}
+    for p in positions:
+        if p.symbol not in mark_prices:
+            if getattr(p, "mark_price", None) is not None:
+                mark_prices[p.symbol] = p.mark_price
+            else:
+                try:
+                    px = await adapter.get_latest_price(p.symbol)
+                    mark_prices[p.symbol] = px.mid
+                except Exception as e:
+                    logger.warning("get_positions: no mark price for %s: %s", p.symbol, e)
+    ratio = _get_paper_maintenance_ratio()
+    return _map_positions_response(venue, positions, mark_prices, maintenance_margin_ratio=ratio)
+
+
 @trading_router.get("/positions", response_model=PositionsResponse)
 async def get_positions(venue: str = Query(...)):
     """Posicions obertes amb mark_price i unrealized_pnl."""
     adapter = _get_adapter_or_http_error(venue)
+
+    # T5.5: Ostium LIVE — timeout per evitar penjar (RPC chain)
+    use_timeout = (
+        venue.lower() == "ostium"
+        and str(_mode).lower() == "live"
+    )
+    timeout_s = OSTIUM_POSITIONS_TIMEOUT_S
+
     try:
-        positions = await adapter.get_open_positions()
-        # Mark price: preferir el de la posició (Lighter retorna unrealized_pnl oficial → derivem mark_price)
-        # Fallback: order book mid del nostre price feed
-        mark_prices: dict[str, float] = {}
-        for p in positions:
-            if p.symbol not in mark_prices:
-                if getattr(p, "mark_price", None) is not None:
-                    mark_prices[p.symbol] = p.mark_price
-                else:
-                    try:
-                        px = await adapter.get_latest_price(p.symbol)
-                        mark_prices[p.symbol] = px.mid
-                    except Exception as e:
-                        logger.warning("get_positions: no mark price for %s: %s", p.symbol, e)
-        ratio = _get_paper_maintenance_ratio()
-        return _map_positions_response(venue, positions, mark_prices, maintenance_margin_ratio=ratio)
+        if use_timeout:
+            result = await asyncio.wait_for(
+                _fetch_positions(adapter, venue),
+                timeout=timeout_s,
+            )
+        else:
+            result = await _fetch_positions(adapter, venue)
+        return result
+    except asyncio.TimeoutError:
+        logger.warning("OSTIUM_POSITIONS_TIMEOUT: venue=%s timeout_s=%d", venue, timeout_s)
+        return JSONResponse(
+            status_code=504,
+            content={"error": OSTIUM_POSITIONS_TIMEOUT, "timeout_s": timeout_s},
+        )
     except Exception as e:
+        if use_timeout:
+            logger.warning("OSTIUM_POSITIONS_ERROR: venue=%s detail=%s", venue, e)
+            return JSONResponse(
+                status_code=502,
+                content={"error": OSTIUM_POSITIONS_ERROR, "detail": str(e)},
+            )
         logger.error("get_positions %s: %s", venue, e)
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -900,7 +943,19 @@ async def _do_order_open(req: OrderOpenRequest) -> OrderOpenResponse:
 
 
 async def _do_order_close(req: OrderCloseRequest) -> OrderCloseResponse:
-    """Lògica comuna per tancar posició. Delega a TradingCore (Phase E)."""
+    """Lògica comuna per tancar posició. Delega a TradingCore (Phase E). Idempotència per client_close_id."""
+    cid = getattr(req, "client_close_id", None) or ""
+    if cid:
+        key = (req.venue, req.position_id, cid)
+        if key in _close_idempotency_cache:
+            cached = _close_idempotency_cache[key]
+            logger.info("order_close idempotent: venue=%s position_id=%s client_close_id=%s", req.venue, req.position_id, cid)
+            return OrderCloseResponse(
+                success=cached["success"],
+                tx_hash=cached.get("tx_hash", ""),
+                position_id=cached.get("position_id", req.position_id),
+            )
+
     from application.trading.trading_core import (
         TradingCore,
         AdapterNotAvailableError,
@@ -915,7 +970,14 @@ async def _do_order_close(req: OrderCloseRequest) -> OrderCloseResponse:
     )
     try:
         result = await core.close_order(req)
-        return OrderCloseResponse(success=result.success)
+        resp = OrderCloseResponse(success=result.success, position_id=req.position_id)
+        if cid:
+            _close_idempotency_cache[(req.venue, req.position_id, cid)] = {
+                "success": result.success,
+                "tx_hash": getattr(result, "tx_hash", "") or "",
+                "position_id": req.position_id,
+            }
+        return resp
     except LiveTradingDisabledError as e:
         _http_error(403, LIVE_TRADING_DISABLED, str(e))
     except AdapterNotAvailableError as e:
@@ -929,16 +991,58 @@ async def _do_order_close(req: OrderCloseRequest) -> OrderCloseResponse:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _get_trade_tx_wait_timeout_s() -> float:
+    """Timeout per open/close (wait receipt, reconcile). Default 15s."""
+    raw = os.getenv(TRADE_TX_WAIT_TIMEOUT_S_ENV, str(DEFAULT_TRADE_TX_WAIT_TIMEOUT_S)).strip()
+    try:
+        return float(raw) if raw else DEFAULT_TRADE_TX_WAIT_TIMEOUT_S
+    except ValueError:
+        return DEFAULT_TRADE_TX_WAIT_TIMEOUT_S
+
+
 @trading_router.post("/orders/open", response_model=OrderOpenResponse)
 async def order_open(body: OrderOpenRequest = Body(...)):
-    """Obrir posició. JSON body. side: long|short."""
-    return await _do_order_open(body)
+    """Obrir posició. JSON body. side: long|short. Si timeout → 202 pending."""
+    timeout_s = _get_trade_tx_wait_timeout_s()
+    try:
+        result = await asyncio.wait_for(_do_order_open(body), timeout=timeout_s)
+        logger.info("order_open tx_confirmed: venue=%s symbol=%s position_id=%s", body.venue, body.symbol, result.position_id)
+        return result
+    except asyncio.TimeoutError:
+        logger.warning("order_open tx_wait_timeout: venue=%s symbol=%s timeout_s=%.0f", body.venue, body.symbol, timeout_s)
+        return JSONResponse(
+            status_code=202,
+            content={
+                "success": True,
+                "pending": True,
+                "position_id": "",
+                "order_id": "",
+                "executed_price": 0.0,
+                "executed_size": 0.0,
+                "tx_hash": "",
+            },
+        )
 
 
 @trading_router.post("/orders/close", response_model=OrderCloseResponse)
 async def order_close(body: OrderCloseRequest = Body(...)):
-    """Tancar posició. JSON body. percent dins (0, 100]."""
-    return await _do_order_close(body)
+    """Tancar posició. JSON body. percent dins (0, 100]. Si timeout → 202 pending."""
+    timeout_s = _get_trade_tx_wait_timeout_s()
+    try:
+        result = await asyncio.wait_for(_do_order_close(body), timeout=timeout_s)
+        logger.info("order_close tx_confirmed: venue=%s position_id=%s", body.venue, body.position_id)
+        return result
+    except asyncio.TimeoutError:
+        logger.warning("order_close tx_wait_timeout: venue=%s position_id=%s timeout_s=%.0f", body.venue, body.position_id, timeout_s)
+        return JSONResponse(
+            status_code=202,
+            content={
+                "success": True,
+                "pending": True,
+                "tx_hash": "",
+                "position_id": body.position_id,
+            },
+        )
 
 
 @trading_router.get("/preflight")

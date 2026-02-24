@@ -216,3 +216,7 @@ class OrderCloseRequest(BaseModel):
     venue: str = Field(description="Venue (lighter)")
     position_id: str = Field(description="ID de la posició (ex: lighter:0)")
     percent: float = Field(default=100.0, gt=0, le=100, description="Percentatge (0, 100]")
+    client_close_id: Optional[str] = Field(
+        default=None,
+        description="Clau d'idempotència (opcional). Si s'envia, retries retornen el mateix resultat sense segona TX.",
+    )

@@ -235,3 +235,10 @@ DATA_QUALITY_MAX_MISSING_MINUTES_ENV = "DATA_QUALITY_MAX_MISSING_MINUTES"
 DEFAULT_QUALITY_GATE_MAX_FRESHNESS_SEC = 300   # 5 min (mercat tancat → ok si 0 gaps)
 DEFAULT_QUALITY_GATE_MIN_COMPLETENESS = 0.95   # 95% cobertura mínima
 DEFAULT_QUALITY_GATE_MAX_GAP_S = 180           # 3 min màxim gap acceptable
+
+# T5.5: GET /positions ostium LIVE — timeout per evitar penjar (RPC chain)
+OSTIUM_POSITIONS_TIMEOUT_S = 5
+
+# T5.11a: open/close — timeout per wait receipt/reconcile; si timeout → 202 Accepted
+TRADE_TX_WAIT_TIMEOUT_S_ENV = "TRADE_TX_WAIT_TIMEOUT_S"
+DEFAULT_TRADE_TX_WAIT_TIMEOUT_S = 15
