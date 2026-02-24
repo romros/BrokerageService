@@ -304,10 +304,13 @@ class OstiumExecutionAdapter(IVenueAdapter):
             )
 
         position_id = _make_position_id(receipt.pair_id, receipt.trade_index)
-        logger.info(
-            "open_position OK: symbol=%s position_id=%s tx=%s",
-            sym_upper, position_id, receipt.tx_hash[:20],
-        )
+        if type(self._client).__name__ == "FakeOstiumClient":
+            logger.info("paper mode → stored position_id=%s", position_id)
+        else:
+            logger.info(
+                "open_position OK: symbol=%s position_id=%s tx=%s",
+                sym_upper, position_id, receipt.tx_hash[:20],
+            )
 
         result = OrderResult(
             success=True,
@@ -382,10 +385,30 @@ class OstiumExecutionAdapter(IVenueAdapter):
         if self._client is None:
             return []
 
-        # PAPER: FakeOstiumClient → no network, retornem [] amb log
+        # PAPER: FakeOstiumClient retorna posicions des de _trades (sense xarxa)
         if type(self._client).__name__ == "FakeOstiumClient":
-            logger.debug("OstiumExecutionAdapter.get_open_positions: paper mode → no network")
-            return []
+            raw_trades = await self._client.get_open_trades(
+                trader_address="",
+                pair_ids=KNOWN_PAIR_IDS,
+            )
+            positions = []
+            for trade in raw_trades:
+                symbol = PAIR_ID_TO_SYMBOL.get(trade.pair_id, f"OSTIUM_{trade.pair_id}")
+                pos_id = _make_position_id(trade.pair_id, trade.trade_index)
+                positions.append(Position(
+                    pair_id=trade.pair_id,
+                    trade_index=trade.trade_index,
+                    symbol=symbol,
+                    is_long=trade.is_long,
+                    collateral=trade.collateral,
+                    leverage=float(trade.leverage),
+                    open_price=trade.open_price,
+                    current_price=trade.open_price,
+                    sl_price=trade.sl if trade.sl > 0 else None,
+                    tp_price=trade.tp if trade.tp > 0 else None,
+                    venue_position_id=pos_id,
+                ))
+            return positions
 
         # Adreça del trader: si no la tenim, passem "" i el client farà servir la seva (després de _ensure_sdk)
         trader_address = getattr(self._client, "_trader_address", None) or ""

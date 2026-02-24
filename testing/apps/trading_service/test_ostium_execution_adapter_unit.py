@@ -8,8 +8,8 @@ Verifica:
 3. close_position OK → FakeOstiumClient.close_trade cridat, retorna True
 4. close_position sense client → VenueAPIError
 5. update_sl / update_tp → delegats al client, retornen True
-6. get_open_positions → retorna Position[] des de FakeOstiumClient
-7. get_open_positions sense trader_address → retorna []
+6. get_open_positions → retorna Position[] des de FakeOstiumClient._trades
+7. get_open_positions amb FakeOstiumClient sense trades → []
 8. health_check True/False → delega al client
 9. position_id format → parse i make correctes
 10. symbol desconegut → MarketNotFoundError
@@ -60,7 +60,8 @@ def test_open_position_ok():
         leverage=10.0,
     ))
     assert result.success is True
-    assert result.position_id == "ostium:0:0"
+    pair_id = SYMBOL_TO_PAIR_ID["EURUSD"]
+    assert result.position_id == f"ostium:{pair_id}:0"
     assert result.executed_price == 1.085
     assert result.executed_size == 1000.0  # 100 * 10
     assert result.tx_hash.startswith("0xfake")
@@ -135,17 +136,18 @@ def test_open_position_no_client_raises():
 def test_close_position_ok():
     """close_position OK → True i crida close_trade al client."""
     adapter = _make_fake_adapter(mid_price=1.08600)
+    pair_id = SYMBOL_TO_PAIR_ID["EURUSD"]
 
     # Primer obrim per tenir algo a tancar
     run(adapter.open_position("EURUSD", True, 100.0, 5.0))
 
-    ok = run(adapter.close_position("ostium:0:0"))
+    ok = run(adapter.close_position(f"ostium:{pair_id}:0"))
     assert ok is True
 
     fake: FakeOstiumClient = adapter._client
     assert len(fake.close_calls) == 1
     call = fake.close_calls[0]
-    assert call["pair_id"] == 0
+    assert call["pair_id"] == pair_id
     assert call["trade_index"] == 0
     assert call["at_price"] == 1.08600
 
@@ -153,18 +155,20 @@ def test_close_position_ok():
 def test_close_position_client_error_returns_false():
     """Si close_trade falla, close_position retorna False."""
     adapter = _make_fake_adapter(close_should_fail=True)
+    pair_id = SYMBOL_TO_PAIR_ID["EURUSD"]
     # Obrir un trade primer (idempotència: si no existeix → True sense cridar SDK)
     run(adapter.open_position("EURUSD", True, 100.0, 5.0))
     # Ara el trade existeix → el check idempotent passa (collateral>0), i close_trade falla
-    ok = run(adapter.close_position("ostium:0:0"))
+    ok = run(adapter.close_position(f"ostium:{pair_id}:0"))
     assert ok is False
 
 
 def test_close_position_no_client_raises():
     """Adapter sense client → VenueAPIError."""
     adapter = OstiumExecutionAdapter()
+    pair_id = SYMBOL_TO_PAIR_ID["EURUSD"]
     try:
-        run(adapter.close_position("ostium:0:0"))
+        run(adapter.close_position(f"ostium:{pair_id}:0"))
         assert False
     except VenueAPIError:
         pass
@@ -183,12 +187,14 @@ def test_close_position_invalid_format_raises():
 def test_update_sl_delegates_to_client():
     """update_sl → IOstiumClient.update_sl cridada."""
     adapter = _make_fake_adapter()
-    ok = run(adapter.update_sl("ostium:0:0", new_sl=1.07000))
+    pair_id = SYMBOL_TO_PAIR_ID["EURUSD"]
+    run(adapter.open_position("EURUSD", True, 100.0, 5.0))
+    ok = run(adapter.update_sl(f"ostium:{pair_id}:0", new_sl=1.07000))
     assert ok is True
     fake: FakeOstiumClient = adapter._client
     assert len(fake.sl_calls) == 1
     assert fake.sl_calls[0]["new_sl"] == 1.07000
-    assert fake.sl_calls[0]["pair_id"] == 0
+    assert fake.sl_calls[0]["pair_id"] == pair_id
     assert fake.sl_calls[0]["trade_index"] == 0
 
 
@@ -220,10 +226,11 @@ def test_get_open_positions_returns_positions():
     assert all(p.symbol == "EURUSD" for p in positions)
     assert any(p.is_long for p in positions)
     assert any(not p.is_long for p in positions)
-    # Verificar format position_id
+    # Verificar format position_id (pair_id = SYMBOL_TO_PAIR_ID["EURUSD"])
+    pair_id = SYMBOL_TO_PAIR_ID["EURUSD"]
     pids = {p.venue_position_id for p in positions}
-    assert "ostium:0:0" in pids
-    assert "ostium:0:1" in pids
+    assert f"ostium:{pair_id}:0" in pids
+    assert f"ostium:{pair_id}:1" in pids
 
 
 def test_get_open_positions_no_trader_address_returns_empty():
@@ -333,8 +340,9 @@ def test_short_position_ok():
 def test_close_position_idempotent_already_closed():
     """close_position sobre trade ja tancat → True sense cridar close_trade."""
     adapter = _make_fake_adapter()
+    pair_id = SYMBOL_TO_PAIR_ID["EURUSD"]
     # FakeOstiumClient buit (cap trade) → get_trade_info retorna None → idempotent
-    ok = run(adapter.close_position("ostium:0:0"))
+    ok = run(adapter.close_position(f"ostium:{pair_id}:0"))
     assert ok is True
     fake: FakeOstiumClient = adapter._client
     assert len(fake.close_calls) == 0, "close_trade no hauria de ser cridat si ja tancat"
@@ -363,7 +371,7 @@ def test_get_position_metrics_long_profit():
     current_price = 1.09000  # +0.926%
     fake = FakeOstiumClient(mid_price=open_price)
     adapter = OstiumExecutionAdapter(client=fake)
-    fake._trader_address = "0xFakeTrader"
+    pair_id = SYMBOL_TO_PAIR_ID["EURUSD"]
 
     # Obrir posició (open_price=1.08, collateral=100, leverage=10, notional=1000)
     run(adapter.open_position("EURUSD", True, 100.0, 10.0))
@@ -371,7 +379,7 @@ def test_get_position_metrics_long_profit():
     # Canviar preu del fake per simular profit
     fake.mid_price = current_price
 
-    metrics = run(adapter.get_position_metrics("ostium:0:0"))
+    metrics = run(adapter.get_position_metrics(f"ostium:{pair_id}:0"))
     assert metrics.unrealized_pnl > 0, f"PnL hauria de ser positiu, got {metrics.unrealized_pnl}"
     assert metrics.unrealized_pnl_percent > 0
     assert metrics.current_price == current_price
@@ -384,8 +392,9 @@ def test_get_position_metrics_long_profit():
 def test_get_position_metrics_not_found():
     """get_position_metrics sobre trade inexistent → VenueAPIError."""
     adapter = _make_fake_adapter()
+    pair_id = SYMBOL_TO_PAIR_ID["EURUSD"]
     try:
-        run(adapter.get_position_metrics("ostium:0:99"))
+        run(adapter.get_position_metrics(f"ostium:{pair_id}:99"))
         assert False, "Hauria d'haver llançat VenueAPIError"
     except VenueAPIError as e:
         assert (
@@ -408,13 +417,14 @@ def test_open_position_idempotent_disc(tmp_path=None):
     fake = FakeOstiumClient(mid_price=1.085)
     adapter = OstiumExecutionAdapter(client=fake, _idempotency_file=idem_file)
 
+    pair_id = SYMBOL_TO_PAIR_ID["EURUSD"]
     # Primera crida
     r1 = run(adapter.open_position(
         symbol="EURUSD", is_long=True, collateral=100.0, leverage=5.0,
         client_order_id="order-abc-123",
     ))
     assert r1.success is True
-    assert r1.position_id == "ostium:0:0"
+    assert r1.position_id == f"ostium:{pair_id}:0"
     assert len(fake.open_calls) == 1
 
     # Segona crida — mateixa client_order_id
