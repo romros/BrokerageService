@@ -272,6 +272,7 @@ def main():
         testing_dir / "unit" / "test_warmup_suppresses_missing_gate.py",  # warmup window no DEGRADED (0 network)
         testing_dir / "unit" / "test_docker_user_mapping_config.py",  # run_soak --user (0 network)
         testing_dir / "unit" / "test_compose_profiles.py",  # profiles resolen paths, compose config (0 network)
+        testing_dir / "unit" / "test_architecture_boundaries.py",  # T5.39 3-layer import prohibicions (0 network)
         testing_dir / "unit" / "test_symbol_selection_soak.py",  # P7c.1 select_soak_symbol (0 network)
         testing_dir / "unit" / "test_p7_mixed_gated_stitching.py",  # P7 Mixed gated stitching (0 network)
         testing_dir / "unit" / "test_p8_read_through_response_only.py",  # P8.0 Read-through gap serving (0 network)

@@ -144,10 +144,8 @@ def create_app(role: str | None = None) -> FastAPI:
 
         # --- Adapter + market data (només trading / monolithic) ---
         if _role_starts_adapter(role):
-            from infrastructure.paper_market_data import (
-                build_paper_market_data_provider,
-                get_symbols_from_env,
-            )
+            from application.services.paper_market_data_builder import build_paper_market_data_provider
+            from infrastructure.paper_market_data import get_symbols_from_env
 
             if use_paper_execution:
                 symbols = get_symbols_from_env()

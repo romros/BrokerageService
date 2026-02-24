@@ -1,5 +1,5 @@
 """
-Paper market data builder — genèric, sense venues legacy.
+Paper market data builder — genèric, sense venues legacy (T5.39: application layer).
 """
 
 from zoneinfo import ZoneInfo
@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 from application.services.live_marketdata_service import LiveMarketDataService
 from domain.interfaces import ICandleStore
 
-from .config import get_symbols_from_env, get_tick_interval_ms
-from .fake_price_feed_client import FakePriceFeedClient
+from infrastructure.paper_market_data.config import get_symbols_from_env, get_tick_interval_ms
+from infrastructure.paper_market_data.fake_price_feed_client import FakePriceFeedClient
 
 
 def build_paper_market_data_provider(

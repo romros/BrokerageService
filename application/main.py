@@ -116,10 +116,8 @@ async def lifespan(app: FastAPI):
     # PAPER: zero tx. Kill switch: ENABLE_LIVE_TRADING=0 → paper. No paper si venue=gtrade (backtest).
     use_paper_execution = (mode_lower == "paper" or not enable_live) and venue in ("", "lighter", "paper")
 
-    from infrastructure.paper_market_data import (
-        build_paper_market_data_provider,
-        get_symbols_from_env,
-    )
+    from application.services.paper_market_data_builder import build_paper_market_data_provider
+    from infrastructure.paper_market_data import get_symbols_from_env
 
     if use_paper_execution:
         # PAPER: execució simulada, zero tx. Market data fake (Ostium-first, T5.35).
