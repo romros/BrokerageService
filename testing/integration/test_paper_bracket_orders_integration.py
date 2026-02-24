@@ -81,7 +81,7 @@ def main() -> int:
 
         print("✓ Broker ready")
 
-        # Open LONG amb tp_price=3500.5 (fake feed comença 3500, +0.01/tick, ~50 ticks)
+        # Open LONG amb tp_price=3500.5 (fake feed comença 3500, +0.01/tick, ~50 ticks). T5.19: 202 + poll
         open_url = f"{BROKER_URL}/api/v1/broker/orders/open"
         body = {
             "venue": "paper",
@@ -93,12 +93,26 @@ def main() -> int:
             "tp_price": 3500.5,
         }
         r = requests.post(open_url, json=body, timeout=10)
-        if r.status_code != 200:
+        if r.status_code != 202:
             print(f"✗ Open failed: {r.status_code} {r.text[:200]}")
             return 1
         data = r.json()
-        if not data.get("success"):
+        if not data.get("success") or not data.get("operation_id"):
             print(f"✗ Open not success: {data}")
+            return 1
+        op_id = data["operation_id"]
+        for _ in range(30):
+            r_op = requests.get(f"{BROKER_URL}/api/v1/broker/operations/{op_id}", timeout=5)
+            if r_op.status_code == 200:
+                op = r_op.json()
+                if op.get("status") == "confirmed":
+                    break
+                if op.get("status") == "error":
+                    print(f"✗ Open operation error: {op.get('error')}")
+                    return 1
+            time.sleep(0.2)
+        else:
+            print(f"✗ Open operation {op_id} no confirmed en 6s")
             return 1
         print(f"✓ Opened position (tp=3500.5, sl=3499)")
 

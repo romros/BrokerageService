@@ -22,8 +22,11 @@ docker compose -f docker-compose.yml -f deploy/compose/overrides/ostium.yml conf
 
 **Ostium LIVE (trading_service sol, sense tocar realtime):**
 ```bash
-# Wrapper canònic: scripts/run_ostium_live_smoke.sh
-./scripts/run_ostium_live_smoke.sh
+# Una comanda (T5.22): up + smoke
+./scripts/up_ostium_live.sh
+
+# O manual: smoke amb --recreate --clean
+./scripts/run_ostium_live_smoke.sh --recreate --clean
 
 # Manual: recrear només trading_service amb config Ostium LIVE
 set -a && source lab/ostium/.env && set +a

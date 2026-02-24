@@ -76,7 +76,8 @@ def _make_ok_gate_reader() -> MagicMock:
 
 
 def test_quality_gate_bad_blocks_order_open():
-    """gate=BAD → POST /orders/open retorna 422 DATA_QUALITY_GATE_BAD, cap adapter cridat."""
+    """gate=BAD → 202 Fast-ACK, operation acaba en error. T5.19: gate corre en background."""
+    import time
     app = create_app()
 
     mock_adapter = AsyncMock()
@@ -99,15 +100,27 @@ def test_quality_gate_bad_blocks_order_open():
             "leverage": 2.0,
         })
 
-    assert r.status_code == 422, f"Expected 422, got {r.status_code}: {r.text}"
-    data = r.json()
-    assert "DATA_QUALITY_GATE_BAD" in str(data), f"Expected DATA_QUALITY_GATE_BAD in {data}"
-    assert not mock_adapter.open_position.called, "Executor NO ha de ser cridat quan gate=BAD"
-    print(f"✓ test_quality_gate_bad_blocks_order_open passed: status={r.status_code} detail={data}")
+        assert r.status_code == 202, f"Expected 202 Fast-ACK, got {r.status_code}: {r.text}"
+        data = r.json()
+        op_id = data.get("operation_id")
+        assert op_id
+        # Poll fins error (gate corre en background; següent request executa el task)
+        for _ in range(50):
+            r_op = client.get(f"/api/v1/broker/operations/{op_id}")
+            if r_op.status_code == 200:
+                op = r_op.json()
+                if op.get("status") == "error":
+                    assert "DATA_QUALITY_GATE_BAD" in str(op.get("error", "")), op
+                    assert not mock_adapter.open_position.called
+                    print(f"✓ test_quality_gate_bad_blocks_order_open passed")
+                    return
+            time.sleep(0.05)
+    raise AssertionError(f"Operation {op_id} no va a error")
 
 
 def test_quality_gate_bad_does_not_call_venue():
-    """gate=BAD → venue adapter.open_position() NO és cridat mai."""
+    """gate=BAD → venue adapter.open_position() NO és cridat mai. T5.19: 202 + poll error."""
+    import time
     app = create_app()
 
     mock_adapter = AsyncMock()
@@ -125,20 +138,29 @@ def test_quality_gate_bad_does_not_call_venue():
             mode="paper",
             venue="paper",
         )
-        client.post("/api/v1/broker/orders/open", json={
+        r = client.post("/api/v1/broker/orders/open", json={
             "venue": "paper",
             "symbol": "XAUUSD",
             "side": "short",
             "collateral": 50.0,
             "leverage": 1.0,
         })
+        assert r.status_code == 202
+        op_id = r.json().get("operation_id")
+        assert op_id
+        for _ in range(50):
+            r_op = client.get(f"/api/v1/broker/operations/{op_id}")
+            if r_op.status_code == 200 and r_op.json().get("status") == "error":
+                break
+            time.sleep(0.05)
 
     assert not mock_adapter.open_position.called, "open_position NO s'ha de cridar quan gate=BAD"
     print("✓ test_quality_gate_bad_does_not_call_venue passed")
 
 
 def test_quality_gate_ok_allows_order_open():
-    """gate=OK → execució continua, adapter.open_position() és cridat."""
+    """gate=OK → 202 + poll confirmed, adapter.open_position() és cridat. T5.19 Fast-ACK."""
+    import time
     app = create_app()
 
     mock_result = MagicMock()
@@ -169,13 +191,24 @@ def test_quality_gate_ok_allows_order_open():
             "leverage": 2.0,
         })
 
+        assert r.status_code == 202, f"Expected 202 Fast-ACK, got {r.status_code}: {r.text}"
+        op_id = r.json().get("operation_id")
+        assert op_id
+        for _ in range(50):
+            r_op = client.get(f"/api/v1/broker/operations/{op_id}")
+            if r_op.status_code == 200 and r_op.json().get("status") == "confirmed":
+                break
+            time.sleep(0.05)
+        else:
+            raise AssertionError(f"Operation {op_id} no confirmed")
+
     assert mock_adapter.open_position.called, "open_position HAURIA de ser cridat quan gate=OK"
-    assert r.status_code == 200, f"Expected 200, got {r.status_code}: {r.text}"
-    print(f"✓ test_quality_gate_ok_allows_order_open passed: status={r.status_code}")
+    print(f"✓ test_quality_gate_ok_allows_order_open passed")
 
 
 def test_quality_gate_not_applied_without_reader():
-    """Sense data_layer_reader, el gate no s'aplica (backward compat monolítica)."""
+    """Sense data_layer_reader, el gate no s'aplica. T5.19: 202 + poll confirmed."""
+    import time
     app = create_app()
 
     mock_result = MagicMock()
@@ -204,8 +237,17 @@ def test_quality_gate_not_applied_without_reader():
             "leverage": 2.0,
         })
 
+        assert r.status_code == 202, f"Expected 202 Fast-ACK, got {r.status_code}: {r.text}"
+        op_id = r.json().get("operation_id")
+        for _ in range(50):
+            r_op = client.get(f"/api/v1/broker/operations/{op_id}")
+            if r_op.status_code == 200 and r_op.json().get("status") == "confirmed":
+                break
+            time.sleep(0.05)
+        else:
+            raise AssertionError(f"Operation {op_id} no confirmed")
+
     assert mock_adapter.open_position.called, "open_position HAURIA de ser cridat sense reader"
-    assert r.status_code == 200, f"Expected 200 sense reader, got {r.status_code}: {r.text}"
     print("✓ test_quality_gate_not_applied_without_reader passed")
 
 

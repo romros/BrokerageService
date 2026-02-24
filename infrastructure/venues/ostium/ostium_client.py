@@ -33,8 +33,10 @@ Ostium event:
 from __future__ import annotations
 
 import asyncio
+import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from foundation.logging import get_logger
@@ -72,6 +74,9 @@ ORDER_OPENED_TOPIC = "0x" + "b1c6bd0c9c6a36fbb3b8cccda60a0ad29e2f28fb6e5c7c6b6a6
 
 FIND_TRADE_MAX_INDEX = 32  # lab scripts cerquen 0..N; 32 cobreix diversos trades per pair
 
+# Trade(9) decode (TradingStorage.getOpenTrade) — font: lab/ostium/abi/tradingStorage_getOpenTrade.json
+TRADE_DECODE_TYPES = ["(uint256,uint192,uint192,uint192,address,uint32,uint16,uint8,bool)"]
+
 # ── USDC ERC-20 (per get_balance) ────────────────────────────────────────────
 
 USDC_CONTRACT_TESTNET = "0xe73B11Fb1e3eeEe8AF2a23079A4410Fe1B370548"  # Confirmat al lab
@@ -85,6 +90,12 @@ USDC_BALANCE_ABI = [{
     "stateMutability": "view",
     "type": "function",
 }]
+
+
+def _load_trading_storage_abi() -> List[Dict[str, Any]]:
+    """Carrega ABI mínima TradingStorage.getOpenTrade des del core (no path lab)."""
+    abi_path = Path(__file__).resolve().parent / "abi" / "tradingStorage_getOpenTrade.json"
+    return json.loads(abi_path.read_text(encoding="utf-8"))
 
 
 # ── Dataclasses de resultat ──────────────────────────────────────────────────
@@ -220,6 +231,7 @@ class OstiumClient(IOstiumClient):
         self._sdk: Any = None
         self._w3: Any = None
         self._contract: Any = None
+        self._storage_contract: Any = None
         self._usdc_contract: Any = None
         self._trader_address: Optional[str] = None
 
@@ -243,6 +255,11 @@ class OstiumClient(IOstiumClient):
         self._contract = self._w3.eth.contract(
             address=Web3.to_checksum_address(contract_addr),
             abi=GET_OPEN_TRADE_ABI,
+        )
+        storage_addr = config.contracts["tradingStorage"]
+        self._storage_contract = self._w3.eth.contract(
+            address=Web3.to_checksum_address(storage_addr),
+            abi=_load_trading_storage_abi(),
         )
         usdc_addr = USDC_CONTRACT_TESTNET if self._network == "testnet" else USDC_CONTRACT_MAINNET
         self._usdc_contract = self._w3.eth.contract(
@@ -289,15 +306,15 @@ class OstiumClient(IOstiumClient):
     def _find_trade_index_sync(
         self, trader: str, pair_id: int, max_idx: int = FIND_TRADE_MAX_INDEX
     ) -> Optional[int]:
-        """Brute-force 0..max_idx: retorna el primer index amb collateral > 0."""
+        """Brute-force 0..max_idx: retorna el primer index amb collateral>0 i openPrice>0 (Trade(9))."""
+        trader_checksum = self._w3.to_checksum_address(trader)
         for idx in range(max_idx):
             try:
-                result = self._contract.functions.getOpenTrade(
-                    self._w3.to_checksum_address(trader),
-                    pair_id,
-                    idx,
+                result = self._storage_contract.functions.getOpenTrade(
+                    trader_checksum, pair_id, idx
                 ).call()
-                if result[3] > 0:  # collateral > 0
+                collateral, open_price = result[0], result[1]
+                if collateral > 0 and open_price > 0:
                     return idx
             except Exception:
                 continue
@@ -455,35 +472,30 @@ class OstiumClient(IOstiumClient):
 
         def _scan() -> List[OpenTradeInfo]:
             found = []
+            trader_checksum = self._w3.to_checksum_address(trader_address)
             for pid in pair_ids:
                 for idx in range(FIND_TRADE_MAX_INDEX):
                     try:
-                        r = self._contract.functions.getOpenTrade(
-                            self._w3.to_checksum_address(trader_address),
-                            pid,
-                            idx,
+                        r = self._storage_contract.functions.getOpenTrade(
+                            trader_checksum, pid, idx
                         ).call()
-                        collateral = r[3]
-                        if collateral <= 0:
+                        collateral, open_price = r[0], r[1]
+                        if collateral <= 0 or open_price <= 0:
                             continue
-                        # Escala: Ostium retorna valors en wei (1e18) o en unitats USDC directes
-                        # Basant-nos en el lab: collateral en wei → dividir per 1e18
-                        collateral_usdc = collateral / 1e18
-                        open_price_raw = r[0]
-                        open_price = open_price_raw / 1e18 if open_price_raw > 1e10 else float(open_price_raw)
-                        tp_raw = r[1]
-                        sl_raw = r[2]
-                        tp = tp_raw / 1e18 if tp_raw > 1e10 else float(tp_raw)
-                        sl = sl_raw / 1e18 if sl_raw > 1e10 else float(sl_raw)
+                        # Trade(9): collateral (uint256, PRECISION_6 USDC), openPrice/tp/sl (uint192, 1e18)
+                        collateral_usdc = collateral / 1e6
+                        open_price_f = open_price / 1e18
+                        tp = r[2] / 1e18 if r[2] > 0 else 0.0
+                        sl = r[3] / 1e18 if r[3] > 0 else 0.0
                         found.append(OpenTradeInfo(
                             pair_id=pid,
                             trade_index=idx,
-                            open_price=open_price,
+                            open_price=open_price_f,
                             tp=tp,
                             sl=sl,
                             collateral=collateral_usdc,
-                            leverage=int(r[4]),
-                            is_long=bool(r[5]),
+                            leverage=int(r[5]),
+                            is_long=bool(r[8]),
                         ))
                     except Exception:
                         continue
@@ -518,21 +530,18 @@ class OstiumClient(IOstiumClient):
         loop = asyncio.get_event_loop()
 
         def _call() -> Optional[OpenTradeInfo]:
-            r = self._contract.functions.getOpenTrade(
+            r = self._storage_contract.functions.getOpenTrade(
                 self._w3.to_checksum_address(self._trader_address),
                 pair_id,
                 trade_index,
             ).call()
-            collateral_raw = r[3]
-            if collateral_raw <= 0:
+            collateral_raw, open_price_raw = r[0], r[1]
+            if collateral_raw <= 0 or open_price_raw <= 0:
                 return None
-            collateral = collateral_raw / 1e18
-            open_price_raw = r[0]
-            open_price = open_price_raw / 1e18 if open_price_raw > 1e10 else float(open_price_raw)
-            tp_raw = r[1]
-            sl_raw = r[2]
-            tp = tp_raw / 1e18 if tp_raw > 1e10 else float(tp_raw)
-            sl = sl_raw / 1e18 if sl_raw > 1e10 else float(sl_raw)
+            collateral = collateral_raw / 1e6
+            open_price = open_price_raw / 1e18
+            tp = r[2] / 1e18 if r[2] > 0 else 0.0
+            sl = r[3] / 1e18 if r[3] > 0 else 0.0
             return OpenTradeInfo(
                 pair_id=pair_id,
                 trade_index=trade_index,
@@ -540,8 +549,8 @@ class OstiumClient(IOstiumClient):
                 tp=tp,
                 sl=sl,
                 collateral=collateral,
-                leverage=int(r[4]),
-                is_long=bool(r[5]),
+                leverage=int(r[5]),
+                is_long=bool(r[8]),
             )
 
         return await loop.run_in_executor(None, _call)

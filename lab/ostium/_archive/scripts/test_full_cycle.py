@@ -3,6 +3,8 @@
 Complete trading cycle test: Open → Set SL/TP → Monitor → Close
 
 Usage: python test_full_cycle.py
+
+LEGACY: Depèn del subgraph testnet (sovint lent). Usar test_full_cycle_multicall.py com a test canònic.
 """
 
 import os

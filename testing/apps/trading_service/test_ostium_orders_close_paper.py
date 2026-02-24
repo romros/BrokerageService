@@ -81,7 +81,7 @@ def test_ostium_paper_open_close_then_positions_zero():
             mode="paper",
             venue="ostium",
         )
-        # Open
+        # Open — 202 Fast-ACK + poll confirmed
         r_open = client.post(
             "/api/v1/broker/orders/open",
             json={
@@ -92,10 +92,24 @@ def test_ostium_paper_open_close_then_positions_zero():
                 "leverage": 2.0,
             },
         )
-        assert r_open.status_code == 200, r_open.json()
+        assert r_open.status_code == 202, r_open.json()
         data_open = r_open.json()
-        assert data_open.get("success") is True
-        position_id = data_open.get("position_id")
+        assert data_open.get("success") is True and data_open.get("pending") is True
+        operation_id = data_open.get("operation_id")
+        assert operation_id
+        position_id = ""
+        for _ in range(50):
+            r_op = client.get(f"/api/v1/broker/operations/{operation_id}")
+            if r_op.status_code == 200:
+                op = r_op.json()
+                if op.get("status") == "confirmed":
+                    position_id = op.get("position_id", "")
+                    break
+                if op.get("status") == "error":
+                    raise AssertionError(f"Operation error: {op.get('error')}")
+            time.sleep(0.05)
+        else:
+            raise AssertionError(f"Operation {operation_id} no confirmed")
         assert position_id and position_id.startswith("ostium:"), f"position_id={position_id}"
 
         # Close

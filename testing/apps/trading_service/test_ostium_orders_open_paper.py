@@ -67,7 +67,7 @@ def _make_ok_gate_reader() -> MagicMock:
 
 
 def test_ostium_paper_open_then_positions():
-    """POST /orders/open venue=ostium (PAPER) → 200 + position_id; GET /positions?venue=ostium → 1 posició."""
+    """POST /orders/open venue=ostium (PAPER) → 202 + poll confirmed; GET /positions → 1 posició. T5.19 Fast-ACK."""
     app = create_app()
     ok_reader = _make_ok_gate_reader()
     fake_client = FakeOstiumClient(mid_price=1.085)
@@ -80,7 +80,7 @@ def test_ostium_paper_open_then_positions():
             mode="paper",
             venue="ostium",
         )
-        # Open
+        # Open — 202 Fast-ACK
         r_open = client.post(
             "/api/v1/broker/orders/open",
             json={
@@ -91,11 +91,26 @@ def test_ostium_paper_open_then_positions():
                 "leverage": 2.0,
             },
         )
-        assert r_open.status_code == 200, r_open.json()
+        assert r_open.status_code == 202, r_open.json()
         data_open = r_open.json()
-        assert data_open.get("success") is True
-        position_id = data_open.get("position_id")
-        assert position_id and position_id.startswith("ostium:"), f"position_id={position_id}"
+        assert data_open.get("success") is True and data_open.get("pending") is True
+        operation_id = data_open.get("operation_id")
+        assert operation_id
+        position_id = ""
+        # Poll fins confirmed
+        for _ in range(50):
+            r_op = client.get(f"/api/v1/broker/operations/{operation_id}")
+            if r_op.status_code == 200:
+                op = r_op.json()
+                if op.get("status") == "confirmed":
+                    position_id = op.get("position_id", "")
+                    assert position_id and position_id.startswith("ostium:"), f"position_id={position_id}"
+                    break
+                if op.get("status") == "error":
+                    raise AssertionError(f"Operation error: {op.get('error')}")
+            time.sleep(0.05)
+        else:
+            raise AssertionError(f"Operation {operation_id} no confirmed")
 
         # Positions
         r_pos = client.get("/api/v1/broker/positions?venue=ostium")
@@ -104,7 +119,6 @@ def test_ostium_paper_open_then_positions():
         assert "positions" in data_pos
         positions = data_pos["positions"]
         assert len(positions) == 1, f"expected 1 position, got {len(positions)}"
-        # API retorna position_id amb prefix venue: (ostium:ostium:0:0)
         assert positions[0].get("position_id") == f"ostium:{position_id}"
         assert positions[0].get("symbol") == "EURUSD"
         assert positions[0].get("side") == "LONG"

@@ -5,9 +5,11 @@
 # Servidor: trading_service ha d'estar en mode LIVE Ostium (ostium-live-trading override).
 #
 # Ús:
-#   ./scripts/run_ostium_live_smoke.sh              # només smoke (trading_service ja configurat)
-#   ./scripts/run_ostium_live_smoke.sh --recreate   # recrea trading_service (NO realtime) i smoke
+#   ./scripts/run_ostium_live_smoke.sh                    # només smoke (trading_service ja configurat)
+#   ./scripts/run_ostium_live_smoke.sh --recreate           # recrea trading_service (NO realtime) i smoke
+#   ./scripts/run_ostium_live_smoke.sh --recreate --clean   # recomanat: clean-slate + smoke
 #
+# --clean: tanca totes les posicions obertes abans del smoke (evita POSITION_ALREADY_OPEN).
 # IMPORTANT: --recreate només toca trading_service. Mai atura ni recrea realtime_datalayer.
 # Veure deploy/compose/overrides/README.md § Ostium LIVE.
 
@@ -18,9 +20,13 @@ PROJECT_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 cd "$PROJECT_ROOT"
 
 RECREATE=0
-if [ "${1:-}" = "--recreate" ]; then
-  RECREATE=1
-fi
+CLEAN=0
+for arg in "$@"; do
+  case "$arg" in
+    --recreate) RECREATE=1 ;;
+    --clean)    CLEAN=1 ;;
+  esac
+done
 
 # Carregar lab/ostium/.env
 ENV_FILE="$PROJECT_ROOT/lab/ostium/.env"
@@ -43,6 +49,14 @@ fi
 
 # T5.16: directe a 8010 evita nginx 504 (proxy_read 60s); open Ostium pot trigar >60s
 BASE_URL="${BASE_URL:-http://127.0.0.1:8010}"
+
+# T5.20: --clean tanca posicions obertes abans del smoke (evita POSITION_ALREADY_OPEN)
+if [ "$CLEAN" -eq 1 ]; then
+  echo "=== Clean-slate: tancant posicions obertes ==="
+  export PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+  python3 lab/ostium/scripts/close_open_position.py --all
+  echo ""
+fi
 
 if [ "$RECREATE" -eq 1 ]; then
   echo "=== Recreant només trading_service (NO realtime) ==="

@@ -228,7 +228,8 @@ def test_broker_positions_ostium_live_timeout_504():
 
 
 def test_broker_orders_open_canonical_body():
-    """POST /api/v1/broker/orders/open amb JSON body (canònic) → 200."""
+    """POST /api/v1/broker/orders/open amb JSON body (canònic) → 202 + poll confirmed. T5.19 Fast-ACK."""
+    import time
     app = create_app()
     mock = _make_mock_adapter()
     with TestClient(app) as client:
@@ -244,12 +245,24 @@ def test_broker_orders_open_canonical_body():
                 "leverage": 20,
             },
         )
-    assert r.status_code == 200
-    data = r.json()
-    assert data["success"] is True
-    assert data["position_id"] == "lighter:0"
-    assert data["executed_price"] == 3950.0
-    print("✓ broker/orders/open (body) OK")
+        assert r.status_code == 202, f"Expected 202 Fast-ACK, got {r.status_code}: {r.text}"
+        data = r.json()
+        assert data["success"] is True and data.get("pending") is True
+        operation_id = data.get("operation_id")
+        assert operation_id, "operation_id required for poll"
+        # Poll fins confirmed (background task corre en següent request)
+        for _ in range(50):
+            r2 = client.get(f"/api/v1/broker/operations/{operation_id}")
+            if r2.status_code == 200:
+                op = r2.json()
+                if op.get("status") == "confirmed":
+                    assert op.get("position_id") == "lighter:0"
+                    print("✓ broker/orders/open (body) OK — 202 + poll confirmed")
+                    return
+                if op.get("status") == "error":
+                    raise AssertionError(f"Operation error: {op.get('error')}")
+            time.sleep(0.05)
+    raise AssertionError(f"Operation {operation_id} no confirmed en 2.5s")
 
 
 def test_broker_health_200():
@@ -332,7 +345,8 @@ def test_broker_orders_close_canonical_body():
 
 
 def test_broker_operations_get():
-    """T5.14: GET /operations/{id} retorna operation després d'open (operation_id a response)."""
+    """T5.14: GET /operations/{id} retorna operation després d'open. T5.19: 202 + poll confirmed."""
+    import time
     app = create_app()
     mock = _make_mock_adapter()
     with TestClient(app) as client:
@@ -348,22 +362,24 @@ def test_broker_operations_get():
                 "leverage": 20,
             },
         )
-    assert r.status_code == 200
-    data = r.json()
-    op_id = data.get("operation_id")
-    assert op_id, f"expected operation_id in response: {data}"
-    with TestClient(app) as client:
-        client.get("/")  # trigger lifespan
-        r_op = client.get(f"/api/v1/broker/operations/{op_id}")
-    assert r_op.status_code == 200
-    op = r_op.json()
-    assert op.get("operation_id") == op_id
-    assert op.get("kind") == "open"
-    assert op.get("venue") == "lighter"
-    assert op.get("symbol") == "ETH"
-    assert op.get("status") == "confirmed"
-    assert op.get("position_id") == "lighter:0"
-    print("✓ broker/operations/{id} OK")
+        assert r.status_code == 202
+        data = r.json()
+        op_id = data.get("operation_id")
+        assert op_id, f"expected operation_id in response: {data}"
+        for _ in range(50):
+            r_op = client.get(f"/api/v1/broker/operations/{op_id}")
+            if r_op.status_code == 200:
+                op = r_op.json()
+                if op.get("status") == "confirmed":
+                    assert op.get("operation_id") == op_id
+                    assert op.get("kind") == "open"
+                    assert op.get("venue") == "lighter"
+                    assert op.get("symbol") == "ETH"
+                    assert op.get("position_id") == "lighter:0"
+                    print("✓ broker/operations/{id} OK")
+                    return
+            time.sleep(0.05)
+    raise AssertionError(f"Operation {op_id} no confirmed")
 
 
 def main():

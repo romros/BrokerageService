@@ -114,7 +114,7 @@ def _make_mock_adapter() -> AsyncMock:
 # ─── Casos de test ────────────────────────────────────────────────────────────
 
 def run_cas_a_gate_ok() -> dict:
-    """Cas A: gate=OK → 200, adapter cridat."""
+    """Cas A: gate=OK → 202 Fast-ACK + poll confirmed, adapter cridat. T5.19."""
     app = create_app()
     ok_reader = _make_ok_reader()
     mock_adapter = _make_mock_adapter()
@@ -134,16 +134,23 @@ def run_cas_a_gate_ok() -> dict:
             "collateral": 100.0,
             "leverage": 2.0,
         })
+        op_id = r.json().get("operation_id") if r.status_code == 202 else None
+        for _ in range(50):
+            if op_id:
+                r_op = client.get(f"/api/v1/broker/operations/{op_id}")
+                if r_op.status_code == 200 and r_op.json().get("status") == "confirmed":
+                    break
+            time.sleep(0.05)
 
     elapsed_ms = int((time.time() - t0) * 1000)
-    passed = r.status_code == 200 and mock_adapter.open_position.called
+    passed = r.status_code == 202 and mock_adapter.open_position.called
     result = {
         "cas": "A_gate_ok",
         "status_code": r.status_code,
         "adapter_called": mock_adapter.open_position.called,
         "elapsed_ms": elapsed_ms,
         "passed": passed,
-        "detail": r.json() if r.status_code != 200 else None,
+        "detail": r.json() if r.status_code != 202 else None,
     }
     assert passed, f"CAS A FAILED: {result}"
     print(f"  ✓ Cas A (gate=OK): status={r.status_code} adapter_called={mock_adapter.open_position.called} ({elapsed_ms}ms)")
@@ -151,7 +158,7 @@ def run_cas_a_gate_ok() -> dict:
 
 
 def run_cas_b_gate_bad() -> dict:
-    """Cas B: gate=BAD → 422 DATA_QUALITY_GATE_BAD, adapter NO cridat."""
+    """Cas B: gate=BAD → 202 Fast-ACK, operation error DATA_QUALITY_GATE_BAD, adapter NO cridat. T5.19."""
     app = create_app()
     bad_reader = _make_bad_reader()
     mock_adapter = _make_mock_adapter()
@@ -171,11 +178,21 @@ def run_cas_b_gate_bad() -> dict:
             "collateral": 100.0,
             "leverage": 2.0,
         })
+        op_id = r.json().get("operation_id") if r.status_code == 202 else None
+        has_error_code = False
+        if op_id:
+            for _ in range(50):
+                r_op = client.get(f"/api/v1/broker/operations/{op_id}")
+                if r_op.status_code == 200:
+                    op = r_op.json()
+                    if op.get("status") == "error":
+                        has_error_code = "DATA_QUALITY_GATE_BAD" in str(op.get("error", ""))
+                        break
+                time.sleep(0.05)
 
     elapsed_ms = int((time.time() - t0) * 1000)
     data = r.json()
-    has_error_code = "DATA_QUALITY_GATE_BAD" in str(data)
-    passed = r.status_code == 422 and has_error_code and not mock_adapter.open_position.called
+    passed = r.status_code == 202 and has_error_code and not mock_adapter.open_position.called
     result = {
         "cas": "B_gate_bad",
         "status_code": r.status_code,
@@ -191,7 +208,7 @@ def run_cas_b_gate_bad() -> dict:
 
 
 def run_cas_c_datalayer_down() -> dict:
-    """Cas C: datalayer down (reader llança exc) → 422 DATA_QUALITY_GATE_BAD (fail-closed)."""
+    """Cas C: datalayer down → 202 Fast-ACK, operation error DATA_QUALITY_GATE_BAD (fail-closed). T5.19."""
     app = create_app()
     down_reader = _make_down_reader()
     mock_adapter = _make_mock_adapter()
@@ -211,11 +228,21 @@ def run_cas_c_datalayer_down() -> dict:
             "collateral": 100.0,
             "leverage": 2.0,
         })
+        op_id = r.json().get("operation_id") if r.status_code == 202 else None
+        has_error_code = False
+        if op_id:
+            for _ in range(50):
+                r_op = client.get(f"/api/v1/broker/operations/{op_id}")
+                if r_op.status_code == 200:
+                    op = r_op.json()
+                    if op.get("status") == "error":
+                        has_error_code = "DATA_QUALITY_GATE_BAD" in str(op.get("error", ""))
+                        break
+                time.sleep(0.05)
 
     elapsed_ms = int((time.time() - t0) * 1000)
     data = r.json()
-    has_error_code = "DATA_QUALITY_GATE_BAD" in str(data)
-    passed = r.status_code == 422 and has_error_code and not mock_adapter.open_position.called
+    passed = r.status_code == 202 and has_error_code and not mock_adapter.open_position.called
     result = {
         "cas": "C_datalayer_down",
         "status_code": r.status_code,

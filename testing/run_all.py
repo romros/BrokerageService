@@ -365,6 +365,7 @@ def main():
 
         # Trading service (backtest, quality gate, soak)
         testing_dir / "apps" / "trading_service" / "test_quality_gates.py",
+        testing_dir / "apps" / "trading_service" / "test_data_quality_gate_threshold.py",
         testing_dir / "apps" / "trading_service" / "test_quality_gate_enforced.py",
         testing_dir / "apps" / "trading_service" / "test_soak_e2e.py",
         testing_dir / "apps" / "trading_service" / "test_backtest_registry_marketdata.py",
