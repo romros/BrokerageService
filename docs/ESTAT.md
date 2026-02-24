@@ -16,7 +16,7 @@
 
 ## TL;DR
 
-- ✅ **MVP Lighter** DONE: marketdata, SL/TP, balance, reconcile, guards, smoke, e2e
+- ✅ **Ostium-first** (T5): venue canònic per execució i marketdata; paper + LIVE (kill-switch)
 - ✅ **Data Layer** (P4–P7c): backfill, gap repair, headers X-Data, /coverage, /data_status, read-through, stitching gated
 - ✅ **Data Layer prod v0** (opt-in): prefetch + writer loop + gates; `DATA_LAYER_ENABLED=1`
 - ✅ **Ostium Data Layer prod v0** (opt-in): realtime Ostium (polling) + backfill Dukascopy; `OSTIUM_ENABLED=1`
@@ -44,7 +44,7 @@
 - ✅ **Market-hours fix + golden tests (2026-02-21):** Corregit bug weekend a `engine.py` (XAUUSD/DAXEUR/SPXUSD mostraven `open` dissabte; NVDAUSD obria en cap de setmana). Break XAU/indices corregit a 17:00–18:00 NY (era 16:59–18:10). Nou helper `_next_sunday_18()`. Tests anti-regressió `test_market_hours_golden_weekend.py` (7 tests).
 - ✅ **Phase C: Historical dashboard + nginx proxy + cron metadata (2026-02-21):** `GET /health` i `/status` a historical_datalayer. Nginx `datalayer-proxy` unifica port 8081: `/realtime/*` → realtime:8082, `/data/*` → historical:8002. `application/data/cron_metadata.py` (atomic write/read `_cron/last_runs.json`). `run_historical_cron.sh` escriu metadata. `get_historical_router()` exposa `/ohlcv` i `/coverage` sense prefix. 19 tests 0-network.
 - ✅ **Phase D: Gateway single-port complet (2026-02-21):** Nginx `:8081` exposa `/trade/*` → trading_service:8010 (strip prefix) i `/backtests/*` → trading_service:8010/api/v1/backtests/* (alias). `datalayer-proxy` ara és el punt d'entrada únic per tots els serveis. `scripts/smoke_gateway.sh` verifica tots els prefixos. Exec Ostium NO implementat — pendent Phase E (refactor trading).
-- 🟡 **gTrade** existent (paper OK); no prioritzat
+- 🟡 **gTrade/Lighter** arxivats (T5.32) → `_archive/`; paper intern depèn de `infrastructure/venues/lighter` per symbols
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 - ✅ **Ostium Core (Trade Layer) read-only:** posicions via TradingStorage.getOpenTrade (Trade(9)); EURUSD=pair_id 2; smoke `smoke_ostium_preflight_call.py` 0-TX opt-in
 - ✅ **Ostium trades:** orders/open suportat en PAPER (paper store) i LIVE (kill-switch ENABLE_LIVE_TRADING). orders/close suportat (PAPER idempotent; LIVE guarded). GET `/api/v1/broker/positions?venue=ostium` reflecteix posicions (PAPER: store; LIVE: chain). Smoke E2E LIVE opt-in: `./scripts/run_ostium_live_smoke.sh` (wrapper canònic). DATA_QUALITY_MAX_MISSING_MINUTES (default 1) controla la gate d'open LIVE (missing_minutes > allowed → BAD).
@@ -131,7 +131,7 @@ Categories addicionals: `CONTRACT_REVERT` (revert reason si el RPC el retorna). 
 |--------|----|-------|
 | **realtime_datalayer** | Ingest Ostium (polling), candles 1m, OHLCV+X-Data-* headers, market-hours, hot-reload símbols | Backfill Dukascopy, ordres, backtesting |
 | **historical_datalayer** | Backfill Dukascopy, Parquet, DuckDB, Coverage API, mixed stitching, cron | Ingest temps real, ordres, market-hours gating |
-| **trading_service** | Execució ordres (Lighter paper/live), quality gate fail-closed, backtest API | Ingest Ostium, backfill Dukascopy, emmagatzematge candles |
+| **trading_service** | Execució ordres (Ostium paper/LIVE), quality gate fail-closed, backtest API | Ingest Ostium, backfill Dukascopy, emmagatzematge candles |
 
 ---
 
@@ -230,7 +230,7 @@ docker logs trading_service 2>&1 | grep -E "quality_gate|QUALITY_GATE"
 | Subprojecte | Venue marketdata | Venue exec | Estat tests |
 |-------------|-----------------|------------|-------------|
 | realtime_datalayer | **Ostium** (canònic) | — | Suite `realtime_datalayer` VERDA |
-| trading_service | Ostium via HTTP (gate) | **paper/Lighter** (canònic) | Suite `trading_service` VERDA |
+| trading_service | Ostium via HTTP (gate) | **Ostium** (paper + LIVE) | Suite `trading_service` VERDA |
 | historical_datalayer | **Dukascopy** (target) | — | Suite `historical_datalayer` verda |
 | Compat Ostium↔Dukascopy | Ostium + Dukascopy | — | Opt-in `--include-ostium-compat`; **Phase 8 fet** (EURUSD PARTIAL) |
 
@@ -248,7 +248,7 @@ docker logs trading_service 2>&1 | grep -E "quality_gate|QUALITY_GATE"
 
 **Startup gate:** `DATA_LAYER_STARTUP_GATE=1` → health=degraded si Data Layer DEGRADED; startup falla si gate ON i prefetch degradat.
 
-**Providers:** LighterCandlestickBackfillProvider (data-layer) | Ostium + DukascopyBackfillProvider (ostium).
+**Providers:** Ostium + DukascopyBackfillProvider (ostium). LighterCandlestickBackfillProvider arxivat (data-layer legacy).
 
 **Observabilitat:** `GET /api/v1/broker/data_status` → `symbol_state` + `degrade_reason`.
 

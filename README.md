@@ -1,6 +1,6 @@
-# BrokerageService — Broker Gateway API
+# BrokerageService — Ostium-first Broker Gateway
 
-API REST per [Freqtrade](https://www.freqtrade.io/) (`/api/v1/broker/*`). Venue actual: **Ostium** (LIVE testnet → mainnet).
+API REST per execució i marketdata (`/api/v1/broker/*`, `/api/v1/data/*`). **Venue canònic: Ostium** (testnet → mainnet). Arquitectura **split** (realtime + historical + trading).
 
 **Docs:** [docs/ESTAT.md](docs/ESTAT.md) · [AGENTS_ARQUITECTURA.md](AGENTS_ARQUITECTURA.md)
 
@@ -29,75 +29,80 @@ API REST per [Freqtrade](https://www.freqtrade.io/) (`/api/v1/broker/*`). Venue 
 
 ---
 
-## Arquitectura split
+## Arquitectura split — dues bases d'accés
 
-**Gateway unificat:** `datalayer-proxy` port **8081**
+### 1. Directe (trading_service sol, debug/smoke)
 
-| Prefix | Servei | Notes |
-|--------|--------|-------|
-| `/realtime/*` | realtime_datalayer:8082 | Candles Ostium 24/7 |
-| `/data/*` | historical_datalayer:8002 | Backfill, Parquet, coverage |
-| `/trade/*` | trading_service:8010 | Broker API, ordres |
+**Base:** `http://127.0.0.1:8010`
 
-**Accés directe (debug):** `http://127.0.0.1:8010` per smoke (evita timeout nginx).
+- Broker: `GET /api/v1/broker/health`, `POST /api/v1/broker/orders/open`, etc.
+- Data: `GET /api/v1/data/ohlcv/{symbol}`
+- Backtests: `POST /api/v1/backtests/run`, `GET /api/v1/backtests/runs/{run_id}`
+
+**Ús:** Smoke E2E (`BASE_URL=http://127.0.0.1:8010` evita timeout nginx).
+
+### 2. Proxy unificat (gateway single-port)
+
+**Base:** `http://127.0.0.1:8081`
+
+| Prefix | Servei | Exemple |
+|--------|--------|---------|
+| `/trade/*` | trading_service:8010 | `/trade/api/v1/broker/health` |
+| `/data/*` | historical_datalayer:8002 | `/data/ohlcv/EURUSD`, `/data/coverage/EURUSD` |
+| `/realtime/*` | realtime_datalayer:8082 | `/realtime/health`, `/realtime/ui` |
+| `/backtests/*` | trading_service (alias) | `/backtests/run`, `/backtests/runs/{id}` |
 
 ---
 
-## Endpoints (base `http://localhost:8081`)
+## Endpoints (via proxy, base `http://127.0.0.1:8081`)
 
-### Broker API (`/trade/api/v1/broker`)
+### Broker API — `/trade/api/v1/broker/*`
 
-| Mètode | Path | Descripció |
-|--------|------|-------------|
-| GET | `/health` | Health check |
-| GET | `/mode` | Mode (paper/live), market_data_env |
-| GET | `/venues` | Venues disponibles |
-| GET | `/pairs?venue=` | Parells per venue |
-| GET | `/price/latest?venue=&symbol=` | Preu actual |
-| GET | `/ohlcv/{symbol}` | Candles OHLCV 1m |
-| GET | `/coverage?symbol=` | Coverage per símbol |
-| GET | `/data_status` | Data Layer telemetria |
-| GET | `/candles?symbol=&timeframe=&limit=` | Candles (legacy) |
-| GET | `/balance?venue=` | Balance per venue |
-| GET | `/positions?venue=` | Posicions obertes |
-| GET | `/trades?venue=` | Historial trades |
-| GET | `/operations/{operation_id}` | Estat operació (open/close) |
-| GET | `/preflight?venue=&symbol=` | Preflight per ordre live |
-| POST | `/orders/open` | Obrir posició (JSON) |
-| POST | `/orders/close` | Tancar posició (JSON) |
+| Mètode | Path (complet) | Descripció |
+|--------|----------------|------------|
+| GET | `/trade/api/v1/broker/health` | Health check |
+| GET | `/trade/api/v1/broker/mode` | Mode (paper/live), market_data_env |
+| GET | `/trade/api/v1/broker/venues` | Venues disponibles |
+| GET | `/trade/api/v1/broker/pairs?venue=` | Parells per venue |
+| GET | `/trade/api/v1/broker/price/latest?venue=&symbol=` | Preu actual |
+| GET | `/trade/api/v1/broker/ohlcv/{symbol}` | Candles OHLCV 1m |
+| GET | `/trade/api/v1/broker/coverage?symbol=` | Coverage per símbol |
+| GET | `/trade/api/v1/broker/data_status` | Data Layer telemetria |
+| GET | `/trade/api/v1/broker/balance?venue=` | Balance per venue |
+| GET | `/trade/api/v1/broker/positions?venue=` | Posicions obertes |
+| GET | `/trade/api/v1/broker/trades?venue=` | Historial trades |
+| GET | `/trade/api/v1/broker/operations/{operation_id}` | Estat operació |
+| GET | `/trade/api/v1/broker/preflight?venue=&symbol=` | Preflight per ordre live |
+| POST | `/trade/api/v1/broker/orders/open` | Obrir posició (JSON) |
+| POST | `/trade/api/v1/broker/orders/close` | Tancar posició (JSON) |
 
-### Data API (`/data`)
+### Data API — `/data/*`
 
-| Mètode | Path | Descripció |
-|--------|------|-------------|
-| GET | `/ohlcv/{symbol}` | Candles OHLCV (Parquet/DuckDB, backtest) |
-| GET | `/coverage/{symbol}` | Coverage index per símbol |
+| Mètode | Path (complet) | Descripció |
+|--------|----------------|------------|
+| GET | `/data/ohlcv/{symbol}` | Candles OHLCV (Parquet/DuckDB) |
+| GET | `/data/coverage/{symbol}` | Coverage index per símbol |
+| GET | `/data/health` | Health historical |
+| GET | `/data/status` | Status + cron metadata |
 
-### Backtest API (`/trade/api/v1/backtests` o `/backtests`)
+### Realtime — `/realtime/*`
 
-| Mètode | Path | Descripció |
-|--------|------|-------------|
-| POST | `/run` | Executar backtest (síncron) |
-| GET | `/runs/{run_id}` | Resultat backtest |
+| Mètode | Path (complet) | Descripció |
+|--------|----------------|------------|
+| GET | `/realtime/health` | Health realtime |
+| GET | `/realtime/status` | Data status per símbol |
+| GET | `/realtime/symbols` | Símbols actius |
+| GET | `/realtime/ui` | Dashboard web |
+| GET | `/realtime/info` | Info servei |
 
-### Realtime (`/realtime`)
+### Backtest API — `/trade/api/v1/backtests/*` o `/backtests/*`
 
-| Mètode | Path | Descripció |
-|--------|------|-------------|
-| GET | `/health` | Health realtime |
-| GET | `/status` | Data status per símbol |
-| GET | `/symbols` | Símbols actius (GET/PUT) |
-| GET | `/ui` | Dashboard web |
-| GET | `/info` | Info servei |
+| Mètode | Path (complet) | Descripció |
+|--------|----------------|------------|
+| POST | `/trade/api/v1/backtests/run` o `/backtests/run` | Executar backtest |
+| GET | `/trade/api/v1/backtests/runs/{run_id}` o `/backtests/runs/{run_id}` | Resultat backtest |
 
-### Historical (`/data`)
-
-| Mètode | Path | Descripció |
-|--------|------|-------------|
-| GET | `/health` | Health historical |
-| GET | `/status` | Status + cron metadata |
-
-Exemple `POST /orders/open`:
+Exemple `POST /trade/api/v1/broker/orders/open`:
 ```json
 {"venue": "ostium", "symbol": "EURUSD", "side": "long", "collateral": 5, "leverage": 2}
 ```

@@ -1,8 +1,7 @@
-# Ostium Lab (Experimental)
+# Ostium Lab
 
-> ⚠️ **LAB EXPERIMENTAL — NO PRODUCCIÓ**  
-> Validant si Ostium pot substituir Lighter per RWA (forex/commodities).  
-> Si compat PASS + trading OK → candidat per produir.
+> **Venue canònic del projecte** (Ostium-first, T5.32).  
+> LAB per validació avançada (compat, fees, mainnet). Producció: `./scripts/up_ostium_live.sh`.
 
 ---
 
@@ -78,25 +77,12 @@ El mateix `.env` (o `PRIVATE_KEY`/`OSTIUM_PRIVATE_KEY` a l’arrel) s’usa per 
 
 ### Smoke LIVE via API (split compose)
 
-Quan `realtime_datalayer` i `trading_service` corren amb split compose, el smoke E2E via REST valida open→wait→positions→close.
+**Canònic:** [docs/ESTAT.md](../../docs/ESTAT.md) § Ostium LIVE.
 
-**Regla crítica:** NO aturar ni recrear `realtime_datalayer` — captura candles Ostium 24/7; Ostium no té històric.
+- **Run:** `./scripts/up_ostium_live.sh`
+- **Smoke only:** `./scripts/run_ostium_live_smoke.sh --recreate --clean`
 
-```bash
-# Wrapper canònic (des de l'arrel del repo)
-./scripts/run_ostium_live_smoke.sh              # només smoke (trading_service ja configurat)
-./scripts/run_ostium_live_smoke.sh --recreate  # recrea només trading_service + smoke
-```
-
-Recrear trading_service amb config Ostium LIVE (manual):
-```bash
-set -a && source lab/ostium/.env && set +a
-export OSTIUM_RPC_URL="${RPC_URL}" OSTIUM_PRIVATE_KEY="${PRIVATE_KEY}"
-docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml \
-  -f deploy/compose/overrides/ostium-live-trading.yml up -d trading_service
-```
-
-Veure `deploy/compose/overrides/README.md` i `docs/ESTAT.md` § Ostium LIVE smoke.
+Regla: NO aturar ni recrear `realtime_datalayer`.
 
 ### Price Monitoring
 
@@ -263,11 +249,8 @@ lab/ostium/
 2. **Compat PASS EURUSD:** ✅ Aconseguit (1440c, corr 0.95, dir_agree 88.5%)
 3. **Compat XAUUSD:** ❌ FAIL (corr 0.43) — pendent investigar
 4. **Infra monitoring:** Validar polling 2s estable 72h+
-5. **Comparativa Lighter:** Decidir si val la pena canviar
 
 **Connexió amb prod-ish registry:** Els resultats LAB (compat report) es graduen a prod-ish via `./scripts/run_compat.sh ostium EURUSD` o `./scripts/run_soak.sh 2 ostium post-compat`. El tool escriu `datafiles/compat_reports/ostium_compat_registry.json`; si PASS → `ostium_primary_allowed=true` per aquell símbol. Font de veritat: `get_ostium_primary_allowed(symbol)`.
-
-**Si tot OK → Candidat per substituir Lighter en RWA**
 
 ### Backtest (futur)
 - Real-time: Ostium REST polling
@@ -300,27 +283,21 @@ lab/ostium/
 
 ---
 
-## Comparativa Lighter vs Ostium
+## Comparativa històrica (Lighter arxivat T5.32)
 
-| Criteri | Lighter (PRODUCCIÓ) | Ostium (LAB) |
-|---------|---------------------|--------------|
-| Status | ✅ MVP 100% | 🧪 Experimental |
-| Fees | $0.16/RT | $0.56/RT (3.5× més car) |
-| Historical | ✅ `/candlestick` | ❌ Cal polling |
-| WebSocket | ✅ | ❌ |
+> **Nota:** Lighter arxivat a `_archive/lab/2026-02-legacy-purge/lighter/`. Taula conservada per context històric.
+
+| Criteri | Lighter (legacy arxivat) | Ostium (canònic) |
+|---------|--------------------------|------------------|
+| Status | Arxivat | ✅ Venue principal |
+| Fees | $0.16/RT | $0.56/RT |
+| Historical | `/candlestick` | Cal polling REST |
+| WebSocket | Sí | ❌ |
 | Latest price | REST + WS | REST |
-| Monitoring | Native WS | Polling 2s |
 | Assets RWA | EURUSD, XAUUSD | EURUSD, XAUUSD, +molts més |
-| Data quality | Verificat | En validació |
-
-**Trade-offs:**
-- ✅ **Pro Ostium:** Més assets RWA disponibles
-- ❌ **Contra Ostium:** Fees més cars, infra menys elegant, no històric
-
-**Decisió:** Pendent validació completa. Si compat PASS + mainnet OK → possible substitució Lighter per RWA.
 
 ---
 
-**Última actualització:** 2026-02-19
+**Última actualització:** 2026-02-24
 **Status:** LAB — Captura continua (EURUSD, XAUUSD, GBPJPY → continuous/)
 **Índex global:** [docs/INDEX.md](../../docs/INDEX.md)
