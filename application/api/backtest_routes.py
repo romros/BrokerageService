@@ -164,6 +164,22 @@ def _result_to_response(data: dict) -> BacktestRunResponse:
 # Endpoints
 # ---------------------------------------------------------------------------
 
+@router.get("/runs")
+async def list_runs() -> dict:
+    """
+    Llista run_ids dels artifacts existents (pot ser buit).
+    Smoke gateway: GET /backtests/runs → 200.
+    """
+    backtests_dir = _get_backtests_dir()
+    run_ids = []
+    for p in backtests_dir.glob("*_*.json"):
+        rid = _artifact_to_run_id(p)
+        if rid and rid not in run_ids:
+            run_ids.append(rid)
+    run_ids.sort(reverse=True)  # més recents primer
+    return {"runs": run_ids}
+
+
 @router.post("/run", response_model=BacktestRunResponse, status_code=200)
 async def post_run(req: BacktestRunRequest):
     """

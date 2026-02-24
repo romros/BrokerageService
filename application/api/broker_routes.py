@@ -154,9 +154,13 @@ def set_broker_deps(
         _ostium_ingest_poll_s = ostium_ingest_poll_s
     if data_layer_reader is not _UNSET:
         _data_layer_reader = data_layer_reader
-    # T5.15: rehidratar operations des del JSONL a startup
-    from application.services.operation_service import get_operation_service
-    get_operation_service().rehydrate()
+    # T5.41: wiring centralitzat — construeix i injecta OrderOpenService, OrderCloseService
+    from application.wiring import wire_order_services
+    wire_order_services(
+        execution_port=_adapter_factory,
+        market_data_port=_data_layer_reader,
+        mode=_mode,
+    )
     logger.info(
         f"Broker API deps: mode={_mode}, venue={_venue}, market_data_env={_market_data_env}, "
         f"market_data_source={_market_data_source}, adapter_factory={'set' if _adapter_factory else 'None'}"

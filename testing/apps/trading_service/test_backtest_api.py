@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Phase 12 — Tests 0-network per Backtest API (POST /run + GET /runs/{run_id}).
+Phase 12 — Tests 0-network per Backtest API (POST /run + GET /runs + GET /runs/{run_id}).
 
 Valida:
+- GET  /api/v1/backtests/runs → llista run_ids (pot ser buit) — smoke gateway
 - POST /api/v1/backtests/run → retorna run_id + KPIs + source
 - GET  /api/v1/backtests/runs/{run_id} → retorna el mateix payload
 - Artifact JSON escrit al disc
@@ -52,6 +53,21 @@ def _create_app_with_temp_dir(tmp_dir: str):
     os.environ["DATAFILES_ROOT"] = tmp_dir
     from application.app_factory import create_app
     return create_app(role="trading_service")
+
+
+def test_list_runs_empty():
+    """GET /runs retorna 200 amb runs=[] quan no hi ha artifacts (smoke gateway)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        os.environ["DATAFILES_ROOT"] = tmpdir
+        from application.app_factory import create_app
+        app = create_app(role="trading_service")
+        with TestClient(app) as client:
+            resp = client.get("/api/v1/backtests/runs")
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+        data = resp.json()
+        assert "runs" in data
+        assert data["runs"] == []
+        print("✓ test_list_runs_empty OK")
 
 
 def test_post_run_returns_run_id():
@@ -217,6 +233,7 @@ def test_post_run_lowercase_symbol_normalized():
 
 
 def main() -> int:
+    test_list_runs_empty()
     test_post_run_returns_run_id()
     test_get_run_returns_same_payload()
     test_artifact_written_to_disc()
