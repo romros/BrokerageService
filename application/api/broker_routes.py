@@ -7,8 +7,9 @@ POST /orders/open i /orders/close amb JSON body.
 
 import asyncio
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List, Callable, Any
+from typing import Optional, List, Callable, Any, Dict
 
 from fastapi import APIRouter, HTTPException, Query, Body
 from fastapi.responses import JSONResponse
@@ -115,6 +116,50 @@ _data_layer_reader: Optional[Any] = None  # Split vNext Phase 2: IDataLayerReade
 
 # T5.11b: idempotència close — (venue, position_id, client_close_id) → result
 _close_idempotency_cache: dict = {}
+
+# T5.14: operation status — operation_id → {kind, venue, symbol, position_id?, tx_hash?, status, created_at, last_update, error?}
+_operations_store: Dict[str, dict] = {}
+
+
+def _op_id() -> str:
+    """Short operation id (12 chars)."""
+    return uuid.uuid4().hex[:12]
+
+
+def _op_create(operation_id: str, kind: str, venue: str, symbol: str, position_id: str = "") -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    _operations_store[operation_id] = {
+        "operation_id": operation_id,
+        "kind": kind,
+        "venue": venue,
+        "symbol": symbol,
+        "position_id": position_id or "",
+        "tx_hash": "",
+        "status": "in_progress",
+        "created_at": now,
+        "last_update": now,
+        "error": None,
+    }
+
+
+def _op_update(
+    operation_id: str,
+    status: str,
+    position_id: str = "",
+    tx_hash: str = "",
+    error: Optional[str] = None,
+) -> None:
+    if operation_id not in _operations_store:
+        return
+    op = _operations_store[operation_id]
+    op["last_update"] = datetime.now(timezone.utc).isoformat()
+    op["status"] = status
+    if position_id:
+        op["position_id"] = position_id
+    if tx_hash:
+        op["tx_hash"] = tx_hash
+    if error is not None:
+        op["error"] = error
 
 
 def set_broker_deps(
@@ -253,6 +298,7 @@ class OrderOpenResponse(BaseModel):
     executed_size: float
     tx_hash: str = ""
     pending: Optional[bool] = None  # True si 202 (tx enviada, wait timeout)
+    operation_id: Optional[str] = None  # T5.14: per poll GET /operations/{id}
 
 
 class OrderCloseResponse(BaseModel):
@@ -260,6 +306,7 @@ class OrderCloseResponse(BaseModel):
     pending: Optional[bool] = None  # True si 202 (tx enviada, wait timeout)
     tx_hash: str = ""
     position_id: str = ""
+    operation_id: Optional[str] = None  # T5.14: per poll GET /operations/{id}
 
 
 # ============ Core ============
@@ -1002,15 +1049,37 @@ def _get_trade_tx_wait_timeout_s() -> float:
 
 @trading_router.post("/orders/open", response_model=OrderOpenResponse)
 async def order_open(body: OrderOpenRequest = Body(...)):
-    """Obrir posició. JSON body. side: long|short. Si timeout → 202 pending."""
+    """Obrir posició. JSON body. side: long|short. Si timeout → 202 pending. T5.14: operation_id per poll."""
+    operation_id = _op_id()
+    _op_create(operation_id, "open", body.venue, body.symbol)
+
+    async def _run_open() -> OrderOpenResponse:
+        try:
+            result = await _do_order_open(body)
+            _op_update(operation_id, "confirmed", position_id=result.position_id, tx_hash=getattr(result, "tx_hash", "") or "")
+            return OrderOpenResponse(
+                success=result.success,
+                position_id=result.position_id,
+                order_id=result.order_id,
+                executed_price=result.executed_price,
+                executed_size=result.executed_size,
+                tx_hash=getattr(result, "tx_hash", "") or "",
+                operation_id=operation_id,
+            )
+        except Exception as e:
+            _op_update(operation_id, "error", error=str(e))
+            raise
+
     timeout_s = _get_trade_tx_wait_timeout_s()
-    try:
-        result = await asyncio.wait_for(_do_order_open(body), timeout=timeout_s)
+    task = asyncio.create_task(_run_open())
+    done, _ = await asyncio.wait([task], timeout=timeout_s, return_when=asyncio.FIRST_COMPLETED)
+    if task in done:
+        result = task.result()
         logger.info("order_open tx_confirmed: venue=%s symbol=%s position_id=%s", body.venue, body.symbol, result.position_id)
         return result
-    except asyncio.TimeoutError:
-        logger.warning("order_open tx_wait_timeout: venue=%s symbol=%s timeout_s=%.0f", body.venue, body.symbol, timeout_s)
-        return JSONResponse(
+    _op_update(operation_id, "pending")
+    logger.warning("order_open tx_wait_timeout: venue=%s symbol=%s timeout_s=%.0f op=%s", body.venue, body.symbol, timeout_s, operation_id)
+    return JSONResponse(
             status_code=202,
             content={
                 "success": True,
@@ -1020,29 +1089,58 @@ async def order_open(body: OrderOpenRequest = Body(...)):
                 "executed_price": 0.0,
                 "executed_size": 0.0,
                 "tx_hash": "",
+                "operation_id": operation_id,
             },
         )
 
 
 @trading_router.post("/orders/close", response_model=OrderCloseResponse)
 async def order_close(body: OrderCloseRequest = Body(...)):
-    """Tancar posició. JSON body. percent dins (0, 100]. Si timeout → 202 pending."""
+    """Tancar posició. JSON body. percent dins (0, 100]. Si timeout → 202 pending. T5.14: operation_id per poll."""
+    operation_id = _op_id()
+    _op_create(operation_id, "close", body.venue, "", position_id=body.position_id)
+
+    async def _run_close() -> OrderCloseResponse:
+        try:
+            result = await _do_order_close(body)
+            _op_update(operation_id, "confirmed", position_id=body.position_id)
+            return OrderCloseResponse(
+                success=result.success,
+                position_id=body.position_id,
+                tx_hash=result.tx_hash or "",
+                operation_id=operation_id,
+            )
+        except Exception as e:
+            _op_update(operation_id, "error", error=str(e))
+            raise
+
     timeout_s = _get_trade_tx_wait_timeout_s()
-    try:
-        result = await asyncio.wait_for(_do_order_close(body), timeout=timeout_s)
+    task = asyncio.create_task(_run_close())
+    done, _ = await asyncio.wait([task], timeout=timeout_s, return_when=asyncio.FIRST_COMPLETED)
+    if task in done:
+        result = task.result()
         logger.info("order_close tx_confirmed: venue=%s position_id=%s", body.venue, body.position_id)
         return result
-    except asyncio.TimeoutError:
-        logger.warning("order_close tx_wait_timeout: venue=%s position_id=%s timeout_s=%.0f", body.venue, body.position_id, timeout_s)
-        return JSONResponse(
+    _op_update(operation_id, "pending", position_id=body.position_id)
+    logger.warning("order_close tx_wait_timeout: venue=%s position_id=%s timeout_s=%.0f op=%s", body.venue, body.position_id, timeout_s, operation_id)
+    return JSONResponse(
             status_code=202,
             content={
                 "success": True,
                 "pending": True,
                 "tx_hash": "",
                 "position_id": body.position_id,
+                "operation_id": operation_id,
             },
         )
+
+
+@trading_router.get("/operations/{operation_id}")
+async def get_operation(operation_id: str):
+    """T5.14: Estat d'una operació open/close. Per poll quan 202 pending."""
+    if operation_id not in _operations_store:
+        raise HTTPException(status_code=404, detail="operation not found")
+    return _operations_store[operation_id]
 
 
 @trading_router.get("/preflight")

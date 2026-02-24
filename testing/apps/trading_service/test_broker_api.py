@@ -6,6 +6,7 @@ Tests /api/v1/broker/* amb mock adapter.
 
 import asyncio
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -22,6 +23,8 @@ from fastapi.testclient import TestClient
 
 from application.main import create_app
 from application.api.broker_routes import set_broker_deps
+from application.api.error_codes import OSTIUM_POSITIONS_TIMEOUT
+from foundation.config.constants import OSTIUM_POSITIONS_TIMEOUT_S
 from domain.models import (
     TradingPair,
     PriceData,
@@ -198,6 +201,32 @@ def test_broker_positions_ok():
     print("✓ broker/positions OK")
 
 
+def test_broker_positions_ostium_live_timeout_504():
+    """T5.5: GET /positions venue=ostium MODE=live amb adapter que no retorna → 504 en ~5s."""
+    async def hang():
+        await asyncio.sleep(999)
+
+    app = create_app()
+    mock = _make_mock_adapter()
+    mock.get_open_positions = AsyncMock(side_effect=hang)
+    with TestClient(app) as client:
+        client.get("/")  # trigger lifespan
+        set_broker_deps(
+            adapter_factory=lambda v: mock if v == "ostium" else None,
+            mode="live",
+            venue="ostium",
+        )
+        t0 = time.monotonic()
+        r = client.get("/api/v1/broker/positions?venue=ostium")
+        elapsed = time.monotonic() - t0
+    assert r.status_code == 504, f"Expected 504, got {r.status_code}: {r.text}"
+    data = r.json()
+    assert data.get("error") == OSTIUM_POSITIONS_TIMEOUT
+    assert data.get("timeout_s") == OSTIUM_POSITIONS_TIMEOUT_S
+    assert 4 <= elapsed <= 8, f"Expected ~5s timeout, got {elapsed:.1f}s"
+    print("✓ broker/positions ostium LIVE timeout 504 OK")
+
+
 def test_broker_orders_open_canonical_body():
     """POST /api/v1/broker/orders/open amb JSON body (canònic) → 200."""
     app = create_app()
@@ -302,6 +331,41 @@ def test_broker_orders_close_canonical_body():
     print("✓ broker/orders/close (body) OK")
 
 
+def test_broker_operations_get():
+    """T5.14: GET /operations/{id} retorna operation després d'open (operation_id a response)."""
+    app = create_app()
+    mock = _make_mock_adapter()
+    with TestClient(app) as client:
+        client.get("/")  # trigger lifespan
+        set_broker_deps(adapter_factory=lambda v: mock if v == "lighter" else None)
+        r = client.post(
+            "/api/v1/broker/orders/open",
+            json={
+                "venue": "lighter",
+                "symbol": "ETH",
+                "side": "long",
+                "collateral": 100,
+                "leverage": 20,
+            },
+        )
+    assert r.status_code == 200
+    data = r.json()
+    op_id = data.get("operation_id")
+    assert op_id, f"expected operation_id in response: {data}"
+    with TestClient(app) as client:
+        client.get("/")  # trigger lifespan
+        r_op = client.get(f"/api/v1/broker/operations/{op_id}")
+    assert r_op.status_code == 200
+    op = r_op.json()
+    assert op.get("operation_id") == op_id
+    assert op.get("kind") == "open"
+    assert op.get("venue") == "lighter"
+    assert op.get("symbol") == "ETH"
+    assert op.get("status") == "confirmed"
+    assert op.get("position_id") == "lighter:0"
+    print("✓ broker/operations/{id} OK")
+
+
 def main():
     test_broker_health_200()
     test_broker_venues_empty_when_no_adapter()
@@ -314,9 +378,11 @@ def main():
     test_broker_price_latest_ok()
     test_broker_balance_ok()
     test_broker_positions_ok()
+    test_broker_positions_ostium_live_timeout_504()
     test_broker_orders_open_canonical_body()
     test_broker_orders_open_side_invalid_422()
     test_broker_orders_close_canonical_body()
+    test_broker_operations_get()
     print("\n✓ All Broker API unit tests passed")
 
 
