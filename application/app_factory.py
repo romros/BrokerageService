@@ -144,17 +144,19 @@ def create_app(role: str | None = None) -> FastAPI:
 
         # --- Adapter + market data (només trading / monolithic) ---
         if _role_starts_adapter(role):
-            from infrastructure.builders.lighter_di import build_lighter_paper_market_data
-            from infrastructure.venues.lighter.config import get_lighter_symbols_from_env, get_lighter_tick_interval_ms
+            from infrastructure.paper_market_data import (
+                build_paper_market_data_provider,
+                get_symbols_from_env,
+            )
 
             if use_paper_execution:
-                symbols = get_lighter_symbols_from_env()
-                _, market_data_service = build_lighter_paper_market_data(
+                symbols = get_symbols_from_env()
+                _, market_data_service = build_paper_market_data_provider(
                     candle_store=candle_store,
                     canonical_tz=config["canonical_tz"],
                 )
                 await market_data_service.start()
-                source = "fake" if use_fake_feed else "real"
+                source = "fake"
                 logger.info("execution_mode=paper_simulated market_data_env=%s source=%s", config["market_data_env"], source)
 
                 async def _get_price(sym: str):
@@ -212,47 +214,17 @@ def create_app(role: str | None = None) -> FastAPI:
                         fallback_provider=fallback_provider,
                     )
             elif use_lighter_execution:
-                from infrastructure.builders.lighter_di import build_lighter_paper_adapter, build_lighter_paper_market_data
-                from infrastructure.venues.lighter.config import get_lighter_symbols_from_env, get_lighter_tick_interval_ms, get_price_cache_ttl_s
-                from infrastructure.venues.lighter.price_cache import PriceSnapshotCache
-
-                source = "fake" if use_fake_feed else "real"
-                shared_price_cache = PriceSnapshotCache(ttl_s=get_price_cache_ttl_s())
-                if use_fake_feed:
-                    adapter = None
-                    set_broker_deps(
-                        candle_store=candle_store,
-                        adapter_factory=lambda v: None,
-                        mode=config["mode"],
-                        venue=venue,
-                        market_data_env=config["market_data_env"],
-                        market_data_source=source,
-                        fallback_provider=fallback_provider,
-                    )
-                else:
-                    adapter_mode = "live" if config["enable_live_trading"] else "paper"
-                    adapter = build_lighter_paper_adapter(mode=adapter_mode, price_cache=shared_price_cache)
-                    await adapter.start()
-                    set_broker_deps(
-                        candle_store=candle_store,
-                        adapter_factory=lambda v: adapter if v == "lighter" else None,
-                        mode=config["mode"],
-                        venue=venue,
-                        market_data_env=config["market_data_env"],
-                        market_data_source=source,
-                        fallback_provider=fallback_provider,
-                    )
-
-                if mode_lower in ("paper", "live"):
-                    symbols = get_lighter_symbols_from_env()
-                    tick_interval_ms = get_lighter_tick_interval_ms()
-                    _, market_data_service = build_lighter_paper_market_data(
-                        candle_store=candle_store,
-                        canonical_tz=config["canonical_tz"],
-                        price_cache=shared_price_cache,
-                    )
-                    await market_data_service.start()
-                    logger.info("MARKETDATA_START venue=%s source=%s symbols=%s", venue, source, symbols)
+                # Legacy arxivat (T5.35): lighter no disponible al tree principal
+                logger.warning("venue=lighter arxivat (T5.35). Usa venue=ostium o venue=paper.")
+                set_broker_deps(
+                    candle_store=candle_store,
+                    adapter_factory=None,
+                    mode=config["mode"],
+                    venue=venue,
+                    market_data_env=config["market_data_env"],
+                    market_data_source="n/a",
+                    fallback_provider=fallback_provider,
+                )
             else:
                 # Venue no configurat o legacy sense opt-in → adapter_factory=None
                 # TradingCore llançarà AdapterNotAvailableError o VenueNotConfiguredError
@@ -332,8 +304,8 @@ def create_app(role: str | None = None) -> FastAPI:
                     from infrastructure.venues.dukascopy.dukascopy_backfill_provider import DukascopyBackfillProvider
                     provider = DukascopyBackfillProvider(cache_root=config["datafiles_root"])
                 else:
-                    from infrastructure.venues.lighter.lighter_candlestick_backfill_provider import LighterCandlestickBackfillProvider
-                    provider = LighterCandlestickBackfillProvider()
+                    from infrastructure.venues.dukascopy.dukascopy_backfill_provider import DukascopyBackfillProvider
+                    provider = DukascopyBackfillProvider(cache_root=config["datafiles_root"])
                 if cfg["symbols"]:
                     data_layer_prod_service = DataLayerProdService(
                         store=candle_store,
@@ -418,14 +390,14 @@ def create_app(role: str | None = None) -> FastAPI:
                     except Exception as e:
                         logger.warning("OstiumCandleIngestService not started: %s", e)
 
-        # BackfillService (Lighter) — només trading / monolithic
+        # BackfillService (Dukascopy) — només trading / monolithic
         if _role_starts_backfill_service(role) and market_data_service is not None:
             try:
                 from application.services.backfill_service import BackfillService
-                from infrastructure.venues.lighter.lighter_candlestick_backfill_provider import LighterCandlestickBackfillProvider
+                from infrastructure.venues.dukascopy.dukascopy_backfill_provider import DukascopyBackfillProvider
                 backfill_symbols = [s.strip() for s in os.getenv("BACKFILL_SYMBOLS", "EURUSD,XAUUSD").split(",") if s.strip()]
                 if backfill_symbols:
-                    backfill_provider = LighterCandlestickBackfillProvider()
+                    backfill_provider = DukascopyBackfillProvider(cache_root=config["datafiles_root"])
                     backfill_service = BackfillService(
                         store=candle_store,
                         provider=backfill_provider,

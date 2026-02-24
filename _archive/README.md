@@ -22,6 +22,16 @@
 | `testing/e2e/*` | `testing/2026-02-legacy-purge/e2e/` |
 | `testing/verify_abi_selectors.py` | `testing/2026-02-legacy-purge/` |
 
+### Infrastructure venues (T5.35)
+| Original | Destí |
+|----------|-------|
+| `infrastructure/venues/lighter/` | `infrastructure/venues/2026-02-legacy-purge/lighter/` |
+| `infrastructure/venues/gtrade/` | `infrastructure/venues/2026-02-legacy-purge/gtrade/` |
+| `infrastructure/builders/lighter_di.py` | `infrastructure/builders/lighter_di.py` |
+| `application/services/backend_trade_verifier.py` | `application/services/backend_trade_verifier.py` |
+
+**Replacement:** Paper market data → `infrastructure/paper_market_data/` (get_symbols_from_env, build_paper_market_data_provider).
+
 ### Altres
 | Directori | Contingut |
 |-----------|------------|

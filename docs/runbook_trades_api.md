@@ -25,7 +25,7 @@ Totes són **GET** o **POST**; base URL: `http(s)://<host>:<port>/api/v1/broker`
 |--------|------|--------------|----------|------------------------------|
 | GET | `/health` | — | `HealthResponse` (status, mode, venue, timestamp) | broker_routes.py L254 `get_health` |
 | GET | `/mode` | — | `ModeResponse` (mode, is_live, is_paper, is_backtest, venue, market_data_env, market_data_source) | broker_routes.py L273 `get_mode` |
-| GET | `/venues` | — | `{ "venues": ["paper","lighter",...] }` | broker_routes.py L291 `get_venues` |
+| GET | `/venues` | — | `{ "venues": ["paper","ostium",...] }` | broker_routes.py L291 `get_venues` |
 | GET | `/balance` | `venue` (required) | `BalanceResponse` | broker_routes.py L468 `get_balance` |
 | GET | **`/positions`** | **`venue`** (required) | **`PositionsResponse`** (positions: List[PositionItem]) | broker_routes.py L478 `get_positions` |
 | GET | `/trades` | `venue`, `symbol?`, `since?`, `to?`, `limit?` | `TradesResponse` (trades: List[TradeItem]) | broker_routes.py L506 `get_trades` |
@@ -33,7 +33,7 @@ Totes són **GET** o **POST**; base URL: `http(s)://<host>:<port>/api/v1/broker`
 | POST | **`/orders/close`** | Body: **OrderCloseRequest** | **OrderCloseResponse** | broker_routes.py L564 `order_close` |
 | GET | `/preflight` | `venue?`, `symbol?` | JSON (ready, checks, risk_caps) | broker_routes.py L569 `get_preflight` |
 
-**Positions (open positions):** endpoint canònic = **GET `/api/v1/broker/positions?venue=<venue>`**. El handler crida `adapter.get_open_positions()` i retorna `PositionsResponse`. Venues suportats: `paper`, `lighter`, `ostium`.
+**Positions (open positions):** endpoint canònic = **GET `/api/v1/broker/positions?venue=<venue>`**. El handler crida `adapter.get_open_positions()` i retorna `PositionsResponse`. Venues suportats: `paper`, `ostium` (lighter arxivat T5.35).
 
 **Open trade:** **POST `/api/v1/broker/orders/open`** amb body JSON. **Close trade:** **POST `/api/v1/broker/orders/close`** amb body JSON.
 
@@ -76,18 +76,18 @@ Els handlers de open/close delegan a `application/trading/trading_core.py` (`Tra
 curl -s "http://localhost:8010/api/v1/broker/mode"
 
 # Posicions obertes
-curl -s "http://localhost:8010/api/v1/broker/positions?venue=lighter"
 curl -s "http://localhost:8010/api/v1/broker/positions?venue=ostium"
+curl -s "http://localhost:8010/api/v1/broker/positions?venue=paper"
 
 # Obrir posició (POST body)
 curl -s -X POST "http://localhost:8010/api/v1/broker/orders/open" \
   -H "Content-Type: application/json" \
-  -d '{"venue":"lighter","symbol":"EURUSD","side":"long","collateral":100,"leverage":5}'
+  -d '{"venue":"ostium","symbol":"EURUSD","side":"long","collateral":100,"leverage":5}'
 
 # Tancar posició (POST body)
 curl -s -X POST "http://localhost:8010/api/v1/broker/orders/close" \
   -H "Content-Type: application/json" \
-  -d '{"venue":"lighter","position_id":"lighter:0","percent":100}'
+  -d '{"venue":"ostium","position_id":"ostium:2:0","percent":100}'
 ```
 
 ---

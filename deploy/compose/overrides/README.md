@@ -20,17 +20,7 @@ docker compose -f docker-compose.yml -f deploy/compose/overrides/soak.yml config
 docker compose -f docker-compose.yml -f deploy/compose/overrides/ostium.yml config  # Ostium opt-in
 ```
 
-**Ostium LIVE (trading_service sol, sense tocar realtime):**
-```bash
-# Una comanda (T5.22): up + smoke
-./scripts/up_ostium_live.sh
+**Ostium LIVE:** Veure [docs/ESTAT.md](../../docs/ESTAT.md) § Ostium LIVE.
 
-# O manual: smoke amb --recreate --clean
-./scripts/run_ostium_live_smoke.sh --recreate --clean
-
-# Manual: recrear només trading_service amb config Ostium LIVE
-set -a && source lab/ostium/.env && set +a
-export OSTIUM_RPC_URL="${RPC_URL}" OSTIUM_PRIVATE_KEY="${PRIVATE_KEY}"
-docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml \
-  -f deploy/compose/overrides/ostium-live-trading.yml up -d trading_service
-```
+- **Run:** `./scripts/up_ostium_live.sh`
+- **Smoke only:** `./scripts/run_ostium_live_smoke.sh --recreate --clean`

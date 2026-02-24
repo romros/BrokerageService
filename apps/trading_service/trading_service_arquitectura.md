@@ -45,7 +45,7 @@
 | Env | Default | Descripció |
 |-----|---------|------------|
 | `MODE` | paper | paper \| live |
-| `VENUE` | lighter | lighter \| gtrade \| ostium |
+| `VENUE` | paper | paper \| ostium (lighter/gtrade arxivats T5.35) |
 | `ENABLE_LIVE_TRADING` | 0 | Guard live trading |
 | `LIGHTER_*` | — | Config Lighter (URL, key, etc.) |
 | `BROKER_URL` | http://realtime_datalayer:8001 | URL Data Layer (candles) |
@@ -91,15 +91,14 @@ Errors domain-level (sense HTTP):
 
 **Ostium scaffold:** `VENUE=ostium` → `OstiumExecutionAdapter` (wired, exec = `NotImplementedError` fins Phase G).
 
-**Legacy opt-in:** `VENUE=lighter` o `VENUE=gtrade` requereixen `ENABLE_LEGACY_VENUES=1`.
-Sense opt-in, `adapter_factory=None` → `AdapterNotAvailableError` → 503.
+**Legacy arxivat (T5.35):** `VENUE=lighter` o `VENUE=gtrade` retornen error "arxivat". Ostium-first.
 
 | Venue | Adapter | Disponible |
 |-------|---------|------------|
 | `paper` (default) | `PaperVenueAdapter` | ✅ sempre |
-| `ostium` | `OstiumExecutionAdapter` (scaffold) | ✅ wired; exec NotImplementedError |
-| `lighter` | `LighterVenueAdapter` | opt-in (`ENABLE_LEGACY_VENUES=1`) |
-| `gtrade` | — | opt-in (`ENABLE_LEGACY_VENUES=1`); sense adapter exec |
+| `ostium` | `OstiumExecutionAdapter` | ✅ canònic |
+| `lighter` | — | arxivat (T5.35) |
+| `gtrade` | — | arxivat (T5.35) |
 
 Adapter: [`infrastructure/venues/ostium/ostium_execution_adapter.py`](../../infrastructure/venues/ostium/ostium_execution_adapter.py)
 
@@ -149,6 +148,6 @@ curl -s http://localhost:8010/api/v1/broker/health
 
 **Subgraph**: NO disponible (ni testnet ni mainnet) → `get_trade_history` / `get_pairs` retornen `[]`
 
-**Smoke opt-in**: `ENABLE_OSTIUM_LIVE_SMOKE=1 ./scripts/smoke_ostium_exec.sh`
+**Smoke canònic**: [docs/ESTAT.md](../../docs/ESTAT.md) § Ostium LIVE — `./scripts/run_ostium_live_smoke.sh --recreate --clean`
 
 **Tests**: `testing/apps/trading_service/test_ostium_execution_adapter_unit.py` (23 tests, 0-network)

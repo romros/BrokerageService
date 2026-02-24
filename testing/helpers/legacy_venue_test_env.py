@@ -1,12 +1,9 @@
 """
-P4.2 — Preflight per tests opt-in Lighter (xarxa)
+Legacy venue test helpers (T5.36).
 
-Comprova que l'entorn està preparat per tests que requereixen Lighter API.
-Si no → retorna (False, reason) per fer skip amb motiu clar, no fail amb "0 candles".
-
-Ordre de comprovació:
-1. Base URL accessible (timeout curt)
-2. Candlestick endpoint retorna >= 1 candle (probe 2–3 min, EURUSD)
+- select_soak_symbol, SOAK_SYMBOL_*: genèric (mainnet vs testnet URL), sense dependència Lighter.
+- preflight_lighter_candlestick: preflight per tests opt-in Lighter (arxivat T5.35).
+  Només per --include-lighter; importa infrastructure.venues.lighter (via symlink).
 
 Ús:
   ok, reason = await preflight_lighter_candlestick()
@@ -74,7 +71,7 @@ def _load_market_id_map() -> dict:
 
 async def preflight_lighter_candlestick(symbol: str | None = None) -> Tuple[bool, str]:
     """
-    Preflight per Lighter Candlestick API.
+    Preflight per Lighter Candlestick API (legacy, arxivat T5.35).
     Returns (ok, reason). Si not ok, reason és el missatge de skip.
     symbol: símbol per provar (default PREFLIGHT_SYMBOL_DEFAULT). P7c.1: passar el que usarà el soak.
     """
@@ -89,7 +86,7 @@ async def preflight_lighter_candlestick(symbol: str | None = None) -> Tuple[bool
         market_id_map = {}
 
     try:
-        from infrastructure.venues.lighter.lighter_candlestick_client import LighterCandlestickClient  # lazy: evita carregar Lighter si no es fa servir (P4.2 skip)
+        from infrastructure.venues.lighter.lighter_candlestick_client import LighterCandlestickClient  # lazy: legacy (arxivat)
 
         now_ts = int(datetime.now(timezone.utc).timestamp())
         end_ts = (now_ts // 60) * 60

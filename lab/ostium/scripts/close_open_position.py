@@ -10,7 +10,7 @@ i OstiumExecutionAdapter (get_open_positions, close_position).
   PYTHONPATH=. python3 lab/ostium/scripts/close_open_position.py --symbol BTCUSD --dry-run
   PYTHONPATH=. python3 lab/ostium/scripts/close_open_position.py --all
 
-Alternativa amb Docker (com smoke_ostium_exec.sh):
+Alternativa amb Docker (com run_ostium_live_smoke.sh):
   docker run --rm -v $(pwd):/app -w /app -e OSTIUM_PRIVATE_KEY=0x... --env-file .env \\
     python:3.11-slim bash -c "pip install -q -r requirements.txt && PYTHONPATH=/app python3 lab/ostium/scripts/close_open_position.py --symbol BTCUSD"
 

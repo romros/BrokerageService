@@ -116,21 +116,20 @@ async def lifespan(app: FastAPI):
     # PAPER: zero tx. Kill switch: ENABLE_LIVE_TRADING=0 → paper. No paper si venue=gtrade (backtest).
     use_paper_execution = (mode_lower == "paper" or not enable_live) and venue in ("", "lighter", "paper")
 
-    from infrastructure.builders.lighter_di import build_lighter_paper_market_data  # lazy: evita carregar lighter si venue=gtrade
-    from infrastructure.venues.lighter.config import (
-        get_lighter_symbols_from_env,
-        get_lighter_tick_interval_ms,
+    from infrastructure.paper_market_data import (
+        build_paper_market_data_provider,
+        get_symbols_from_env,
     )
 
     if use_paper_execution:
-        # PAPER: execució simulada, zero tx. Market data de pipeline.
-        symbols = get_lighter_symbols_from_env()
-        _, market_data_service = build_lighter_paper_market_data(
+        # PAPER: execució simulada, zero tx. Market data fake (Ostium-first, T5.35).
+        symbols = get_symbols_from_env()
+        _, market_data_service = build_paper_market_data_provider(
             candle_store=candle_store,
             canonical_tz=config["canonical_tz"],
         )
         await market_data_service.start()
-        source = "fake" if use_fake_feed else "real"
+        source = "fake"
         logger.info(
             "execution_mode=paper_simulated market_data_env=%s source=%s",
             config["market_data_env"],
@@ -160,67 +159,17 @@ async def lifespan(app: FastAPI):
             fallback_provider=fallback_provider,
         )
     elif venue == "lighter":
-        # Lazy: evita carregar lighter si --venue gtrade
-        from infrastructure.builders.lighter_di import (
-            build_lighter_paper_adapter,
-            build_lighter_paper_market_data,
+        # Legacy arxivat (T5.35): lighter no disponible al tree principal
+        logger.warning("venue=lighter arxivat (T5.35). Usa venue=ostium o venue=paper.")
+        set_broker_deps(
+            candle_store=candle_store,
+            adapter_factory=None,
+            mode=config["mode"],
+            venue=venue,
+            market_data_env=config["market_data_env"],
+            market_data_source="n/a",
+            fallback_provider=fallback_provider,
         )
-        from infrastructure.venues.lighter.config import (
-            get_lighter_symbols_from_env,
-            get_lighter_tick_interval_ms,
-        )
-        from infrastructure.venues.lighter.price_cache import PriceSnapshotCache
-        from infrastructure.venues.lighter.config import get_price_cache_ttl_s
-
-        source = "fake" if use_fake_feed else "real"
-        shared_price_cache = PriceSnapshotCache(ttl_s=get_price_cache_ttl_s())
-        if use_fake_feed:
-            # P2.0.1: Sense adapter quan fake — broker arrenca sense xarxa
-            adapter = None
-            set_broker_deps(
-                candle_store=candle_store,
-                adapter_factory=lambda v: None,
-                mode=config["mode"],
-                venue=venue,
-                market_data_env=config["market_data_env"],
-                market_data_source=source,
-                fallback_provider=fallback_provider,
-            )
-        else:
-            adapter_mode = "live" if config["enable_live_trading"] else "paper"
-            adapter = build_lighter_paper_adapter(
-                mode=adapter_mode,
-                price_cache=shared_price_cache,
-            )
-            await adapter.start()
-            set_broker_deps(
-                candle_store=candle_store,
-                adapter_factory=lambda v: adapter if v == "lighter" else None,
-                mode=config["mode"],
-                venue=venue,
-                market_data_env=config["market_data_env"],
-                market_data_source=source,
-                fallback_provider=fallback_provider,
-            )
-
-        # P2.0: Arrencar pipeline ticks→candles→store→WS quan MODE in (paper, live)
-        mode_lower = (config["mode"] or "").lower()
-        if mode_lower in ("paper", "live"):
-            symbols = get_lighter_symbols_from_env()
-            tick_interval_ms = get_lighter_tick_interval_ms()
-            _, market_data_service = build_lighter_paper_market_data(
-                candle_store=candle_store,
-                canonical_tz=config["canonical_tz"],
-                price_cache=shared_price_cache,
-            )
-            await market_data_service.start()
-            logger.info(
-                "MARKETDATA_START venue=%s source=%s symbols=%s interval_ms=%s",
-                venue,
-                source,
-                symbols,
-                tick_interval_ms,
-            )
     elif venue == "ostium":
         # T2: positions read-only (LIVE = TradingStorage; PAPER = stub []). No open/close encara.
         from infrastructure.venues.ostium.ostium_execution_adapter import OstiumExecutionAdapter
@@ -284,8 +233,8 @@ async def lifespan(app: FastAPI):
                 from infrastructure.venues.dukascopy.dukascopy_backfill_provider import DukascopyBackfillProvider  # lazy
                 provider = DukascopyBackfillProvider(cache_root=config["datafiles_root"])
             else:
-                from infrastructure.venues.lighter.lighter_candlestick_backfill_provider import LighterCandlestickBackfillProvider  # lazy
-                provider = LighterCandlestickBackfillProvider()
+                from infrastructure.venues.dukascopy.dukascopy_backfill_provider import DukascopyBackfillProvider
+                provider = DukascopyBackfillProvider(cache_root=config["datafiles_root"])
             if cfg["symbols"]:
                 data_layer_prod_service = DataLayerProdService(
                     store=candle_store,
@@ -375,19 +324,17 @@ async def lifespan(app: FastAPI):
     if ostium_enabled and os.getenv("OSTIUM_INGEST_ENABLED_OVERRIDE", "") == "1":
         set_broker_deps(ostium_ingest_enabled=True)
 
-    # P4.0: BackfillService (gap repair) quan tenim Lighter market data
+    # P4.0: BackfillService (gap repair) — Dukascopy (Ostium-first, T5.35)
     if market_data_service is not None:
         try:
-            from application.services.backfill_service import BackfillService  # lazy: només quan hi ha pipeline
-            from infrastructure.venues.lighter.lighter_candlestick_backfill_provider import (  # lazy: només quan hi ha pipeline
-                LighterCandlestickBackfillProvider,
-            )
+            from application.services.backfill_service import BackfillService
+            from infrastructure.venues.dukascopy.dukascopy_backfill_provider import DukascopyBackfillProvider
             backfill_symbols = [
                 s.strip() for s in os.getenv("BACKFILL_SYMBOLS", "EURUSD,XAUUSD").split(",")
                 if s.strip()
             ]
             if backfill_symbols:
-                backfill_provider = LighterCandlestickBackfillProvider()
+                backfill_provider = DukascopyBackfillProvider(cache_root=config["datafiles_root"])
                 backfill_service = BackfillService(
                     store=candle_store,
                     provider=backfill_provider,

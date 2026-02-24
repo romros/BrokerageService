@@ -2,7 +2,7 @@
 """
 Obrir una posició a Ostium (EURUSD per defecte, com els scripts del lab), esperar N s i tancar-la.
 
-Reutilitza OstiumExecutionAdapter (com smoke_ostium_exec.sh i test_full_cycle_multicall).
+Reutilitza OstiumExecutionAdapter (com run_ostium_live_smoke.sh i test_full_cycle_multicall).
 Flux: open → (client espera/reintenta trobar el trade) → wait → close.
 
 Ús (des del directori arrel del projecte):

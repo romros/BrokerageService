@@ -475,6 +475,7 @@ Decisió de "venue principal" sempre és en 2 eixos:
 
 ## 15) Changelog
 
+- **2026-02-24** — LOT SANEJAMENT: docs coherents (ESTAT source of truth § Ostium LIVE); scripts legacy arxivats a `scripts/_archive/2026-02-ostium-legacy/`; entrypoints canònics `up_ostium_live.sh`, `run_ostium_live_smoke.sh`.
 - **2026-02-18** — Split vNext Phase 2: trading_service consumeix realtime_datalayer via HTTP (RealtimeDataLayerClient, IDataLayerReader, REALTIME_DATALAYER_BASE_URL). OHLCV/coverage/data_status forward quan env set.
 - **2026-02-18** — Realtime DataLayer hot-reload: GET/PUT /symbols per canviar símbols sense restart; config persistent a `{REALTIME_DATALAYER_ROOT}/config/symbols.json`; instrument resolution (spot/perp) amb override.
 - **2026-02-18** — Split vNext Phase 1: SERVICE_ROLE, entrypoints per servei (apps/*/app.py), create_app(role), role boundaries, compose amb entrypoints reals.

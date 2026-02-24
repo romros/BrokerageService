@@ -55,7 +55,7 @@ async def preflight_compat_report_real(symbol: str) -> Tuple[bool, str]:
     # 1. Lighter
     base_url = os.getenv("LIGHTER_BASE_URL", "https://mainnet.zklighter.elliot.ai").strip().rstrip("/")
     try:
-        from testing.helpers.lighter_test_env import preflight_lighter_candlestick
+        from testing.helpers.legacy_venue_test_env import preflight_lighter_candlestick
         ok, reason = await preflight_lighter_candlestick(symbol=s)
         if not ok:
             return False, f"Lighter: {reason}"

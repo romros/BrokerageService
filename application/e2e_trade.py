@@ -210,15 +210,14 @@ async def _run_e2e(
         for_symbol = [p for p in positions_for_symbol if _position_size(p) >= SIZE_EPSILON]
         count_non_flat = len(for_symbol)
 
-        # P0.2: si timeout, force_close_remaining (close_position per cada pair_id restant) + retry
+        # P0.2: si timeout, force_close_remaining (close_position per cada position_id) + retry
         if not flat_ok and count_non_flat > 0:
-            pair_ids = list({p.pair_id for p in for_symbol})
-            _emit("force_close", "OK", f"retrying {len(pair_ids)} position(s)")
-            for pair_id in pair_ids:
+            _emit("force_close", "OK", f"retrying {len(for_symbol)} position(s)")
+            for p in for_symbol:
                 try:
-                    await adapter.close_position(f"lighter:{pair_id}", percent=100.0)
+                    await adapter.close_position(p.position_id, percent=100.0)
                 except Exception as e:
-                    logger.warning("force_close lighter:%s failed: %s", pair_id, e)
+                    logger.warning("force_close %s failed: %s", p.position_id, e)
             flat_ok, positions_for_symbol = await _wait_until_flat(
                 adapter, symbol, timeout_s=settle_timeout_s, poll_s=poll_s
             )
@@ -253,7 +252,7 @@ async def _run_e2e(
                     positions = await adapter.get_open_positions()
                     for p in positions:
                         if (p.symbol == symbol or symbol in p.symbol) and p.position_id not in ids_before:
-                            cleanup_id = f"lighter:{p.pair_id}"
+                            cleanup_id = p.position_id
                             break
                 except Exception:
                     pass
@@ -269,15 +268,16 @@ async def _run_e2e(
 def _build_adapter(venue: str):
     """Build venue adapter. Raises if unsupported."""
     if venue == "lighter":
-        # Lazy: evita carregar lighter si --venue mock
-        from infrastructure.builders.lighter_di import build_lighter_paper_adapter
-        return build_lighter_paper_adapter()
-    raise ValueError(f"Unsupported venue: {venue} (use lighter)")
+        raise ValueError("venue=lighter arxivat (T5.35). Usa ostium.")
+    if venue == "ostium":
+        from infrastructure.venues.ostium.ostium_execution_adapter import OstiumExecutionAdapter
+        return OstiumExecutionAdapter()
+    raise ValueError(f"Unsupported venue: {venue} (use ostium)")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="E2E trade sanity: open → close, 0 positions at end")
-    parser.add_argument("--venue", default=os.getenv("VENUE", "lighter"), help="Venue (lighter)")
+    parser.add_argument("--venue", default=os.getenv("VENUE", "ostium"), help="Venue (ostium)")
     parser.add_argument("--mode", default=os.getenv("MODE", "PAPER"), help="Mode (PAPER | LIVE)")
     parser.add_argument("--symbol", default=DEFAULT_SYMBOL, help="Symbol (default ETH)")
     parser.add_argument("--collateral", type=float, default=DEFAULT_COLLATERAL, help="Collateral USDC (default 100)")

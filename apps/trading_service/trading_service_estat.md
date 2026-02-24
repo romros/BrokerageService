@@ -6,7 +6,7 @@
 
 ## Responsabilitat
 
-**Fa:** execució d'ordres (paper/live) via Lighter, reconcile, guards, balance/positions, consum de candles del realtime_datalayer via HTTP + quality gate fail-closed, backtesting (BacktestMarketDataProvider, runner offline, API REST).
+**Fa:** execució d'ordres (paper/live) via Ostium, reconcile, guards, balance/positions, consum de candles del realtime_datalayer via HTTP + quality gate fail-closed, backtesting (BacktestMarketDataProvider, runner offline, API REST).
 
 **Accés extern:** Via nginx `datalayer-proxy` → `host:8081/trade/*` (strip prefix → port intern 8010). `/backtests/*` → `/api/v1/backtests/*` (alias). Accessible directament a `:8010` per debug intern.
 
@@ -23,7 +23,7 @@
 |---------|-------|-------|
 | Servei autònom | ✅ | `docker compose -f ... up -d trading_service` |
 | GET /health | ✅ | Via broker routes |
-| GET /balance, /positions, /trades | ✅ | Lighter MVP 100% |
+| GET /balance, /positions, /trades | ✅ | Ostium canònic |
 | POST /orders/open, /close | ✅ | Guards + idempotència |
 | Reconcile | ✅ | Operatiu |
 | Consumeix realtime_datalayer via HTTP | ✅ | Phase 2: HttpDataLayerReader + RealtimeDataLayerClient |
@@ -79,8 +79,8 @@ curl -s http://localhost:8081/backtests/runs
 
 # Verificar directament al servei (port intern, per debug)
 curl -s http://localhost:8010/api/v1/broker/health
-curl -s http://localhost:8010/api/v1/broker/balance?venue=lighter
-curl -s http://localhost:8010/api/v1/broker/positions?venue=lighter
+curl -s http://localhost:8010/api/v1/broker/balance?venue=ostium
+curl -s http://localhost:8010/api/v1/broker/positions?venue=ostium
 
 # Quality gate als logs
 docker logs trading_service 2>&1 | grep -E "quality_gate|QUALITY_GATE"
@@ -140,7 +140,7 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 - **Legacy venues opt-in:** `VENUE=lighter` o `VENUE=gtrade` requereixen `ENABLE_LEGACY_VENUES=1`. Sense opt-in → 503.
 - **Ostium exec:** `VENUE=ostium` → OstiumExecutionAdapter (Phase H: balance, metrics, idempotència open/close; smoke verifica tancament).
 - **Mode paper:** Per defecte `MODE=paper`. Live trading requereix `ENABLE_LIVE_TRADING=1` explícit.
-- **Venue Lighter:** MVP 100% completat. gTrade i Ostium execution pendents.
+- **Venue Ostium:** Canònic (Phase H). Lighter/gTrade arxivats (T5.35).
 - **Quality gate env vars:** `QUALITY_GATE_MAX_FRESHNESS_SEC` (default 300s), `QUALITY_GATE_MIN_COMPLETENESS` (default 0.95), `QUALITY_GATE_MAX_GAP_S_GATE` (default 180s).
 - **Sense REALTIME_DATALAYER_BASE_URL:** usa `LocalDataLayerReader` (dades locals); quality gate retorna `ok` directament.
 - **Phase 2 (completada):** trading_service llegeix candles del realtime_datalayer via HTTP. `HttpDataLayerReader` + `QualityGateEvaluator` fail-closed. Si no configurat, usa data layer local.
@@ -160,7 +160,7 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 | `FakeOstiumClient` (test stub) | idem | ✅ |
 | `OstiumExecutionAdapter` | `infrastructure/venues/ostium/ostium_execution_adapter.py` | ✅ Phase H |
 | Tests 0-network (23+) | `testing/apps/trading_service/test_ostium_execution_adapter_unit.py` | ✅ |
-| Smoke opt-in | `scripts/smoke_ostium_exec.sh` | ✅ (Phase H: STEP 5 verifica tancament) |
+| Smoke canònic | `scripts/run_ostium_live_smoke.sh` | ✅ (ESTAT § Ostium LIVE) |
 
 ### Capacitats MVP (Phase G) + safe live (Phase H)
 
@@ -182,12 +182,14 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 - Subgraph no disponible → `get_trade_history` / `get_pairs` retornen `[]`
 - `percent` en `close_position` ignorat MVP (sempre 100%)
 
-### Smoke test (opt-in, Phase H)
+### Smoke test (canònic)
 
-Valida: health → open → close → **get_open_positions confirma que la posició ja no apareix**.
+Veure [docs/ESTAT.md](../../docs/ESTAT.md) § Ostium LIVE.
 
 ```bash
-ENABLE_OSTIUM_LIVE_SMOKE=1 OSTIUM_PRIVATE_KEY=0x... ./scripts/smoke_ostium_exec.sh
+./scripts/up_ostium_live.sh
+# o només smoke:
+./scripts/run_ostium_live_smoke.sh --recreate --clean
 ```
 
 ---
@@ -207,7 +209,7 @@ ENABLE_OSTIUM_LIVE_SMOKE=1 OSTIUM_PRIVATE_KEY=0x... ./scripts/smoke_ostium_exec.
 | Integració guards a `TradingCore.open_order()` | `application/trading/trading_core.py` | ✅ |
 | `GET /preflight` endpoint | `application/api/broker_routes.py` | ✅ |
 | Tests 0-network (15) | `testing/apps/trading_service/test_live_trading_guardrails.py` | ✅ |
-| Smoke e2e via gateway | `scripts/smoke_trade_ostium_gateway.sh` | ✅ (opt-in) |
+| Smoke e2e | `scripts/run_ostium_live_smoke.sh` | ✅ (ESTAT § Ostium LIVE) |
 
 ### Guards actius (mode live)
 
@@ -228,13 +230,9 @@ GET /api/v1/broker/preflight?venue=ostium&symbol=EURUSD
 ```
 Retorna: `venue`, `mode`, `live_enabled`, `risk_caps`, `checks` (data_quality, venue_health, live_enabled), `ready` (boolean).
 
-### Smoke via gateway (opt-in)
+### Smoke (canònic)
 
-```bash
-ENABLE_LIVE_TRADING=1 ENABLE_OSTIUM_LIVE_SMOKE=1 OSTIUM_PRIVATE_KEY=0x... \
-  ./scripts/smoke_trade_ostium_gateway.sh
-```
-Flux: preflight → open (via `:8081/trade/*`) → close → confirm tancament via `/positions`.
+Veure [docs/ESTAT.md](../../docs/ESTAT.md) § Ostium LIVE. `./scripts/run_ostium_live_smoke.sh --recreate --clean`
 
 ---
 
@@ -249,7 +247,7 @@ Flux: preflight → open (via `:8081/trade/*`) → close → confirm tancament v
 | `OrderOpenRequest` | `application/api/models.py` | Camp `client_order_id: Optional[str] = None` (backward compat) |
 | `TradingCore.open_order()` | `application/trading/trading_core.py` | Passa `client_order_id=getattr(req, "client_order_id", None)` al adapter |
 | Tests 0-network (5) | `testing/apps/trading_service/test_client_order_id_plumbing.py` | ✅ |
-| Smoke idempotència | `scripts/smoke_trade_idempotency_gateway.sh` | opt-in via gateway |
+| Smoke idempotència | cobert per `run_ostium_live_smoke.sh` | ESTAT § Ostium LIVE |
 
 ### Per què `client_order_id`
 
@@ -264,13 +262,9 @@ POST /orders/open { ..., "client_order_id": "my_order_uuid" }
 
 **Sense `client_order_id`** (default None): comportament anterior, sense idempotència.
 
-### Smoke idempotència (opt-in)
+### Smoke idempotència
 
-```bash
-ENABLE_LIVE_TRADING=1 ENABLE_OSTIUM_LIVE_SMOKE=1 OSTIUM_PRIVATE_KEY=0x... \
-  ./scripts/smoke_trade_idempotency_gateway.sh
-```
-Flux: open × 2 amb same `client_order_id` → assert `position_id` igual → close.
+Cobert per `run_ostium_live_smoke.sh` (ESTAT § Ostium LIVE).
 
 ---
 

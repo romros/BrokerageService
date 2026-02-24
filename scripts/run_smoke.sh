@@ -6,7 +6,7 @@
 #
 # Profiles: data-layer (default), smoke, ostium, realtime_datalayer
 #   data-layer: Data Layer smoke (3 min, prefetch+writer+gates)
-#   smoke: Smoke reconcile (venue=lighter, 10 min)
+#   smoke: Smoke reconcile (venue=ostium, 10 min)
 #   ostium: Ostium override
 #   realtime_datalayer: Realtime DataLayer split (up -d, checks /health /status /symbols /docs, artifact)
 #
@@ -163,7 +163,7 @@ case "$PROFILE" in
     mkdir -p "${PROJECT_ROOT}/datafiles/smoke_runs"
     # --user host UID:GID per evitar root-owned files
     docker compose $COMPOSE_FILES run --rm --user "$(id -u):$(id -g)" brokerage python3 -m application.smoke \
-      --venue lighter --mode PAPER --seconds "$DURATION" --log-path "$LOG_PATH"
+      --venue ostium --mode PAPER --seconds "$DURATION" --log-path "$LOG_PATH"
     ;;
   ostium)
     python3 -m application.tools.data_layer_smoke

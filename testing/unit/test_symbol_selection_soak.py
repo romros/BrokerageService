@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from testing.helpers.lighter_test_env import (
+from testing.helpers.legacy_venue_test_env import (
     select_soak_symbol,
     SOAK_SYMBOL_MAINNET,
     SOAK_SYMBOL_TESTNET,

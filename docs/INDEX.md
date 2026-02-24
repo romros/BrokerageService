@@ -76,11 +76,13 @@ curl -s http://localhost:8010/api/v1/broker/health
 
 ## Ostium LIVE (MVP)
 
-**Happy path (1 línia):**
+**Source of truth:** [docs/ESTAT.md](ESTAT.md) § Ostium LIVE.
+
 ```bash
 ./scripts/up_ostium_live.sh
 ```
-**Smoke only:** `./scripts/run_ostium_live_smoke.sh --recreate --clean`
+
+Smoke only: `./scripts/run_ostium_live_smoke.sh --recreate --clean`
 
 ---
 

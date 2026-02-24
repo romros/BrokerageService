@@ -50,11 +50,18 @@ fi
 # T5.16: directe a 8010 evita nginx 504 (proxy_read 60s); open Ostium pot trigar >60s
 BASE_URL="${BASE_URL:-http://127.0.0.1:8010}"
 
-# T5.20: --clean tanca posicions obertes abans del smoke (evita POSITION_ALREADY_OPEN)
+# T5.20/T5.26: --clean tanca posicions obertes abans del smoke (evita POSITION_ALREADY_OPEN).
+# Executem dins del container per garantir imports (foundation/lifecycle).
 if [ "$CLEAN" -eq 1 ]; then
   echo "=== Clean-slate: tancant posicions obertes ==="
-  export PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
-  python3 lab/ostium/scripts/close_open_position.py --all
+  CONTAINER="trading-service-split"
+  if ! docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null | grep -q true; then
+    echo "✗ Container $CONTAINER no està running. Executa ./scripts/up_ostium_live.sh abans."
+    exit 1
+  fi
+  docker exec -e OSTIUM_RPC_URL="$OSTIUM_RPC_URL" -e OSTIUM_PRIVATE_KEY="$OSTIUM_PRIVATE_KEY" \
+    -e PRIVATE_KEY="${OSTIUM_PRIVATE_KEY:-$PRIVATE_KEY}" \
+    "$CONTAINER" python3 lab/ostium/scripts/close_open_position.py --all
   echo ""
 fi
 

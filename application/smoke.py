@@ -139,7 +139,7 @@ def _emit_smoke_summary(venue: str, mode: str, runs: int, ok: int, failed: int, 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Smoke runner: bootstrap + reconcile loop")
-    parser.add_argument("--venue", default=os.getenv("VENUE", "mock"), help="Venue (mock | lighter)")
+    parser.add_argument("--venue", default=os.getenv("VENUE", "mock"), help="Venue (mock | ostium)")
     parser.add_argument("--mode", default=os.getenv("MODE", "PAPER"), help="Mode (PAPER | LIVE)")
     parser.add_argument("--seconds", "--duration", type=float, default=120, dest="seconds", help="Run duration (seconds)")
     parser.add_argument("--repeat", type=int, default=1, help="Number of consecutive runs (default 1)")
@@ -191,41 +191,19 @@ def _main_impl(args, repeat: int, pause_s: float, log_path: Optional[str]) -> in
     if args.venue == "mock":
         adapter, tracker = _build_mock_wiring()
     elif args.venue == "lighter":
-        try:
-            # Lazy: evita carregar lighter/builders si --venue mock
-            from infrastructure.reconcile import InMemoryPositionTracker  # lazy: lighter path
-            from infrastructure.builders.lighter_di import build_lighter_paper_adapter  # lazy: lighter path
-            adapter = build_lighter_paper_adapter()
-            tracker = InMemoryPositionTracker()
-        except Exception as e:
-            logger.exception("Failed to build Lighter wiring: %s", e)
-            return 1
+        logger.error("venue=lighter arxivat (T5.35). Usa mock o ostium.")
+        return 1
     else:
-        logger.error("Unsupported venue: %s (use mock or lighter)", args.venue)
+        logger.error("Unsupported venue: %s (use mock or ostium)", args.venue)
         return 1
 
     async def _run_once():
         """Run one smoke cycle with full adapter lifecycle (start → run → stop)."""
-        # For lighter: start adapter, bootstrap, run smoke, stop adapter (try/finally)
-        # For mock: adapter has no start/stop
-        if args.venue == "lighter":
-            try:
-                await adapter.start()
-                await run_bootstrap(adapter, tracker)
-                return await run_smoke(
-                    adapter, tracker, args.seconds,
-                    interval_sec=reconcile_interval_sec_from_env(),
-                    bootstrap_fn=None,  # already ran bootstrap above
-                )
-            finally:
-                await adapter.stop()
-        else:
-            # mock: no start/stop
-            return await run_smoke(
-                adapter, tracker, args.seconds,
-                interval_sec=reconcile_interval_sec_from_env(),
-                bootstrap_fn=None,
-            )
+        return await run_smoke(
+            adapter, tracker, args.seconds,
+            interval_sec=reconcile_interval_sec_from_env(),
+            bootstrap_fn=None,
+        )
 
     ok_count = 0
     for run_num in range(1, repeat + 1):
