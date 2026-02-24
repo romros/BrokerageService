@@ -180,21 +180,37 @@ def create_app(role: str | None = None) -> FastAPI:
                     fallback_provider=fallback_provider,
                 )
             elif use_ostium_execution:
-                # Phase F: scaffold — OstiumExecutionAdapter disponible, exec no implementat
+                # Phase F: OstiumExecutionAdapter — LIVE exec via chain; start() obligatori
                 from infrastructure.venues.ostium.ostium_execution_adapter import OstiumExecutionAdapter
                 ostium_adapter = OstiumExecutionAdapter()
-                await ostium_adapter.start()
-                adapter = ostium_adapter
-                logger.info("execution_mode=ostium_scaffold (NotImplementedError on trade calls)")
-                set_broker_deps(
-                    candle_store=candle_store,
-                    adapter_factory=lambda v: ostium_adapter if v == "ostium" else None,
-                    mode=config["mode"],
-                    venue="ostium",
-                    market_data_env=config["market_data_env"],
-                    market_data_source="n/a",
-                    fallback_provider=fallback_provider,
-                )
+                try:
+                    await ostium_adapter.start()
+                except Exception as e:
+                    logger.warning("OstiumExecutionAdapter.start FAILED: %s — ostium no disponible", e)
+                    ostium_adapter = None
+                if ostium_adapter is not None and ostium_adapter._client is not None:
+                    adapter = ostium_adapter
+                    logger.info("execution_mode=ostium (LIVE)")
+                    set_broker_deps(
+                        candle_store=candle_store,
+                        adapter_factory=lambda v: ostium_adapter if v == "ostium" else None,
+                        mode=config["mode"],
+                        venue="ostium",
+                        market_data_env=config["market_data_env"],
+                        market_data_source="n/a",
+                        fallback_provider=fallback_provider,
+                    )
+                else:
+                    logger.warning("OstiumExecutionAdapter: client no inicialitzat (PK o RPC mancant) — ostium no disponible")
+                    set_broker_deps(
+                        candle_store=candle_store,
+                        adapter_factory=lambda v: None,
+                        mode=config["mode"],
+                        venue=venue,
+                        market_data_env=config["market_data_env"],
+                        market_data_source="n/a",
+                        fallback_provider=fallback_provider,
+                    )
             elif use_lighter_execution:
                 from infrastructure.builders.lighter_di import build_lighter_paper_adapter, build_lighter_paper_market_data
                 from infrastructure.venues.lighter.config import get_lighter_symbols_from_env, get_lighter_tick_interval_ms, get_price_cache_ttl_s

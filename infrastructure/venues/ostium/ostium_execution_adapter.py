@@ -174,23 +174,28 @@ class OstiumExecutionAdapter(IVenueAdapter):
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     async def start(self) -> None:
-        if self._client is None:
-            pk = (self._private_key or os.getenv(OSTIUM_PRIVATE_KEY_ENV) or "").strip()
-            if not pk:
-                logger.warning(
-                    "OstiumExecutionAdapter.start: %s no configurat — adapter inactiu",
-                    OSTIUM_PRIVATE_KEY_ENV,
+        logger.info("OstiumExecutionAdapter.start begin")
+        try:
+            if self._client is None:
+                pk = (self._private_key or os.getenv(OSTIUM_PRIVATE_KEY_ENV) or "").strip()
+                if not pk:
+                    logger.warning(
+                        "OstiumExecutionAdapter.start FAILED: %s no configurat — adapter inactiu",
+                        OSTIUM_PRIVATE_KEY_ENV,
+                    )
+                    return
+                network = self._network or os.getenv(OSTIUM_NETWORK_ENV, "testnet")
+                rpc_url = os.getenv(OSTIUM_RPC_URL_ENV) or os.getenv("RPC_URL")
+                self._client = OstiumClient(
+                    private_key=pk,
+                    network=network,
+                    rpc_url=rpc_url or None,
                 )
-                return
-            network = self._network or os.getenv(OSTIUM_NETWORK_ENV, "testnet")
-            rpc_url = os.getenv(OSTIUM_RPC_URL_ENV)
-            self._client = OstiumClient(
-                private_key=pk,
-                network=network,
-                rpc_url=rpc_url or None,
-            )
-            logger.info("OstiumExecutionAdapter: OstiumClient creat (network=%s)", network)
-        logger.info("OstiumExecutionAdapter.start() — client llest")
+                logger.info("OstiumExecutionAdapter: OstiumClient creat (network=%s)", network)
+            logger.info("OstiumExecutionAdapter.start OK")
+        except Exception as e:
+            logger.warning("OstiumExecutionAdapter.start FAILED: %s", e)
+            raise
 
     async def stop(self) -> None:
         logger.info("OstiumExecutionAdapter.stop() — no-op (Ostium SDK no té connexió persistent)")
