@@ -41,7 +41,8 @@ if [ -z "$OSTIUM_RPC_URL" ] || [ -z "$OSTIUM_PRIVATE_KEY" ]; then
   exit 1
 fi
 
-BASE_URL="${BASE_URL:-http://127.0.0.1:8081/trade}"
+# T5.16: directe a 8010 evita nginx 504 (proxy_read 60s); open Ostium pot trigar >60s
+BASE_URL="${BASE_URL:-http://127.0.0.1:8010}"
 
 if [ "$RECREATE" -eq 1 ]; then
   echo "=== Recreant només trading_service (NO realtime) ==="
