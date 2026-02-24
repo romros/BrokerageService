@@ -174,6 +174,7 @@ docker logs trading_service 2>&1 | grep -E "quality_gate|QUALITY_GATE"
 - `QualityGateResult.status`: `ok` (dades netes) | `bad` (gaps/stale/missing headers)
 - Trading loop: si `gate.is_bad()` → NO_TRADE, log + reason
 - Env override dels llindars: `QUALITY_GATE_MAX_FRESHNESS_SEC` (default 300s), `QUALITY_GATE_MIN_COMPLETENESS` (default 0.95), `QUALITY_GATE_MAX_GAP_S_GATE` (default 180s)
+- **MVP LIVE** (completeness ~0.90): posar `QUALITY_GATE_MIN_COMPLETENESS=0.90` i recrear només `trading_service` (NO realtime): `docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml up -d --force-recreate trading_service`
 - Fail-closed: si headers `X-Data-Coverage-From/To` absents → `bad/missing_headers`
 - Mercat tancat: si `missing_minutes==0` i `max_gap_s==0` → `ok` (no incident, freshness ignorada)
 
