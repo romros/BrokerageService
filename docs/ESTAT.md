@@ -133,6 +133,8 @@ Categories addicionals: `CONTRACT_REVERT` (revert reason si el RPC el retorna). 
 | **historical_datalayer** | Backfill Dukascopy, Parquet, DuckDB, Coverage API, mixed stitching, cron | Ingest temps real, ordres, market-hours gating |
 | **trading_service** | Execució ordres (Ostium paper/LIVE), quality gate fail-closed, backtest API | Ingest Ostium, backfill Dukascopy, emmagatzematge candles |
 
+**Data flow (T5.38):** realtime_datalayer escriu candles 1m a `datafiles/realtime_datalayer/candles/` (CSV). historical_datalayer escriu Parquet a `datafiles/historical_parquet/` (Dukascopy backfill). **No hi ha rollover** realtime→historical; el stitching és en lectura: `mixed_ohlcv_stitcher` combina Parquet + CSV realtime quan es serveix OHLCV. **Trading llegeix de realtime_datalayer via HTTP** (`REALTIME_DATALAYER_BASE_URL`); sense config → LocalDataLayerReader (fitxers).
+
 ---
 
 ## Arquitectura split vNext — estat de migració
