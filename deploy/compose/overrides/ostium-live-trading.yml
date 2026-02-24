@@ -1,0 +1,26 @@
+# Override per trading_service en mode LIVE Ostium (execució real testnet).
+# NO toca realtime_datalayer ni historical_datalayer.
+#
+# Requereix: lab/ostium/.env amb RPC_URL, PRIVATE_KEY (o exportar OSTIUM_RPC_URL, OSTIUM_PRIVATE_KEY).
+#
+# Ús (wrapper canònic):
+#   ./scripts/run_ostium_live_smoke.sh --recreate
+#
+# Manual:
+#   set -a && source lab/ostium/.env && set +a
+#   export OSTIUM_RPC_URL="${RPC_URL}" OSTIUM_PRIVATE_KEY="${PRIVATE_KEY}"
+#   docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml \
+#     -f deploy/compose/overrides/ostium-live-trading.yml up -d trading_service
+
+services:
+  trading_service:
+    environment:
+      - MODE=live
+      - VENUE=ostium
+      - ENABLE_LIVE_TRADING=1
+      - TRADING_CANARY_MODE=ostium
+      - QUALITY_GATE_MIN_COMPLETENESS=${QUALITY_GATE_MIN_COMPLETENESS:-0.90}
+      - OSTIUM_RPC_URL=${OSTIUM_RPC_URL:-}
+      - OSTIUM_PRIVATE_KEY=${OSTIUM_PRIVATE_KEY:-}
+      - RPC_URL=${OSTIUM_RPC_URL:-}
+      - PRIVATE_KEY=${OSTIUM_PRIVATE_KEY:-}

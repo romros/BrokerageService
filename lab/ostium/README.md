@@ -76,6 +76,28 @@ El mateix `.env` (o `PRIVATE_KEY`/`OSTIUM_PRIVATE_KEY` a l’arrel) s’usa per 
 ./test.sh lab/ostium/scripts/close_open_position.py --all --dry-run              # llistar totes
 ```
 
+### Smoke LIVE via API (split compose)
+
+Quan `realtime_datalayer` i `trading_service` corren amb split compose, el smoke E2E via REST valida open→wait→positions→close.
+
+**Regla crítica:** NO aturar ni recrear `realtime_datalayer` — captura candles Ostium 24/7; Ostium no té històric.
+
+```bash
+# Wrapper canònic (des de l'arrel del repo)
+./scripts/run_ostium_live_smoke.sh              # només smoke (trading_service ja configurat)
+./scripts/run_ostium_live_smoke.sh --recreate  # recrea només trading_service + smoke
+```
+
+Recrear trading_service amb config Ostium LIVE (manual):
+```bash
+set -a && source lab/ostium/.env && set +a
+export OSTIUM_RPC_URL="${RPC_URL}" OSTIUM_PRIVATE_KEY="${PRIVATE_KEY}"
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml \
+  -f deploy/compose/overrides/ostium-live-trading.yml up -d trading_service
+```
+
+Veure `deploy/compose/overrides/README.md` i `docs/ESTAT.md` § Ostium LIVE smoke.
+
 ### Price Monitoring
 
 **Canònic (recomanat):** servei supervisat amb restart policy

@@ -47,7 +47,8 @@
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 - ✅ **Ostium Core (Trade Layer) read-only:** posicions via TradingStorage.getOpenTrade (Trade(9)); EURUSD=pair_id 2; smoke `smoke_ostium_preflight_call.py` 0-TX opt-in
-- ✅ **Ostium trades:** orders/open suportat en PAPER (paper store) i LIVE (kill-switch ENABLE_LIVE_TRADING). orders/close suportat (PAPER idempotent; LIVE guarded). GET `/api/v1/broker/positions?venue=ostium` reflecteix posicions (PAPER: store; LIVE: chain). Smoke E2E LIVE opt-in: `python3 -m application.tools.ostium_live_e2e_smoke` (servidor arrencat, ENV MODE=live ENABLE_LIVE_TRADING=1 OSTIUM_RPC_URL OSTIUM_PRIVATE_KEY). DATA_QUALITY_MAX_MISSING_MINUTES (default 1) controla la gate d'open LIVE (missing_minutes > allowed → BAD).
+- ✅ **Ostium trades:** orders/open suportat en PAPER (paper store) i LIVE (kill-switch ENABLE_LIVE_TRADING). orders/close suportat (PAPER idempotent; LIVE guarded). GET `/api/v1/broker/positions?venue=ostium` reflecteix posicions (PAPER: store; LIVE: chain). Smoke E2E LIVE opt-in: `./scripts/run_ostium_live_smoke.sh` (wrapper canònic). DATA_QUALITY_MAX_MISSING_MINUTES (default 1) controla la gate d'open LIVE (missing_minutes > allowed → BAD).
+- ✅ **Ostium LIVE smoke (T5):** Override `deploy/compose/overrides/ostium-live-trading.yml` per trading_service en mode LIVE. **Regla crítica: NO aturar ni recrear realtime_datalayer** (captura candles Ostium 24/7; Ostium no té històric). Wrapper: `./scripts/run_ostium_live_smoke.sh` (només smoke) o `./scripts/run_ostium_live_smoke.sh --recreate` (recrea trading_service + smoke). Requereix `lab/ostium/.env` amb RPC_URL, PRIVATE_KEY. Veure `deploy/compose/overrides/README.md`.
 
 > **Phases 2–20 + Phase C + Phase D completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Parquet (15) + DuckDB (16) + Backtest Freqtrade-style (17) + Ops robustos (18) + Data API long-range + Coverage API (19) + Mixed stitching + Cron (20) + Historical dashboard + nginx proxy (C) + Gateway single-port (D). Pipeline prod-ish per backfill 2003→avui. 72 tests 0-network, run_all verd. **Single-port API: `:8081/realtime`, `:8081/data`, `:8081/trade`.** Exec Ostium (venue trading) pendent Phase E.
 
@@ -754,6 +755,7 @@ HISTORICAL_MIXED_ALLOWED=0 docker compose up -d trading_service
 | 2026-02-21 | Market-hours fix (weekend bug) | ✅ `engine.py`: XAU/indices/NVDA tancats cap de setmana; break 17:00–18:00 NY; `_next_sunday_18()`; golden anti-regressió `test_market_hours_golden_weekend.py` (7 tests); tots els 8 símbols `closed` dissabte verificat via Docker. | `./scripts/run_tests.sh realtime_datalayer` |
 | 2026-02-21 | Phase C: Historical dashboard + nginx proxy | ✅ nginx `datalayer-proxy` port 8081: `/realtime/*`→realtime:8082, `/data/*`→historical:8002. `GET /health` i `/status` a historical (`cron_metadata`, `coverage_index`). `get_historical_router()` sense prefix. `run_historical_cron.sh` escriu `_cron/last_runs.json`. 19 tests 0-network; run_all 72 passed. | `curl :8081/data/health` · `curl :8081/realtime/status` |
 | 2026-02-21 | Phase D: Gateway single-port complet | ✅ `/trade/*` → trading_service:8010 (strip prefix); `/backtests/*` alias. `datalayer-proxy` és ara el gateway únic. `scripts/smoke_gateway.sh` verifica tots els prefixos. run_all 72 passed. | `curl :8081/trade/api/v1/broker/health` · `./scripts/smoke_gateway.sh` |
+| 2026-02-24 | Ostium LIVE smoke (T5): override + wrapper | ✅ `ostium-live-trading.yml` per trading_service mode LIVE; `run_ostium_live_smoke.sh` wrapper; TRADING_CANARY_MODE=ostium; RPC_URL/PRIVATE_KEY per SDK. **Regla: NO recrear realtime_datalayer.** Docs: overrides/README, ESTAT, lab/ostium/README. | `./scripts/run_ostium_live_smoke.sh` · `./scripts/run_ostium_live_smoke.sh --recreate` |
 
 **DEGRADED vs CLOSED vs WARNING:** `closed` = mercat tancat (cap de setmana FX/XAU); no és incident. `warning` = market_state=unknown sense dades; no és degraded. `DEGRADED` = errors reals (duplicates, ts_step_errors, stale quan market_open). **Degraded és non-blocking:** continua polling amb backoff (base 2s, max 60s); autorecover quan arriba tick nou; pause només per `paused_closed` (market_closed). `/symbols` inclou `next_poll_in_s`, `degrade_reason`.
 
@@ -795,6 +797,7 @@ HISTORICAL_MIXED_ALLOWED=0 docker compose up -d trading_service
 | data-layer | deploy/compose/overrides/data-layer.yml | `run_smoke.sh data-layer` | `run_soak.sh 30 data-layer` | — |
 | ws | deploy/compose/overrides/soak.yml | — | `run_soak.sh 15 ws` | — |
 | ostium | deploy/compose/overrides/ostium.yml | `run_smoke.sh ostium` | `run_soak.sh 30 ostium` | `run_compat.sh ostium` |
+| ostium-live | deploy/compose/overrides/ostium-live-trading.yml (trading_service sol) | — | — | `run_ostium_live_smoke.sh` |
 
 **Graduation loop Ostium:** `./scripts/run_soak.sh 30 ostium post-compat` — soak + compat automàtic al final. Si no hi ha candles suficients o Dukascopy falta → SKIP (exit 0). Artifact inclou `graduation_summary`. Quan acabi la 24h i Dukascopy tingui delay resolt, correr compat 1440: `run_compat.sh ostium` amb `OSTIUM_COMPAT_WINDOW_MINUTES=1440`.
 
@@ -832,6 +835,8 @@ HISTORICAL_MIXED_ALLOWED=0 docker compose up -d trading_service
 ./scripts/run_soak.sh 30 data-layer
 ./scripts/run_soak.sh 30 ostium
 ./scripts/run_soak.sh 30 ostium post-compat   # soak + compat automàtic (graduation loop)
+./scripts/run_ostium_live_smoke.sh            # Ostium LIVE E2E smoke (trading_service ja configurat)
+./scripts/run_ostium_live_smoke.sh --recreate # recrea trading_service (NO realtime) + smoke
 ./scripts/run_lab.sh ostium-monitor start     # LAB Ostium continuous
 ./scripts/run_lab.sh ostium-monitor status    # last_ts per símbol
 curl -s http://localhost:8000/api/v1/broker/data_status
