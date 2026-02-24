@@ -242,3 +242,8 @@ OSTIUM_POSITIONS_TIMEOUT_S = 5
 # T5.11a: open/close — timeout per wait receipt/reconcile; si timeout → 202 Accepted
 TRADE_TX_WAIT_TIMEOUT_S_ENV = "TRADE_TX_WAIT_TIMEOUT_S"
 DEFAULT_TRADE_TX_WAIT_TIMEOUT_S = 15
+
+# T5.15: persistència operations — JSONL append-only, rehidratació a startup
+OPERATIONS_JSONL_ENV = "OPERATIONS_JSONL_PATH"
+DEFAULT_OPERATIONS_JSONL = "logs/operations.jsonl"
+OPERATIONS_REHYDRATE_MAX_LINES = 5000

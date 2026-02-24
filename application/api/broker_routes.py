@@ -6,9 +6,11 @@ POST /orders/open i /orders/close amb JSON body.
 """
 
 import asyncio
+import json
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional, List, Callable, Any, Dict
 
 from fastapi import APIRouter, HTTPException, Query, Body
@@ -52,6 +54,9 @@ from foundation.config.constants import (
     OSTIUM_POSITIONS_TIMEOUT_S,
     TRADE_TX_WAIT_TIMEOUT_S_ENV,
     DEFAULT_TRADE_TX_WAIT_TIMEOUT_S,
+    OPERATIONS_JSONL_ENV,
+    DEFAULT_OPERATIONS_JSONL,
+    OPERATIONS_REHYDRATE_MAX_LINES,
     CANONICAL_TIMEZONE_NAME,
     DATA_LAYER_ENABLED_ENV,
     DATA_LAYER_STARTUP_GATE_ENV,
@@ -121,6 +126,49 @@ _close_idempotency_cache: dict = {}
 _operations_store: Dict[str, dict] = {}
 
 
+def _op_get_path() -> Path:
+    """T5.15: path del fitxer JSONL (logs/operations.jsonl per defecte)."""
+    raw = os.getenv(OPERATIONS_JSONL_ENV, DEFAULT_OPERATIONS_JSONL).strip()
+    return Path(raw) if raw else Path(DEFAULT_OPERATIONS_JSONL)
+
+
+def _op_append(op: dict) -> None:
+    """T5.15: append JSONL (best-effort, no bloqueja)."""
+    try:
+        path = _op_get_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(op, ensure_ascii=False) + "\n")
+    except Exception as e:
+        logger.warning("operations JSONL append failed: %s", e)
+
+
+def _op_rehydrate() -> None:
+    """T5.15: rehidratar _operations_store des del JSONL (últims N events)."""
+    global _operations_store
+    path = _op_get_path()
+    if not path.exists():
+        return
+    try:
+        lines = path.read_text(encoding="utf-8").strip().splitlines()
+        tail = lines[-OPERATIONS_REHYDRATE_MAX_LINES:] if len(lines) > OPERATIONS_REHYDRATE_MAX_LINES else lines
+        for line in tail:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                op = json.loads(line)
+                oid = op.get("operation_id")
+                if oid:
+                    _operations_store[oid] = op
+            except json.JSONDecodeError:
+                continue
+        if _operations_store:
+            logger.info("operations rehydrated: %d from %s", len(_operations_store), path)
+    except Exception as e:
+        logger.warning("operations rehydrate failed: %s", e)
+
+
 def _op_id() -> str:
     """Short operation id (12 chars)."""
     return uuid.uuid4().hex[:12]
@@ -128,7 +176,7 @@ def _op_id() -> str:
 
 def _op_create(operation_id: str, kind: str, venue: str, symbol: str, position_id: str = "") -> None:
     now = datetime.now(timezone.utc).isoformat()
-    _operations_store[operation_id] = {
+    op = {
         "operation_id": operation_id,
         "kind": kind,
         "venue": venue,
@@ -140,6 +188,8 @@ def _op_create(operation_id: str, kind: str, venue: str, symbol: str, position_i
         "last_update": now,
         "error": None,
     }
+    _operations_store[operation_id] = op
+    _op_append(op)
 
 
 def _op_update(
@@ -160,6 +210,7 @@ def _op_update(
         op["tx_hash"] = tx_hash
     if error is not None:
         op["error"] = error
+    _op_append(op)
 
 
 def set_broker_deps(
@@ -204,6 +255,8 @@ def set_broker_deps(
         _ostium_ingest_poll_s = ostium_ingest_poll_s
     if data_layer_reader is not _UNSET:
         _data_layer_reader = data_layer_reader
+    # T5.15: rehidratar operations des del JSONL a startup
+    _op_rehydrate()
     logger.info(
         f"Broker API deps: mode={_mode}, venue={_venue}, market_data_env={_market_data_env}, "
         f"market_data_source={_market_data_source}, adapter_factory={'set' if _adapter_factory else 'None'}"
