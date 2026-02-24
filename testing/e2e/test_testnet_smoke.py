@@ -17,7 +17,7 @@ Why pytest wrapper?
 - Consistent test discovery pattern
 
 For standalone execution:
-    E2E_TESTNET=1 ENABLE_LIVE_TRADING=1 python scripts/testnet_e2e_smoke.py
+    E2E_TESTNET=1 ENABLE_LIVE_TRADING=1 python _archive/python/2026-02-cleanup/scripts/testnet_e2e_smoke.py
 """
 
 import asyncio

@@ -21,7 +21,7 @@ Flow:
 9. Final balance check
 
 Usage:
-    E2E_TESTNET=1 ENABLE_LIVE_TRADING=1 ./test.sh scripts/testnet_e2e_smoke.py
+    E2E_TESTNET=1 ENABLE_LIVE_TRADING=1 ./test.sh _archive/python/2026-02-cleanup/scripts/testnet_e2e_smoke.py
 """
 
 import asyncio
@@ -31,8 +31,13 @@ import time
 from decimal import Decimal
 from pathlib import Path
 
-# Add project root to path
-project_root = Path(__file__).parent.parent
+# Add project root to path (works from scripts/ or _archive/.../scripts/)
+_project = Path(__file__).resolve()
+project_root = _project.parent
+for _ in range(5):
+    if (project_root / "application").is_dir() or (project_root / "docker-compose.yml").exists():
+        break
+    project_root = project_root.parent
 sys.path.insert(0, str(project_root))
 
 from web3 import AsyncWeb3

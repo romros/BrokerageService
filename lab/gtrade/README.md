@@ -221,7 +221,7 @@ open_price_scaled = int(open_price * 1e10)
 **Solució:**
 ```bash
 # Aprovar allowance primer
-python scripts/approve_usdc.py
+python _archive/python/2026-02-cleanup/scripts/approve_usdc.py
 ```
 
 ---
@@ -309,7 +309,7 @@ python lab/gtrade/open_trade_once.py
 ### 3. Integració Core
 ```bash
 # Quan validat, integrar a E2E smoke
-./test.sh scripts/testnet_e2e_smoke.py
+./test.sh _archive/python/2026-02-cleanup/scripts/testnet_e2e_smoke.py
 
 # Verificar 3 runs consecutius OK
 ```

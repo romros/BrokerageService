@@ -29,10 +29,10 @@ All E2E tests enforce strict safety checks:
 
 ```bash
 # Run with small collateral (5 USDC)
-E2E_TESTNET=1 ENABLE_LIVE_TRADING=1 ./test.sh scripts/testnet_e2e_smoke.py
+E2E_TESTNET=1 ENABLE_LIVE_TRADING=1 ./test.sh _archive/python/2026-02-cleanup/scripts/testnet_e2e_smoke.py
 
 # Run with custom collateral limit
-E2E_TESTNET=1 ENABLE_LIVE_TRADING=1 MAX_COLLATERAL_USDC=20 ./test.sh scripts/testnet_e2e_smoke.py
+E2E_TESTNET=1 ENABLE_LIVE_TRADING=1 MAX_COLLATERAL_USDC=20 ./test.sh _archive/python/2026-02-cleanup/scripts/testnet_e2e_smoke.py
 ```
 
 ### Option 2: Pytest Wrapper
