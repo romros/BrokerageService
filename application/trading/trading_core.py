@@ -228,16 +228,23 @@ class TradingCore:
             AdapterNotAvailableError: adapter_factory no configurat
             VenueNotConfiguredError: venue no disponible
             PositionNotFoundError: posició no trobada
+            LiveTradingDisabledError: si mode==live i ENABLE_LIVE_TRADING!=1
         """
-        # 1. Adapter
+        # 1. Live guards (kill switch) — només per mode live
+        adapter_mode = getattr(req, "mode", None) or self._mode
+        if str(adapter_mode).lower() == "live":
+            from application.services.live_guards import assert_live_trading_enabled  # lazy import to reduce startup cost
+            assert_live_trading_enabled(adapter_mode)
+
+        # 2. Adapter
         adapter = self._get_adapter(req.venue)
 
-        # 2. Normalitzar position_id (prefix lighter: si venue==lighter i no té prefix)
+        # 3. Normalitzar position_id (prefix lighter: si venue==lighter i no té prefix)
         position_id = req.position_id
         if ":" not in position_id and req.venue == "lighter":
             position_id = f"lighter:{position_id}"
 
-        # 3. Executar
+        # 4. Executar
         ok = await adapter.close_position(position_id, percent=req.percent)
 
         logger.info(
@@ -245,8 +252,8 @@ class TradingCore:
             req.venue, position_id, req.percent, ok,
         )
 
-        # 4. Reconciliació post-close (best-effort, no bloquejant)
-        from application.services.reconcile import reconcile_close
+        # 5. Reconciliació post-close (best-effort, no bloquejant)
+        from application.services.reconcile import reconcile_close  # lazy import to reduce startup cost
         await reconcile_close(adapter, position_id, req.venue)
 
         return OrderCloseResult(success=ok)

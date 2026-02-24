@@ -47,7 +47,7 @@
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 - ✅ **Ostium Core (Trade Layer) read-only:** posicions via TradingStorage.getOpenTrade (Trade(9)); EURUSD=pair_id 2; smoke `smoke_ostium_preflight_call.py` 0-TX opt-in
-- ✅ **Ostium trades:** orders/open suportat en PAPER (paper store) i LIVE (kill-switch ENABLE_LIVE_TRADING). GET `/api/v1/broker/positions?venue=ostium` reflecteix posicions (PAPER: store; LIVE: chain).
+- ✅ **Ostium trades:** orders/open suportat en PAPER (paper store) i LIVE (kill-switch ENABLE_LIVE_TRADING). orders/close suportat (PAPER idempotent; LIVE guarded). GET `/api/v1/broker/positions?venue=ostium` reflecteix posicions (PAPER: store; LIVE: chain).
 
 > **Phases 2–20 + Phase C + Phase D completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Parquet (15) + DuckDB (16) + Backtest Freqtrade-style (17) + Ops robustos (18) + Data API long-range + Coverage API (19) + Mixed stitching + Cron (20) + Historical dashboard + nginx proxy (C) + Gateway single-port (D). Pipeline prod-ish per backfill 2003→avui. 72 tests 0-network, run_all verd. **Single-port API: `:8081/realtime`, `:8081/data`, `:8081/trade`.** Exec Ostium (venue trading) pendent Phase E.
 

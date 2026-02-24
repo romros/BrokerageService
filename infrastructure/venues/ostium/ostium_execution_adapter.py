@@ -364,7 +364,10 @@ class OstiumExecutionAdapter(IVenueAdapter):
             logger.error("OstiumExecutionAdapter.close_position error: %s", e)
             return False
 
-        logger.info("close_position OK: position_id=%s", position_id)
+        if type(self._client).__name__ == "FakeOstiumClient":
+            logger.info("paper close → position_id=%s closed", position_id)
+        else:
+            logger.info("close_position OK: position_id=%s", position_id)
         return True
 
     async def update_sl(self, position_id: str, new_sl: float) -> bool:

@@ -22,6 +22,7 @@ from application.api.error_codes import (
     CANDLE_STORE_NOT_AVAILABLE,
     DATA_STATUS_NOT_AVAILABLE,
     DATA_QUALITY_GATE_BAD,
+    LIVE_TRADING_DISABLED,
     VENUE_NOT_CONFIGURED,
     TIMEFRAME_NOT_SUPPORTED,
     SYMBOL_NOT_FOUND,
@@ -40,6 +41,7 @@ from application.api.models import (
     TradeItem,
     TradesResponse,
 )
+from application.errors import LiveTradingDisabledError
 from domain.errors import PositionNotFoundError, MarketNotFoundError
 from foundation.config.constants import (
     CANONICAL_TIMEZONE,
@@ -903,16 +905,19 @@ async def _do_order_close(req: OrderCloseRequest) -> OrderCloseResponse:
         TradingCore,
         AdapterNotAvailableError,
         VenueNotConfiguredError,
-    )
+    )  # lazy import to reduce startup cost
 
     core = TradingCore(
         adapter_factory=_adapter_factory,
         data_layer_reader=_data_layer_reader,
         known_venues=list(KNOWN_VENUES),
+        mode=_mode,
     )
     try:
         result = await core.close_order(req)
         return OrderCloseResponse(success=result.success)
+    except LiveTradingDisabledError as e:
+        _http_error(403, LIVE_TRADING_DISABLED, str(e))
     except AdapterNotAvailableError as e:
         _http_error(503, ADAPTER_NOT_AVAILABLE, str(e))
     except VenueNotConfiguredError as e:

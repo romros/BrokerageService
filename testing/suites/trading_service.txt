@@ -9,6 +9,7 @@ testing/apps/trading_service/test_trading_core.py
 testing/apps/trading_service/test_venue_selection_policy.py
 testing/apps/trading_service/test_ostium_execution_adapter_unit.py
 testing/apps/trading_service/test_ostium_orders_open_paper.py
+testing/apps/trading_service/test_ostium_orders_close_paper.py
 testing/apps/trading_service/test_quality_gates.py
 testing/apps/trading_service/test_http_data_layer_reader.py
 testing/apps/trading_service/test_quality_gate_enforced.py
