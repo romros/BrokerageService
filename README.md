@@ -1,8 +1,16 @@
 # BrokerageService — Broker Gateway API
 
-**Propòsit:** API REST per Freqtrade (`/api/v1/broker/*`). Venue actual: **Ostium** (LIVE testnet → mainnet).
+API REST per [Freqtrade](https://www.freqtrade.io/) (`/api/v1/broker/*`). Venue actual: **Ostium** (LIVE testnet → mainnet).
 
 **Docs:** [docs/ESTAT.md](docs/ESTAT.md) · [AGENTS_ARQUITECTURA.md](AGENTS_ARQUITECTURA.md)
+
+---
+
+## Prerequisits
+
+- Docker + Docker Compose
+- Python 3.11+ (per tests locals)
+- `lab/ostium/.env` amb `RPC_URL`, `PRIVATE_KEY` (copia de `lab/ostium/.env.example`)
 
 ---
 
@@ -12,14 +20,12 @@
 # Tests (0-network per defecte)
 ./test.sh testing/run_all.py
 
-# Ostium LIVE — happy path canònic
+# Ostium LIVE — happy path canònic (up stack + smoke)
 ./scripts/up_ostium_live.sh
 
 # Smoke only (trading_service ja arrencat)
 ./scripts/run_ostium_live_smoke.sh --recreate --clean
 ```
-
-Requereix `lab/ostium/.env` amb `RPC_URL`, `PRIVATE_KEY` per Ostium LIVE.
 
 ---
 
