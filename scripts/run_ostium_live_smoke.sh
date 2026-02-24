@@ -61,6 +61,9 @@ export BASE_URL
 export MODE=live
 export VENUE=ostium
 export ENABLE_LIVE_TRADING=1
+# T5.17: server retorna 202 en <=15s; smoke fa polling fins 480s
+export HTTP_TIMEOUT_S="${HTTP_TIMEOUT_S:-30}"
+export SMOKE_TOTAL_TIMEOUT_S="${SMOKE_TOTAL_TIMEOUT_S:-480}"
 
 export PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 python3 application/tools/ostium_live_e2e_smoke.py

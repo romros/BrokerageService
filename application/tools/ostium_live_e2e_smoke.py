@@ -51,11 +51,10 @@ OPTIONAL_ENV = {
     "LEVERAGE": ("2", float),
     "SIDE": ("long", str),
     "ORACLE_WAIT_S": ("30", int),
-    "POSTCHECK_TIMEOUT_S": ("60", int),
     "POSTCHECK_INTERVAL_S": ("2", int),
-    "HTTP_TIMEOUT_S": ("120", int),  # T5.13: timeout HTTP configurable (open/close poden trigar)
-    "PENDING_POLL_TIMEOUT_S": ("60", int),  # T5.14: poll /operations fins confirmed
-    "SMOKE_ALLOW_PENDING": ("0", str),  # T5.14: 1 = PASS si pending (no bloquejar)
+    "HTTP_TIMEOUT_S": ("30", int),  # T5.17: POST open/close (server retorna 202 en <=15s)
+    "SMOKE_TOTAL_TIMEOUT_S": ("480", int),  # T5.17: polling /operations fins confirmed
+    "SMOKE_ALLOW_PENDING": ("0", str),  # 1 = PASS si pending (no bloquejar)
 }
 
 
@@ -119,20 +118,23 @@ def main() -> int:
     collateral = cfg["collateral_usdc"]
     leverage = cfg["leverage"]
     oracle_wait_s = cfg["oracle_wait_s"]
-    postcheck_timeout_s = cfg["postcheck_timeout_s"]
     postcheck_interval_s = cfg["postcheck_interval_s"]
-    http_timeout_s = cfg.get("http_timeout_s", 120)
-    pending_poll_timeout_s = cfg.get("pending_poll_timeout_s", 60)
+    http_timeout_s = cfg.get("http_timeout_s", 30)
+    smoke_total_timeout_s = cfg.get("smoke_total_timeout_s", 480)
     allow_pending = os.getenv("SMOKE_ALLOW_PENDING", "0").strip() == "1"
+
+    start_time = time.monotonic()
+    deadline = start_time + smoke_total_timeout_s
 
     print(f"  BASE_URL: {base}")
     print(f"  Symbol: {symbol} side={side} collateral={collateral} leverage={leverage}")
-    print(f"  HTTP_TIMEOUT_S={http_timeout_s} ORACLE_WAIT_S={oracle_wait_s} SMOKE_ALLOW_PENDING={allow_pending}")
+    print(f"  HTTP_TIMEOUT_S={http_timeout_s} SMOKE_TOTAL_TIMEOUT_S={smoke_total_timeout_s} ORACLE_WAIT_S={oracle_wait_s}")
     print()
 
-    def _poll_operation(operation_id: str, kind: str, need_position_id: bool = False) -> tuple[bool, str]:
-        """Poll GET /operations/{id} fins confirmed o timeout. Retorna (ok, position_id_or_empty)."""
-        deadline = time.monotonic() + pending_poll_timeout_s
+    def _poll_operation(
+        operation_id: str, kind: str, need_position_id: bool = False
+    ) -> tuple[bool, str, dict]:
+        """Poll GET /operations/{id} fins confirmed o deadline. Retorna (ok, position_id, op_data)."""
         ops_url = f"{base}/api/v1/broker/operations/{operation_id}"
         while time.monotonic() < deadline:
             time.sleep(postcheck_interval_s)
@@ -144,12 +146,12 @@ def main() -> int:
                 pid = op_data.get("position_id") or ""
                 if need_position_id and not pid:
                     continue
-                return True, pid
+                return True, pid, op_data
             if status == "error":
                 err = op_data.get("error") or "unknown"
                 print(f"  Operation {kind} error: {err}", file=sys.stderr)
-                return False, ""
-        return False, ""
+                return False, "", op_data
+        return False, "", op_data or {}
 
     # 1. Open
     open_url = f"{base}/api/v1/broker/orders/open"
@@ -172,24 +174,21 @@ def main() -> int:
             print(f"  response.text: {raw[:300]}", file=sys.stderr)
         return 3
     position_id = data.get("position_id") or ""
-    operation_id = data.get("operation_id") or ""
-    if status == 202 and data.get("pending"):
-        # T5.14: 202 pending — poll /operations/{id} fins confirmed (no /positions)
-        if not operation_id:
-            print("✗ 202 pending: no operation_id en resposta")
-            return 3
-        print("  Open 202 pending — polling /operations/{id}...")
-        ok, position_id = _poll_operation(operation_id, "open", need_position_id=True)
-        if not ok:
-            print("✗ Open 202: no confirmed després del timeout (necessitem position_id per close)")
-            return 3
-        if not position_id:
-            print("✗ Open 202: confirmed però sense position_id")
-            return 3
-    elif not position_id:
-        print("✗ POST /orders/open no position_id in response")
+    open_operation_id = data.get("operation_id") or ""
+    if not open_operation_id:
+        print("✗ POST /orders/open no operation_id en resposta")
         return 3
-    print(f"✓ Open OK  position_id={position_id}")
+    # T5.17: sempre poll /operations (200 o 202) fins confirmed o SMOKE_TOTAL_TIMEOUT_S
+    print("  Open — polling /operations/{id} fins confirmed...")
+    ok, position_id, open_op_final = _poll_operation(open_operation_id, "open", need_position_id=True)
+    if not ok:
+        print("✗ Open: no confirmed després del timeout (necessitem position_id per close)")
+        print(f"  operation_id={open_operation_id} status={open_op_final.get('status','?')} tx_hash={open_op_final.get('tx_hash','') or '(empty)'}")
+        return 3
+    if not position_id:
+        print("✗ Open: confirmed però sense position_id")
+        return 3
+    print(f"✓ Open OK  position_id={position_id} operation_id={open_operation_id}")
 
     # 2. Wait oracle
     print(f"  Waiting {oracle_wait_s}s for oracle...")
@@ -213,30 +212,30 @@ def main() -> int:
         if raw:
             print(f"  response.text: {raw[:300]}", file=sys.stderr)
         return 4
-    if status == 202 and data.get("pending"):
-        operation_id = data.get("operation_id") or ""
-        if operation_id:
-            print("  Close 202 pending — polling /operations/{id}...")
-            ok, _ = _poll_operation(operation_id, "close", need_position_id=False)
-            if not ok:
-                if allow_pending:
-                    print("✓ Close OK (202 pending, SMOKE_ALLOW_PENDING=1)")
-                else:
-                    print("✗ Close 202: no confirmed després del timeout")
-                    return 5
-            else:
-                print("✓ Close OK (confirmed)")
+    close_operation_id = data.get("operation_id") or ""
+    if not close_operation_id:
+        print("✗ POST /orders/close no operation_id en resposta")
+        return 5
+    # T5.17: sempre poll /operations fins confirmed o deadline
+    print("  Close — polling /operations/{id} fins confirmed...")
+    ok, _, close_op_final = _poll_operation(close_operation_id, "close", need_position_id=False)
+    if not ok:
+        if allow_pending:
+            print("✓ Close OK (pending, SMOKE_ALLOW_PENDING=1)")
         else:
-            if allow_pending:
-                print("✓ Close OK (202 pending, SMOKE_ALLOW_PENDING=1)")
-            else:
-                print("✗ Close 202: no operation_id")
-                return 5
+            print("✗ Close: no confirmed després del timeout")
+            print(f"  operation_id={close_operation_id} status={close_op_final.get('status','?')} tx_hash={close_op_final.get('tx_hash','') or '(empty)'}")
+            return 5
     else:
-        print("✓ Close OK")
+        print("✓ Close OK (confirmed)")
 
-    # 5. T5.14: PASS només si open i close confirmed (o SMOKE_ALLOW_PENDING=1)
+    # 5. T5.17: log final operation_id + status + tx_hash
+    elapsed = time.monotonic() - start_time
+    print("")
     print("✓ Smoke OK (open + close executats; post-check via /operations)")
+    print(f"  open  operation_id={open_operation_id} status={open_op_final.get('status','?')} tx_hash={open_op_final.get('tx_hash','') or '(empty)'}")
+    print(f"  close operation_id={close_operation_id} status={close_op_final.get('status','?')} tx_hash={close_op_final.get('tx_hash','') or '(empty)'}")
+    print(f"  elapsed_s={elapsed:.1f}")
     return 0
 
 
