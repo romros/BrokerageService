@@ -46,6 +46,8 @@
 - ✅ **Phase D: Gateway single-port complet (2026-02-21):** Nginx `:8081` exposa `/trade/*` → trading_service:8010 (strip prefix) i `/backtests/*` → trading_service:8010/api/v1/backtests/* (alias). `datalayer-proxy` ara és el punt d'entrada únic per tots els serveis. `scripts/smoke_gateway.sh` verifica tots els prefixos. Exec Ostium NO implementat — pendent Phase E (refactor trading).
 - 🟡 **gTrade** existent (paper OK); no prioritzat
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
+- ✅ **Ostium Core (Trade Layer) read-only:** posicions via TradingStorage.getOpenTrade (Trade(9)); EURUSD=pair_id 2; smoke `smoke_ostium_preflight_call.py` 0-TX opt-in
+- ✅ **Ostium trades:** `/api/v1/broker/positions?venue=ostium` (LIVE: TradingStorage read-only; PAPER: `[]`).
 
 > **Phases 2–20 + Phase C + Phase D completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Parquet (15) + DuckDB (16) + Backtest Freqtrade-style (17) + Ops robustos (18) + Data API long-range + Coverage API (19) + Mixed stitching + Cron (20) + Historical dashboard + nginx proxy (C) + Gateway single-port (D). Pipeline prod-ish per backfill 2003→avui. 72 tests 0-network, run_all verd. **Single-port API: `:8081/realtime`, `:8081/data`, `:8081/trade`.** Exec Ostium (venue trading) pendent Phase E.
 
@@ -115,6 +117,7 @@ Categories addicionals: `CONTRACT_REVERT` (revert reason si el RPC el retorna). 
 - [x] Tests 0-network: `testing/apps/trading_service/test_ostium_preflight_call.py` (14 tests, suite trading_service). Payload determinista i classificació CONTRACT_REVERT coberta.
 - [x] No integrat a CI (opt-in). ABI/adreces: font canònica `infrastructure/venues/ostium/ostium_client.py`; default testnet al script.
 - Observabilitat: check de la crida view = `ostium.pf.call.getOpenTrade` (equivalent a "preflight call open").
+- **Core positions via TradingStorage:** OstiumClient llegeix open trades amb TradingStorage.getOpenTrade (Trade(9)); smoke preflight 0-TX valida amb `OSTIUM_RPC_URL TRADER_ADDRESS PAIR_ID=2 INDEX=0` (i opcional `OSTIUM_TRADING_STORAGE_ADDRESS`).
 
 **Nota:** exec Ostium (venue trading) NO implementat. Refactor trading_service pendent **Phase E**. Estat i reproducció d’errors del trade-cycle testnet: [scripts/network_smokes/ESTAT.md](../scripts/network_smokes/ESTAT.md).
 

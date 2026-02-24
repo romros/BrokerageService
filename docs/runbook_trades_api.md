@@ -33,7 +33,7 @@ Totes són **GET** o **POST**; base URL: `http(s)://<host>:<port>/api/v1/broker`
 | POST | **`/orders/close`** | Body: **OrderCloseRequest** | **OrderCloseResponse** | broker_routes.py L564 `order_close` |
 | GET | `/preflight` | `venue?`, `symbol?` | JSON (ready, checks, risk_caps) | broker_routes.py L569 `get_preflight` |
 
-**Positions (open positions):** endpoint canònic = **GET `/api/v1/broker/positions?venue=<venue>`**. El handler crida `adapter.get_open_positions()` i retorna `PositionsResponse`. **Punt d’integració T2 (Ostium):** fer que el venue `ostium` retorni posicions des de `OstiumClient.get_open_trades` (TradingStorage).
+**Positions (open positions):** endpoint canònic = **GET `/api/v1/broker/positions?venue=<venue>`**. El handler crida `adapter.get_open_positions()` i retorna `PositionsResponse`. Venues suportats: `paper`, `lighter`, `ostium`.
 
 **Open trade:** **POST `/api/v1/broker/orders/open`** amb body JSON. **Close trade:** **POST `/api/v1/broker/orders/close`** amb body JSON.
 
@@ -75,9 +75,9 @@ Els handlers de open/close delegan a `application/trading/trading_core.py` (`Tra
 # Mode actual (LIVE/PAPER)
 curl -s "http://localhost:8010/api/v1/broker/mode"
 
-# Posicions obertes (canònic per T2 — positions)
+# Posicions obertes
 curl -s "http://localhost:8010/api/v1/broker/positions?venue=lighter"
-# T2 Ostium: venue=ostium quan hi hagi adapter Ostium
+curl -s "http://localhost:8010/api/v1/broker/positions?venue=ostium"
 
 # Obrir posició (POST body)
 curl -s -X POST "http://localhost:8010/api/v1/broker/orders/open" \
@@ -92,26 +92,6 @@ curl -s -X POST "http://localhost:8010/api/v1/broker/orders/close" \
 
 ---
 
-## 6. Punts d’integració per T2 (positions Ostium)
+## 6. Punts d’integració (venues)
 
-- **Adapter:** Afegir/wiring d’adapter per `venue=ostium` a `main.py` (lifespan) i fer que `adapter_factory("ostium")` retorni l’adapter Ostium (ex. `OstiumExecutionAdapter` amb `IOstiumClient` que llegeix TradingStorage).
-- **Positions:** El mateix endpoint **GET `/api/v1/broker/positions?venue=ostium`** ha de cridar `adapter.get_open_positions()`; l’adapter Ostium ha de delegar a `OstiumClient.get_open_trades` (read-only TradingStorage, sense subgraph).
-- **Mode:** No cal canviar com es passa el mode; el mode actual és el de `_mode` (MODE env). Per positions PAPER (stub) es pot retornar llista buida o posicions simulades segons acord T2; per LIVE, posicions reals via TradingStorage.
-
----
-
-## 7. T2 fet: `venue=ostium` a GET /positions (LIVE + PAPER)
-
-- **Wiring:** Quan `VENUE=ostium`, `application/main.py` crea `OstiumExecutionAdapter` (PAPER = `FakeOstiumClient`, LIVE = `OstiumClient` des de env) i registra `adapter_factory("ostium")`.
-- **LIVE:** Posicions llegides del chain via TradingStorage (Trade(9)); requereix `OSTIUM_PRIVATE_KEY` i `OSTIUM_RPC_URL` (opcional).
-- **PAPER:** Retorna `[]` sense fer cap crida de xarxa (log: «paper mode → no network»).
-- **curl (directe, port per defecte 8000):** `GET http://localhost:8000/api/v1/broker/positions?venue=ostium`  
-  **Via proxy split (port 8081):** `GET http://localhost:8081/trade/api/v1/broker/positions?venue=ostium`
-
----
-
-## 8. Check-list T2 (completat)
-
-- [x] Wiring a `main.py`: quan `VENUE=ostium`, adapter Ostium injectat; PAPER = FakeOstiumClient, LIVE = OstiumClient.
-- [x] `get_open_positions()` a l’adapter Ostium delegant a `OstiumClient.get_open_trades` (TradingStorage Trade(9)); position_id tipus `ostium:{pair_id}:{index}`.
-- [x] PAPER retorna `[]`; LIVE retorna posicions reals (o `[]` si cap trade obert).
+Per `venue=ostium`, GET `/positions` delega a l’adapter Ostium (TradingStorage read-only en LIVE; PAPER retorna `[]`). Font ABI canònica: `infrastructure/venues/ostium/abi/tradingStorage_getOpenTrade.json`.
