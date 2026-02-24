@@ -1,8 +1,10 @@
 # LAB — Historical Candles Feasibility (Lighter)
 
+> **T5.32 (2026-02):** Lighter LAB arxivat. Scripts ara a `_archive/lab/2026-02-legacy-purge/lighter/scripts/`. Repo Ostium-first.
+
 **TASK:** Decidir si P4 (backfill + gap repair) és viable amb Lighter com a "primary històric", o si cal fallback (Dukascopy) més aviat.
 
-**Script:** `lab/lighter/scripts/fetch_historical_candles.py`
+**Script (arxivat):** `_archive/lab/2026-02-legacy-purge/lighter/scripts/fetch_historical_candles.py`
 
 ---
 
@@ -58,30 +60,30 @@
 
 ## Comandes
 
-**Docker (recomanat, mateix entorn que prod):**
+**Docker (recomanat, mateix entorn que prod):** Paths arxivats — muntar `_archive/lab/2026-02-legacy-purge/lighter` si cal.
 ```bash
-# coverage_probe
-docker compose run --rm lighter-lab python3 lab/lighter/scripts/coverage_probe.py --symbol EURUSD --symbol XAU
+# coverage_probe (path arxivat)
+docker compose run --rm lighter-lab python3 _archive/lab/2026-02-legacy-purge/lighter/scripts/coverage_probe.py --symbol EURUSD --symbol XAU
 
-# fetch_historical_candles (output a /datafiles muntat)
-docker compose run --rm lighter-lab python3 lab/lighter/scripts/fetch_historical_candles.py --symbol EURUSD --hours 72 --out-dir /datafiles/lab_lighter_history
+# fetch_historical_candles (path arxivat)
+docker compose run --rm lighter-lab python3 _archive/lab/2026-02-legacy-purge/lighter/scripts/fetch_historical_candles.py --symbol EURUSD --hours 72 --out-dir /datafiles/lab_lighter_history
 ```
 
-**Host (pip):** `python3 lab/lighter/scripts/...` — requereix `pip install -r lab/lighter/requirements.txt`.
+**Host (pip):** `python3 _archive/lab/2026-02-legacy-purge/lighter/scripts/...` — requereix `pip install -r _archive/lab/2026-02-legacy-purge/lighter/requirements.txt`.
 
-**Config:** `LIGHTER_BASE_URL` (mainnet per RWA), `LIGHTER_MARKET_ID_MAP` (opcional JSON), `.env` a `lab/lighter/` (muntat al container).
+**Config:** `LIGHTER_BASE_URL` (mainnet per RWA), `LIGHTER_MARKET_ID_MAP` (opcional JSON), `.env` a `_archive/lab/2026-02-legacy-purge/lighter/` (muntat al container).
 
 ---
 
 ## coverage_probe (QA lab)
 
-**Script:** `lab/lighter/scripts/coverage_probe.py`
+**Script (arxivat):** `_archive/lab/2026-02-legacy-purge/lighter/scripts/coverage_probe.py`
 
 Troba `earliest_ts` i `latest_ts` 1m amb probing incremental + binary search. Valida finestra recent 72h (missing_minutes, max_gap, duplicates, ts_step_errors). Rate limit 60 req/min.
 
 ```bash
-docker compose run --rm lighter-lab python3 lab/lighter/scripts/coverage_probe.py --symbol EURUSD --symbol XAU
-docker compose run --rm lighter-lab python3 lab/lighter/scripts/coverage_probe.py --symbol EURUSD --skip-earliest
+docker compose run --rm lighter-lab python3 _archive/lab/2026-02-legacy-purge/lighter/scripts/coverage_probe.py --symbol EURUSD --symbol XAU
+docker compose run --rm lighter-lab python3 _archive/lab/2026-02-legacy-purge/lighter/scripts/coverage_probe.py --symbol EURUSD --skip-earliest
 ```
 
 **Output:** `lab/out/coverage_mainnet_<symbol>.json`
@@ -98,12 +100,12 @@ docker compose run --rm lighter-lab python3 lab/lighter/scripts/coverage_probe.p
 
 ## time_semantics_probe (P0.3b)
 
-**Script:** `lab/lighter/scripts/time_semantics_probe.py`
+**Script (arxivat):** `_archive/lab/2026-02-legacy-purge/lighter/scripts/time_semantics_probe.py`
 
 Demostra si les candles de Lighter venen en UTC start-of-minute o si hi ha offset. Boundary probe: `latest_ts` vs `now_floor_utc_ts - 60`.
 
 ```bash
-docker compose run --rm lighter-lab python3 lab/lighter/scripts/time_semantics_probe.py --symbol EURUSD --minutes 180
+docker compose run --rm lighter-lab python3 _archive/lab/2026-02-legacy-purge/lighter/scripts/time_semantics_probe.py --symbol EURUSD --minutes 180
 ```
 
 **Output:** `lab/out/time_semantics_<symbol>.json`

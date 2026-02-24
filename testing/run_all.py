@@ -215,8 +215,10 @@ def main():
     parts = ["core"]
     if args.include_lighter:
         parts.append("lighter")
+        print("  ⚠ Lighter tests arxivats (T5.32). Veure _archive/testing/2026-02-legacy-purge/")
     if args.include_gtrade:
         parts.append("gTrade")
+        print("  ⚠ gTrade tests arxivats (T5.32). Veure _archive/testing/2026-02-legacy-purge/")
     if args.include_compat_probe:
         parts.append("compat-probe")
     if args.include_data_layer_soak:
@@ -253,31 +255,8 @@ def main():
         testing_dir / "unit" / "test_idempotency.py",
         testing_dir / "unit" / "test_cost_model.py",
 
-        # Unit tests - gTrade (opt-in)
-        testing_dir / "unit" / "test_gtrade_price_feed_parser.py",
-        testing_dir / "unit" / "test_chain_config.py",
-        testing_dir / "unit" / "test_tx_sender.py",
-        testing_dir / "unit" / "test_position_ref.py",
-        testing_dir / "unit" / "test_abi_encoder.py",
-        testing_dir / "unit" / "test_market_status_provider.py",  # FASE 6B.1.B.6
-        testing_dir / "unit" / "test_price_provider.py",  # FASE 6B.1.B.7.LAB
-
-        # Unit tests - Lighter (opt-in: --include-lighter)
-        testing_dir / "unit" / "test_lighter_key_manager.py",
-        testing_dir / "unit" / "test_lighter_scaling.py",
-        testing_dir / "unit" / "test_lighter_order_builder.py",
-        testing_dir / "unit" / "test_lighter_idempotency.py",
+        # Unit tests - Core (T5.32: Lighter/gTrade arxivats a _archive/testing/2026-02-legacy-purge/)
         testing_dir / "unit" / "test_reconcile_service.py",  # M3 Reconcile loop (detect/report)
-        testing_dir / "unit" / "test_reconcile_autorepair.py",  # M3.1 auto-repair v1 (stale + resync)
-        testing_dir / "unit" / "test_live_guards.py",  # M3.2 kill switch + risk limits
-        testing_dir / "unit" / "test_bootstrap_service.py",  # M3.3a bootstrap tracker
-        testing_dir / "unit" / "test_sltp_persistence.py",
-        testing_dir / "unit" / "test_sltp_idempotency.py",  # P1.1 SL/TP idempotency  # M3.3b SL/TP persistence
-        testing_dir / "unit" / "test_close_maker_first.py",  # P1.2 maker-first close
-        testing_dir / "unit" / "test_smoke_runner.py",  # M3.4 smoke runner + interval
-        testing_dir / "unit" / "test_smoke_repeat.py",  # M3.5 smoke --repeat N + log path + SMOKE_RESULT/SUMMARY
-        testing_dir / "unit" / "test_smoke_runner_lifecycle.py",  # M3.5.1 lifecycle hardening (start/stop per run)
-        testing_dir / "unit" / "test_e2e_trade.py",  # M3.6 Real Paper E2E trading sanity
         testing_dir / "apps" / "trading_service" / "test_http_data_layer_reader.py",  # Split vNext Phase 2
         testing_dir / "apps" / "trading_service" / "test_broker_api.py",  # Broker API
         testing_dir / "unit" / "test_broker_api_trades.py",  # P1 GET /trades
@@ -323,9 +302,6 @@ def main():
         testing_dir / "unit" / "test_data_status_initializing.py",  # data_status 200 initializing (0 network)
         testing_dir / "unit" / "test_data_layer_soak_wait_ready.py",  # soak wait_for_ready (0 network)
         testing_dir / "unit" / "test_p8_provenance_rest_only.py",  # P8.2 Provenance REST-only (0 network)
-        testing_dir / "unit" / "test_ws_collector_persistence.py",  # P8.4 WS Candle Collector persistence (0 network)
-        testing_dir / "unit" / "test_trade_history_models.py",  # P1 TradeFill mapping
-        testing_dir / "unit" / "test_ws_preflight_contract.py",  # P2.0 WS candle contract
         testing_dir / "unit" / "test_mode_market_data_env.py",  # PAPER mainnet-data (Freqtrade)
         testing_dir / "apps" / "trading_service" / "test_paper_venue_adapter.py",  # PaperVenueAdapter open→close→positions_after=0
         testing_dir / "unit" / "test_paper_risk_engine.py",  # P3.0 TP/SL/liquidation triggers
@@ -335,39 +311,13 @@ def main():
         testing_dir / "integration" / "test_backfill_patch_flow.py",
         testing_dir / "integration" / "test_paper_positions_flow.py",
 
-        # Integration tests - Lighter (opt-in: --include-lighter)
-        testing_dir / "integration" / "test_lighter_candles_time_semantics.py",
-        testing_dir / "integration" / "test_lighter_backfill_pagination_dedup.py",
-        testing_dir / "integration" / "test_gap_repair_flow.py",
-        testing_dir / "integration" / "test_lighter_ticks_to_candles_flow.py",  # M1 Lighter market data
-        testing_dir / "integration" / "test_ws_preflight_integration_real.py",  # P2.0.1 WS preflight (fake feed)
-        testing_dir / "integration" / "test_ws_soak_short.py",  # P2.1 WS soak short (2 min)
-        testing_dir / "integration" / "test_ws_vs_candlestick_consistency.py",  # P4.1 (opt-in: --include-lighter)
-        testing_dir / "integration" / "test_compat_probe_strategy_level.py",  # P6 (opt-in: --include-compat-probe)
-        testing_dir / "integration" / "test_compat_report_real.py",  # P8.1 (opt-in: --include-compat-report)
+        # Integration tests - Ostium (T5.32: Lighter/gTrade arxivats)
         testing_dir / "integration" / "test_ostium_compat_report_real.py",  # Ostium compat (opt-in: --include-ostium-compat)
-        testing_dir / "integration" / "test_data_layer_soak_metrics.py",  # P7c (opt-in: --include-data-layer-soak)
-        testing_dir / "integration" / "test_gtrade_ticks_to_candles_flow.py",
-        testing_dir / "integration" / "test_gtrade_adapter_readonly.py",
-        testing_dir / "integration" / "test_gtrade_backend_positions.py",
-        testing_dir / "integration" / "test_gtrade_adapter_write_mocked.py",
-        testing_dir / "integration" / "test_gtrade_backend_verification_loop.py",  # FASE 6B.1.B.4
-        testing_dir / "integration" / "test_adapter_fallback_flow.py",  # FASE 6B.1.B.6
 
-        # Integration tests - Lighter adapters (opt-in: --include-lighter)
-        testing_dir / "integration" / "test_lighter_adapter_prices.py",
-        testing_dir / "integration" / "test_lighter_adapter_open.py",
-        testing_dir / "integration" / "test_lighter_adapter_close.py",
-        testing_dir / "integration" / "test_lighter_adapter_sltp.py",  # M2 SL/TP + Balance
-        testing_dir / "integration" / "test_freqtrade_runner_short.py",  # PAPER DONE handshake
-        testing_dir / "integration" / "test_freqtrade_runner_short_paper.py",  # venue=paper zero tx (no Lighter)
-        testing_dir / "integration" / "test_paper_bracket_orders_integration.py",  # P3.0 bracket TP/SL + close_reason
-
-        # Trading service (backtest, quality gate, soak)
+        # Trading service (backtest, quality gate)
         testing_dir / "apps" / "trading_service" / "test_quality_gates.py",
         testing_dir / "apps" / "trading_service" / "test_data_quality_gate_threshold.py",
         testing_dir / "apps" / "trading_service" / "test_quality_gate_enforced.py",
-        testing_dir / "apps" / "trading_service" / "test_soak_e2e.py",
         testing_dir / "apps" / "trading_service" / "test_backtest_registry_marketdata.py",
         testing_dir / "apps" / "trading_service" / "test_backtest_runner_offline.py",
         testing_dir / "apps" / "trading_service" / "test_backtest_api.py",
@@ -381,7 +331,6 @@ def main():
         testing_dir / "api" / "test_p7_mixed_headers_http.py",  # P7b headers via HTTP (0 network)
         testing_dir / "api" / "test_ohlcv_headers_primary_ostium.py",  # OHLCV headers Ostium primary (0 network)
         testing_dir / "api" / "test_p8_read_through_ohlcv_api.py",  # P8.0b Read-through wired to OHLCV (0 network)
-        testing_dir / "api" / "test_ws_smoke.py",
     ]
 
     # Run tests
@@ -394,13 +343,8 @@ def main():
             skipped += 1
             continue
 
-        # Lighter: opt-in
-        if not args.include_lighter and _in_set(test_path, testing_dir, LIGHTER_TEST_PATHS):
-            skipped += 1
-            continue
-
-        # gTrade: opt-in
-        if not args.include_gtrade and _in_set(test_path, testing_dir, GTrade_TEST_PATHS):
+        # Skip si fitxer arxivat o no existeix
+        if not test_path.exists():
             skipped += 1
             continue
 

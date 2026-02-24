@@ -113,7 +113,7 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=10" | grep -i
 | Situació | Acció |
 |----------|-------|
 | **Restart** | `docker compose down`; `docker compose up -d brokerage` (amb override si Data Layer: `-f deploy/compose/overrides/data-layer.yml`) |
-| **Backfill / repair** | BackfillService (lifespan) + read-through (GET ohlcv si `ENABLE_READ_THROUGH=1`); test: `test_gap_repair_flow.py` (--include-lighter-backfill) |
+| **Backfill / repair** | BackfillService (lifespan) + read-through (GET ohlcv si `ENABLE_READ_THROUGH=1`); test gap repair arxivat: `_archive/testing/2026-02-legacy-purge/integration/test_gap_repair_flow.py` |
 | **Disable symbol** | Env: `SYMBOLS`, `LIGHTER_SYMBOLS`, `BACKFILL_SYMBOLS`; no policy registry per ara |
 | **Degrade mode** | Fallback-only (no mixed); 422 mixed si compat FAIL |
 

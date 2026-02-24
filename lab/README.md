@@ -14,38 +14,27 @@ El directori `lab/` és un espai d'experimentació per **descobrir com funcionen
 3. **Promoció controlada**: Quan trobem solució → escriure proposta a `NOTES.md` → llavors sí, PR petit amb tests
 4. **No CI**: Scripts de lab NO entren a CI ni a `testing/run_all.py`
 
-## 📁 Estructura
+## 📁 Estructura (T5.32 Ostium-first)
 
 ```
 lab/
   README.md              # Aquest fitxer
   NOTES.md               # Diari d'experimentació
-
-  gtrade/                # gTrade integration (validated ✅)
-  ostium/                # Ostium integration (testnet ❌, mainnet ⚠️)
+  ostium/                # Ostium LIVE (canònic)
   extended/              # Extended (x10xchange) evaluation (🟡 in progress)
+  out/                   # Artifacts
 
-  sepolia/               # Experiments Arbitrum Sepolia testnet
-    decode_reference_tx.py        # Decodificar tx exitosa de referència
-    reproduce_revert_open_trade.py # Reproduir revert 0x10906acb
-    brute_open_price_window.py    # Trobar rang acceptable d'openPrice
-    price_sources_probe.py        # Provar fonts de preus
-    artifacts/
-      reference_tx.json   # Dades tx exitosa
-      last_run.json       # Últim experiment
+  _archive/2026-02-legacy-purge/  # lighter, gtrade, sepolia, node-gtrade (T5.32)
 ```
 
 ## 🚀 Com Executar
 
 ```bash
-# Scripts lab s'executen amb test.sh per usar Docker env
-./test.sh lab/sepolia/decode_reference_tx.py
+# Ostium LIVE (canònic)
+./scripts/up_ostium_live.sh
 
-# O directament amb docker compose
-docker compose run --rm \
-  -e ARBITRUM_RPC_URL="..." \
-  -e WALLET_PRIVATE_KEY="..." \
-  brokerage python lab/sepolia/reproduce_revert_open_trade.py
+# Scripts lab ostium
+./test.sh lab/ostium/scripts/close_open_position.py --symbol EURUSD --dry-run
 ```
 
 ## ⚠️ Safety
@@ -65,50 +54,12 @@ docker compose run --rm \
 
 ---
 
-## 📊 Platform Evaluations
+## Ostium LIVE (canònic)
 
-### Lighter (✅ VALIDATED - CHEAPEST)
-- **Network**: Lighter L3 ZK-rollup (Arbitrum testnet)
-- **Cost/RT**: **$0.16** (0% protocol fees + $0.08 gas each way)
-- **Status**: ✅ COMPLETE - Market, Limit, SL/TP, Cancel validated
-- **Report**: [lighter/LIGHTER_COMPLETE_VALIDATION.md](lighter/LIGHTER_COMPLETE_VALIDATION.md)
-- **EUR/USD**: ❌ Not available on testnet (needs mainnet validation)
-- **Key Discovery**: Decimal scaling varies by order type (×1e6 vs ×100/×10k)
-
-### gTrade (✅ Validated)
-- **Network**: Arbitrum (Sepolia testnet validated)
-- **Cost/RT**: ~$10 per round-trip (high min fees: $5/trade)
-- **Status**: ✅ Production-ready via Node.js SDK bridge
-- **EUR/USD**: ✅ Available (mainnet)
-- **Key Discovery**: openPrice = limit price (not "use oracle"), maxSlippage = multiplicador × 1e3
-
-### Ostium (⚠️ Partially Viable)
-- **Network**: Arbitrum
-- **Cost/RT**: ~$0.56 per round-trip
-- **Status**: ⚠️ Testnet subgraph broken (>120s), mainnet functional
-- **EUR/USD**: ✅ Available
-- **Key Discovery**: Testnet ≠ mainnet reliability
-
-### Extended (🟡 In Progress)
-- **Network**: Starknet
-- **Markets**: Crypto + TradFi (indices, forex, commodities)
-- **SDK**: Python 3.10+, Rust-accelerated
-- **Status**: Initial lab setup complete, awaiting API credentials
+- **Venue**: Ostium (testnet → mainnet)
+- **Happy path**: `./scripts/up_ostium_live.sh`
+- **Docs**: [lab/ostium/README.md](ostium/README.md), [docs/ESTAT.md](../docs/ESTAT.md)
 
 ---
 
-## 🏆 Decision Matrix (Current)
-
-| Broker | Cost/RT | EUR/USD | Validation | Mainnet | Recommendation |
-|--------|---------|---------|------------|---------|----------------|
-| **Lighter** | **$0.16** 🏆 | ❌ Testnet | ✅ Complete | ⏳ Pending | **Best for crypto** (if EUR/USD confirmed mainnet) |
-| **Ostium** | $0.56 | ✅ | ⚠️ Partial | ⚠️ | **Backup/Forex** |
-| **gTrade** | $10.00 | ✅ | ✅ Complete | ✅ | **High-volume only** (fees prohibitive <$10k positions) |
-
-**Next Step**: Validate Lighter EUR/USD availability on mainnet → Final decision
-
-See [NOTES.md](NOTES.md) for chronological experiment journal.
-
----
-
-**Status actual:** Lighter validation COMPLETE (testnet), awaiting mainnet EUR/USD confirmation
+**Legacy (T5.32 arxivat):** Lighter, gTrade → `_archive/lab/2026-02-legacy-purge/`

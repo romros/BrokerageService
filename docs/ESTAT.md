@@ -2,7 +2,7 @@
 
 **Data:** 2026-02-21
 **Repo/Path:** `/mnt/volume-SQ/dev/BrokerageService`
-**Venues:** Ostium (marketdata principal) · Dukascopy (historic/backtest fallback) · Lighter (LAB opt-in) · gTrade (legacy/futur)
+**Venues:** Ostium (marketdata principal) · Dukascopy (historic/backtest fallback). Lighter/gTrade arxivats (T5.32) → `_archive/`.
 **TZ canònica (config):** `CANONICAL_TZ=America/New_York`
 **TZ container (runtime/logs):** `TZ=America/New_York`
 **Índex docs:** [docs/INDEX.md](INDEX.md) ← navegació centralitzada
@@ -27,13 +27,13 @@
 - ✅ **Split vNext Phase 4:** X-Data-* headers contracte verificat; `test_ohlcv_headers.py` (4 tests); path local ja emetia headers correctament
 - ✅ **Split vNext Phase 5:** NO_TRADE enforçat quan `quality_gate.is_bad()` — `_do_order_open` comprova gate abans d'executar; `DataQualityGateBadError` → 422; 5 tests
 - ✅ **Split vNext Phase 6:** Soak e2e (3 casos OK/BAD/down) validat; retenció candles augmentada (4320h / 180 dies); `scripts/run_soak_e2e.sh`; artifact `datafiles/e2e_runs/`
-- ✅ **Split vNext Phase 7:** `run_all.py` VERD — 3 fixes (IndentationError, app.title assert, warmup READY); venue/test matrix documentada; `testing/suites/lab_lighter.txt` opt-in
+- ✅ **Split vNext Phase 7:** `run_all.py` VERD — 3 fixes (IndentationError, app.title assert, warmup READY); venue/test matrix documentada. Lighter/gTrade tests arxivats (T5.32).
 - ✅ **Split vNext Phase 8:** Compat sampling Ostium↔Dukascopy executat amb dades reals. EURUSD: PARTIAL (corr=0.958, dir_agree=90%, diff p95=0.5pip); XAUUSD: PARTIAL (corr=0.977, dir_agree=90.7%, diff p95=$0.98).
 - ✅ **Split vNext Phase 9:** `PASS_BACKTEST` — nova mètrica `dir_agree_filtered_1m` (ignora minuts flat/soroll feed). EURUSD: **PASS_BACKTEST** (corr=0.968, dir_agree_filtered=96.7%); XAUUSD: **PASS_BACKTEST** (corr=0.977, dir_agree_filtered=95.9%). `allowed_for_backtest=true` per ambdós.
 - ✅ **Phase 10:** `BacktestMarketDataProvider` registry-aware. EURUSD/XAUUSD → `ostium_local`; no graduat → `dukascopy`. Headers X-Data-* coherents. 9 tests 0-network. `application/data/backtest_market_data.py`.
 - ✅ **Phase 11:** Backtest runner offline + estratègia `simple_trend` + KPIs (trades, win_rate, pnl, max_drawdown) + artifact JSON. `application/tools/run_backtest.py`, `scripts/run_backtest_offline.sh`. 12 tests 0-network.
 - ✅ **Phase 12:** Backtest API REST: `POST /api/v1/backtests/run` → run_id + KPIs + x_data; `GET /api/v1/backtests/runs/{run_id}` → artifact JSON. Artifact persistit a `datafiles/backtests/`. 8 tests 0-network. `application/api/backtest_routes.py`.
-- ✅ **Phase 13:** `run_all.py` usable: quiet + fail-fast per defecte, Lighter opt-in (`--include-lighter`), `--verbose`, `--no-fail-fast`. 63 passed, 0 failed, 50 skipped (Lighter/gTrade/xarxa).
+- ✅ **Phase 13:** `run_all.py` usable: quiet + fail-fast per defecte, `--verbose`, `--no-fail-fast`. Lighter/gTrade tests arxivats (T5.32).
 - ✅ **Phase 14:** OHLCV Data API registry-aware: `GET /api/v1/data/ohlcv/{symbol}?tf=1m&from_ts=&to_ts=&limit=&offset=`. Format candles `[ts,o,h,l,c,v]`. Paginació `next_offset`. X-Data-* headers. 9 tests 0-network. `application/api/data_routes.py`.
 - ✅ **Phase 15:** Parquet storage particionat + backfill runner. `infrastructure/storage/parquet_store.py` (write/read/range/coverage, idempotent, validació). Runner `application/tools/run_historical_backfill.py` (mes a mes, skip_existing, rate-limit, 0-network via override). 13 tests 0-network.
 - ✅ **Phase 16:** DuckDB query layer sobre Parquet. `infrastructure/query/duckdb_query_service.py` (predicate pushdown, cursor `next_ts`, `compute_xdata_headers`). `GET /api/v1/data/ohlcv/{symbol}` fa routing automàtic DuckDB si existeix Parquet; legacy sinó. 9 tests 0-network. `duckdb>=0.10.0` afegit a requirements.
@@ -232,11 +232,9 @@ docker logs trading_service 2>&1 | grep -E "quality_gate|QUALITY_GATE"
 | realtime_datalayer | **Ostium** (canònic) | — | Suite `realtime_datalayer` VERDA |
 | trading_service | Ostium via HTTP (gate) | **paper/Lighter** (canònic) | Suite `trading_service` VERDA |
 | historical_datalayer | **Dukascopy** (target) | — | Suite `historical_datalayer` verda |
-| gTrade exec | — | gTrade (legacy) | Opt-in `--include-gtrade`; no CI |
-| Lighter backfill | Lighter API | — | Opt-in `--include-lighter-backfill` |
 | Compat Ostium↔Dukascopy | Ostium + Dukascopy | — | Opt-in `--include-ostium-compat`; **Phase 8 fet** (EURUSD PARTIAL) |
 
-**Suites LAB/opt-in:** `testing/suites/lab_lighter.txt` (Lighter venue, tests no canònics).
+**T5.32:** gTrade i Lighter tests/suites arxivats → `_archive/testing/2026-02-legacy-purge/`.
 
 ---
 
@@ -530,17 +528,16 @@ curl -s "http://localhost:8010/api/v1/data/ohlcv/EURUSD?from_ts=1700000000&to_ts
 
 ---
 
-## Phase 13 — run_all quiet + fail-fast + Lighter opt-in
+## Phase 13 — run_all quiet + fail-fast
 
 **Comandes canòniques:**
 ```bash
 ./test.sh testing/run_all.py                    # default: core 0-network, quiet, fail-fast
-./test.sh testing/run_all.py --include-lighter  # + Lighter (adapters, WS, soak)
 ./test.sh testing/run_all.py --verbose          # mostra output de cada test
 ./test.sh testing/run_all.py --no-fail-fast     # continua fins al final
 ```
 
-**Comportament default:** quiet (captura output, imprimeix-lo només si falla), fail-fast (para al primer error), Lighter exclòs (opt-in via `--include-lighter`), gTrade exclòs (`--include-gtrade`).
+**Comportament default:** quiet (captura output, imprimeix-lo només si falla), fail-fast (para al primer error). Lighter/gTrade tests arxivats (T5.32); `--include-lighter` / `--include-gtrade` mostren avís i apunten a `_archive/`.
 
 ---
 
