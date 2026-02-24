@@ -1,14 +1,16 @@
 #!/bin/bash
-# T5.22 — Script canònic: start/continue stack + smoke Ostium LIVE.
+# T5.22/T5.23 — Script canònic: start/continue stack + smoke Ostium LIVE.
 #
-# Aixeca el stack split (proxy + realtime si cal + trading_service) amb ostium-live-trading,
-# després executa smoke --recreate --clean.
+# Aixeca el stack split amb serveis explícits (mai up global).
+# Compose: docker-compose.yml + split + ostium-live-trading.
 #
 # Regles crítiques:
+#   - MAI up -d sense llista de serveis.
 #   - MAI prune/remove/stop de realtime-datalayer.
-#   - Si realtime-datalayer ja corre: NO recrear-lo.
-#   - Si no existeix o està aturat: arrencar-lo (up -d) sense rebuild.
-#   - trading_service sí que es recrea.
+#   - realtime_datalayer: up només si no està running.
+#   - historical_datalayer: up només si cal.
+#   - datalayer-proxy: sempre up.
+#   - trading_service: recreate via smoke.
 #
 # Requereix: lab/ostium/.env amb RPC_URL, PRIVATE_KEY.
 #
@@ -45,31 +47,39 @@ if [ -z "$OSTIUM_RPC_URL" ] || [ -z "$OSTIUM_PRIVATE_KEY" ]; then
   exit 1
 fi
 
-echo "=== Up Ostium LIVE stack ==="
+echo "=== Up Ostium LIVE stack (serveis explícits) ==="
 echo ""
 
-# 1) Detectar estat realtime-datalayer (sense dependències)
+# 1) realtime_datalayer: up només si no està running
 REALTIME_STATUS=$(docker inspect -f '{{.State.Status}}' realtime-datalayer 2>/dev/null || echo "none")
-
 if [ "$REALTIME_STATUS" = "running" ]; then
-  echo "  realtime-datalayer: Running → skip (no tocar)"
-elif [ "$REALTIME_STATUS" = "exited" ] || [ "$REALTIME_STATUS" = "created" ] || [ "$REALTIME_STATUS" = "none" ]; then
-  echo "  realtime-datalayer: Aturat/inexistent → arrencar (up -d, sense rebuild)"
-  docker compose "${COMPOSE_FILES[@]}" up -d realtime_datalayer
+  echo "  realtime_datalayer: Running → skip (no tocar)"
 else
-  echo "  realtime-datalayer: Estat=$REALTIME_STATUS → arrencar"
+  echo "  realtime_datalayer: Estat=$REALTIME_STATUS → up -d realtime_datalayer"
   docker compose "${COMPOSE_FILES[@]}" up -d realtime_datalayer
 fi
 echo ""
 
-# 2) Assegurar datalayer-proxy Running (depèn de realtime, historical, trading)
-echo "  datalayer-proxy: assegurar Running"
+# 2) historical_datalayer: up només si no està running
+HISTORICAL_STATUS=$(docker inspect -f '{{.State.Status}}' historical-datalayer 2>/dev/null || echo "none")
+if [ "$HISTORICAL_STATUS" = "running" ]; then
+  echo "  historical_datalayer: Running → skip"
+else
+  echo "  historical_datalayer: Estat=$HISTORICAL_STATUS → up -d historical_datalayer"
+  docker compose "${COMPOSE_FILES[@]}" up -d historical_datalayer
+fi
+echo ""
+
+# 3) trading_service: up (smoke farà --force-recreate després)
+echo "  trading_service: up -d trading_service"
+docker compose "${COMPOSE_FILES[@]}" up -d trading_service
+echo ""
+
+# 4) datalayer-proxy: sempre up
+echo "  datalayer-proxy: up -d datalayer-proxy"
 docker compose "${COMPOSE_FILES[@]}" up -d datalayer-proxy
 echo ""
 
-# 3) Smoke: recreate trading + clean + run
-echo "  trading_service: recreate (via smoke --recreate)"
-echo ""
 echo "  Esperant 5s per arrencada..."
 sleep 5
 echo ""

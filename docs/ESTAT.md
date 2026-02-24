@@ -49,7 +49,9 @@
 - ✅ **Ostium Core (Trade Layer) read-only:** posicions via TradingStorage.getOpenTrade (Trade(9)); EURUSD=pair_id 2; smoke `smoke_ostium_preflight_call.py` 0-TX opt-in
 - ✅ **Ostium trades:** orders/open suportat en PAPER (paper store) i LIVE (kill-switch ENABLE_LIVE_TRADING). orders/close suportat (PAPER idempotent; LIVE guarded). GET `/api/v1/broker/positions?venue=ostium` reflecteix posicions (PAPER: store; LIVE: chain). Smoke E2E LIVE opt-in: `./scripts/run_ostium_live_smoke.sh` (wrapper canònic). DATA_QUALITY_MAX_MISSING_MINUTES (default 1) controla la gate d'open LIVE (missing_minutes > allowed → BAD).
 - ✅ **Ostium LIVE smoke (T5):** Override `deploy/compose/overrides/ostium-live-trading.yml` per trading_service en mode LIVE. **Regla crítica: NO aturar ni recrear realtime_datalayer**. **Una comanda:** `./scripts/up_ostium_live.sh` (up + smoke). O manual: `./scripts/run_ostium_live_smoke.sh --recreate --clean`. Requereix `lab/ostium/.env` amb RPC_URL, PRIVATE_KEY. Veure `deploy/compose/overrides/README.md`.
-- **T5.16/T5.18/T5.19/T5.20/T5.22 (2026-02-24) Smoke LIVE Ostium:** T5.19 Fast-ACK; T5.20 `--clean`; T5.22 **una comanda:** `./scripts/up_ostium_live.sh` — up (proxy + trading) + smoke --recreate --clean. Mai recrea realtime_datalayer.
+- **T5.16/T5.18/T5.19/T5.20/T5.22/T5.24 (2026-02-24) Smoke LIVE Ostium:** T5.19 Fast-ACK; T5.20 `--clean`; T5.22 up explícit; T5.24 tag `v0.1.0-ostium-live-mvp`. **Happy path:**
+  - **Run:** `./scripts/up_ostium_live.sh`
+  - **Smoke only:** `./scripts/run_ostium_live_smoke.sh --recreate --clean`
 
 > **Phases 2–20 + Phase C + Phase D completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Parquet (15) + DuckDB (16) + Backtest Freqtrade-style (17) + Ops robustos (18) + Data API long-range + Coverage API (19) + Mixed stitching + Cron (20) + Historical dashboard + nginx proxy (C) + Gateway single-port (D). Pipeline prod-ish per backfill 2003→avui. 72 tests 0-network, run_all verd. **Single-port API: `:8081/realtime`, `:8081/data`, `:8081/trade`.** Exec Ostium (venue trading) pendent Phase E.
 
