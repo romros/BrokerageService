@@ -100,8 +100,18 @@ curl -s -X POST "http://localhost:8010/api/v1/broker/orders/close" \
 
 ---
 
-## 7. Check-list T2 (sense implementar-ho aquí)
+## 7. T2 fet: `venue=ostium` a GET /positions (LIVE + PAPER)
 
-- [ ] Wiring a `main.py`: quan `VENUE=ostium` (o equivalent), crear i injectar adapter Ostium amb `set_broker_deps(adapter_factory=...)` que retorni l’adapter per `"ostium"`.
-- [ ] Implementar `get_open_positions()` a l’adapter Ostium delegant a `OstiumClient.get_open_trades` (TradingStorage Trade(9)); mapejar a `Position`/`PositionItem` amb position_id tipus `ostium:{pair_id}:{index}`.
-- [ ] Decidir comportament GET `/positions?venue=ostium` en mode PAPER (stub: buit o mock) i en mode LIVE (real); documentar a T2.
+- **Wiring:** Quan `VENUE=ostium`, `application/main.py` crea `OstiumExecutionAdapter` (PAPER = `FakeOstiumClient`, LIVE = `OstiumClient` des de env) i registra `adapter_factory("ostium")`.
+- **LIVE:** Posicions llegides del chain via TradingStorage (Trade(9)); requereix `OSTIUM_PRIVATE_KEY` i `OSTIUM_RPC_URL` (opcional).
+- **PAPER:** Retorna `[]` sense fer cap crida de xarxa (log: «paper mode → no network»).
+- **curl (directe, port per defecte 8000):** `GET http://localhost:8000/api/v1/broker/positions?venue=ostium`  
+  **Via proxy split (port 8081):** `GET http://localhost:8081/trade/api/v1/broker/positions?venue=ostium`
+
+---
+
+## 8. Check-list T2 (completat)
+
+- [x] Wiring a `main.py`: quan `VENUE=ostium`, adapter Ostium injectat; PAPER = FakeOstiumClient, LIVE = OstiumClient.
+- [x] `get_open_positions()` a l’adapter Ostium delegant a `OstiumClient.get_open_trades` (TradingStorage Trade(9)); position_id tipus `ostium:{pair_id}:{index}`.
+- [x] PAPER retorna `[]`; LIVE retorna posicions reals (o `[]` si cap trade obert).

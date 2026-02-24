@@ -61,13 +61,13 @@ OSTIUM_RPC_URL_ENV = "OSTIUM_RPC_URL"
 IDEMPOTENCY_FILE = "datafiles/trade_ids.jsonl"
 
 # ── Symbol → pair_id (asset_type per SDK) ────────────────────────────────────
-# Valors confirmats als scripts del lab (testnet Arbitrum Sepolia).
+# Valors alineats amb testnet (TradingStorage.getOpenTrade); EURUSD = 2 (lab/testnet).
 # El pair_id retornat per l'event OrderOpened és la font de veritat;
 # aquest mapa s'usa per saber quin asset_type passar al SDK i quins pair_ids cercar.
 SYMBOL_TO_PAIR_ID: Dict[str, int] = {
-    "EURUSD": 0,
+    "EURUSD": 2,
     "XAUUSD": 1,
-    "BTCUSD": 2,
+    "BTCUSD": 0,
     "ETHUSD": 3,
     "GBPUSD": 4,
     "GBPJPY": 5,
@@ -79,11 +79,11 @@ SYMBOL_TO_PAIR_ID: Dict[str, int] = {
 
 PAIR_ID_TO_SYMBOL: Dict[int, str] = {v: k for k, v in SYMBOL_TO_PAIR_ID.items()}
 
-# pair_id → (base, quote) per IOstiumClient.get_price
+# pair_id → (base, quote) per IOstiumClient.get_price (alineat amb SYMBOL_TO_PAIR_ID)
 PAIR_ID_TO_BASE_QUOTE: Dict[int, tuple] = {
-    0: ("EUR", "USD"),
+    0: ("BTC", "USD"),
     1: ("XAU", "USD"),
-    2: ("BTC", "USD"),
+    2: ("EUR", "USD"),
     3: ("ETH", "USD"),
     4: ("GBP", "USD"),
     5: ("GBP", "JPY"),
@@ -380,6 +380,11 @@ class OstiumExecutionAdapter(IVenueAdapter):
 
     async def get_open_positions(self) -> List[Position]:
         if self._client is None:
+            return []
+
+        # PAPER: FakeOstiumClient → no network, retornem [] amb log
+        if type(self._client).__name__ == "FakeOstiumClient":
+            logger.debug("OstiumExecutionAdapter.get_open_positions: paper mode → no network")
             return []
 
         # Adreça del trader: si no la tenim, passem "" i el client farà servir la seva (després de _ensure_sdk)

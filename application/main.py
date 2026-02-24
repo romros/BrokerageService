@@ -221,6 +221,28 @@ async def lifespan(app: FastAPI):
                 symbols,
                 tick_interval_ms,
             )
+    elif venue == "ostium":
+        # T2: positions read-only (LIVE = TradingStorage; PAPER = stub []). No open/close encara.
+        from infrastructure.venues.ostium.ostium_execution_adapter import OstiumExecutionAdapter
+        from infrastructure.venues.ostium.ostium_client import FakeOstiumClient
+
+        if mode_lower == "paper" or not enable_live:
+            ostium_adapter = OstiumExecutionAdapter(client=FakeOstiumClient())
+            logger.info("Ostium adapter: PAPER (stub positions, no network)")
+        else:
+            ostium_adapter = OstiumExecutionAdapter()
+            logger.info("Ostium adapter: LIVE (positions via TradingStorage)")
+        await ostium_adapter.start()
+        adapter = ostium_adapter
+        set_broker_deps(
+            candle_store=candle_store,
+            adapter_factory=lambda v: ostium_adapter if v == "ostium" else None,
+            mode=config["mode"],
+            venue="ostium",
+            market_data_env=config["market_data_env"],
+            market_data_source="n/a",
+            fallback_provider=fallback_provider,
+        )
     else:
         set_broker_deps(
             candle_store=candle_store,
