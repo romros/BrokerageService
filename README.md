@@ -43,14 +43,59 @@ API REST per [Freqtrade](https://www.freqtrade.io/) (`/api/v1/broker/*`). Venue 
 
 ---
 
-## API (prefix `/api/v1/broker`)
+## Endpoints (base `http://localhost:8081`)
+
+### Broker API (`/trade/api/v1/broker`)
 
 | Mètode | Path | Descripció |
 |--------|------|-------------|
 | GET | `/health` | Health check |
-| GET | `/balance`, `/positions` | Balance i posicions |
+| GET | `/mode` | Mode (paper/live), market_data_env |
+| GET | `/venues` | Venues disponibles |
+| GET | `/pairs?venue=` | Parells per venue |
+| GET | `/price/latest?venue=&symbol=` | Preu actual |
+| GET | `/ohlcv/{symbol}` | Candles OHLCV 1m |
+| GET | `/coverage?symbol=` | Coverage per símbol |
+| GET | `/data_status` | Data Layer telemetria |
+| GET | `/candles?symbol=&timeframe=&limit=` | Candles (legacy) |
+| GET | `/balance?venue=` | Balance per venue |
+| GET | `/positions?venue=` | Posicions obertes |
+| GET | `/trades?venue=` | Historial trades |
+| GET | `/operations/{operation_id}` | Estat operació (open/close) |
+| GET | `/preflight?venue=&symbol=` | Preflight per ordre live |
 | POST | `/orders/open` | Obrir posició (JSON) |
 | POST | `/orders/close` | Tancar posició (JSON) |
+
+### Data API (`/data`)
+
+| Mètode | Path | Descripció |
+|--------|------|-------------|
+| GET | `/ohlcv/{symbol}` | Candles OHLCV (Parquet/DuckDB, backtest) |
+| GET | `/coverage/{symbol}` | Coverage index per símbol |
+
+### Backtest API (`/trade/api/v1/backtests` o `/backtests`)
+
+| Mètode | Path | Descripció |
+|--------|------|-------------|
+| POST | `/run` | Executar backtest (síncron) |
+| GET | `/runs/{run_id}` | Resultat backtest |
+
+### Realtime (`/realtime`)
+
+| Mètode | Path | Descripció |
+|--------|------|-------------|
+| GET | `/health` | Health realtime |
+| GET | `/status` | Data status per símbol |
+| GET | `/symbols` | Símbols actius (GET/PUT) |
+| GET | `/ui` | Dashboard web |
+| GET | `/info` | Info servei |
+
+### Historical (`/data`)
+
+| Mètode | Path | Descripció |
+|--------|------|-------------|
+| GET | `/health` | Health historical |
+| GET | `/status` | Status + cron metadata |
 
 Exemple `POST /orders/open`:
 ```json
