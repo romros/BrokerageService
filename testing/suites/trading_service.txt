@@ -11,6 +11,7 @@ testing/apps/trading_service/test_ostium_execution_adapter_unit.py
 testing/apps/trading_service/test_ostium_orders_open_paper.py
 testing/apps/trading_service/test_ostium_orders_close_paper.py
 testing/apps/trading_service/test_quality_gates.py
+testing/apps/trading_service/test_data_quality_gate_threshold.py
 testing/apps/trading_service/test_http_data_layer_reader.py
 testing/apps/trading_service/test_quality_gate_enforced.py
 testing/apps/trading_service/test_broker_api.py

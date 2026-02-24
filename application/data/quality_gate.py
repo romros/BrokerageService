@@ -17,7 +17,7 @@ Headers avaluats:
 
 Lògica fail-closed (per ordre):
   1. Headers crítics absents (Coverage-From, Coverage-To) → bad/missing_headers
-  2. missing_minutes > 0 → bad/gaps
+  2. missing_minutes > allowed (max_missing_minutes, default via DATA_QUALITY_MAX_MISSING_MINUTES=1) → bad/gaps
   3. max_gap_s > threshold → bad/gap_too_large
   4. completeness < min_completeness → bad/low_completeness
   5. freshness_sec > max_freshness_sec AND missing_minutes == 0 AND max_gap_s == 0
@@ -28,10 +28,15 @@ Nota: el contracte actual NO inclou X-Data-Market-Open; usem la lògica de cober
 com a proxy: si missing_minutes==0 i max_gap_s==0, el mercat estava tancat o tot OK.
 """
 
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from foundation.config.constants import (
+    DATA_QUALITY_MAX_MISSING_MINUTES_ENV,
+    DEFAULT_DATA_LAYER_GATES_MAX_MISSING_PER_24H,
+)
 from foundation.logging import get_logger
 
 logger = get_logger(__name__)
@@ -81,6 +86,7 @@ def evaluate_quality_gate(
     max_freshness_sec: int,
     min_completeness: float,
     max_gap_s: int,
+    max_missing_minutes: int | None = None,
 ) -> QualityGateResult:
     """
     Avaluació fail-closed de la qualitat de dades OHLCV des de headers X-Data-*.
@@ -91,10 +97,18 @@ def evaluate_quality_gate(
         max_freshness_sec: Màxim freshness tolerat (en s); si superat I hi ha gaps → bad.
         min_completeness: Completeness mínima [0.0, 1.0]; si inferior → bad.
         max_gap_s: Gap màxim tolerat en segons; si superat → bad.
+        max_missing_minutes: Màxim minuts absents tolerats; si missing_minutes > aquest valor → bad.
+            Si None, es llegeix de DATA_QUALITY_MAX_MISSING_MINUTES (default 1).
 
     Returns:
         QualityGateResult amb status ("ok" | "bad"), reason i quality_meta.
     """
+    allowed = (
+        max_missing_minutes
+        if max_missing_minutes is not None
+        else int(os.getenv(DATA_QUALITY_MAX_MISSING_MINUTES_ENV, str(DEFAULT_DATA_LAYER_GATES_MAX_MISSING_PER_24H)))
+    )
+
     # --- Parse headers ---
     coverage_from = _parse_int(headers, "x-data-coverage-from", default=-1)
     coverage_to = _parse_int(headers, "x-data-coverage-to", default=-1)
@@ -133,15 +147,16 @@ def evaluate_quality_gate(
             quality_meta=quality_meta,
         )
 
-    # 2. Gaps (missing_minutes > 0)
-    if missing_minutes > 0:
+    # 2. Gaps (missing_minutes > allowed)
+    if missing_minutes > allowed:
+        quality_meta["allowed"] = allowed
         logger.warning(
-            "quality_gate BAD gaps missing_minutes=%d freshness_sec=%d source=%s",
-            missing_minutes, freshness_sec, source,
+            "quality_gate BAD gaps missing_minutes=%d allowed=%d freshness_sec=%d source=%s",
+            missing_minutes, allowed, freshness_sec, source,
         )
         return QualityGateResult(
             status="bad",
-            reason=f"gaps missing_minutes={missing_minutes}",
+            reason=f"gaps missing_minutes={missing_minutes} allowed={allowed}",
             quality_meta=quality_meta,
         )
 
