@@ -2,7 +2,7 @@
 
 **Data:** 2026-02-21
 **Repo/Path:** `/mnt/volume-SQ/dev/BrokerageService`
-**Venues:** Ostium (marketdata principal) · Dukascopy (historic/backtest fallback). Lighter/gTrade arxivats (T5.32) → `_archive/`.
+**Venues:** Ostium (principal) · Dukascopy (historical/backtest). **Legacy arxivat:** Lighter/gTrade → `_archive/`.
 **TZ canònica (config):** `CANONICAL_TZ=America/New_York`
 **TZ container (runtime/logs):** `TZ=America/New_York`
 **Índex docs:** [docs/INDEX.md](INDEX.md) ← navegació centralitzada
@@ -16,7 +16,7 @@
 
 ## TL;DR
 
-- ✅ **Ostium-first** (T5): venue canònic per execució i marketdata; paper + LIVE (kill-switch)
+- ✅ **MVP Ostium LIVE stable** (fast-ack 202 + operations + smoke + up scripts)
 - ✅ **Data Layer** (P4–P7c): backfill, gap repair, headers X-Data, /coverage, /data_status, read-through, stitching gated
 - ✅ **Data Layer prod v0** (opt-in): prefetch + writer loop + gates; `DATA_LAYER_ENABLED=1`
 - ✅ **Ostium Data Layer prod v0** (opt-in): realtime Ostium (polling) + backfill Dukascopy; `OSTIUM_ENABLED=1`
@@ -854,7 +854,7 @@ docker compose down && docker compose up -d brokerage
 
 ## Notes crítiques
 
-- **EURUSD Lighter REST candlestick: DATA_QUALITY_FAIL** (zero_range alt) → no apte per backtest; no declarar primary històric.
+- **EURUSD Lighter REST candlestick (legacy arxivat):** DATA_QUALITY_FAIL (zero_range alt) → no apte per backtest; no declarar primary històric.
 - **WS Candle Collector** és el camí per validar candles WS com a alternativa.
 - **XAU PARTIAL** — corr/dir_agree dins llindars; offset acceptable.
 
@@ -865,8 +865,8 @@ docker compose down && docker compose up -d brokerage
 | Àrea | Estat | Notes |
 |------|-------|-------|
 | Broker API | ✅ | `/api/v1/broker/*`, POST body |
-| Execution (paper/live) | ✅/🟡 | Lighter paper OK; live hardening 90% |
-| Data Layer | ✅ | P4–P7c; EURUSD REST candlestick no apte (zero_range) |
+| Execution (paper/live) | ✅/🟡 | Ostium paper/LIVE OK; live hardening 90% |
+| Data Layer | ✅ | P4–P7c; Ostium+Dukascopy. Lighter candlestick arxivat. |
 | Ostium Data Layer | ✅ | prod v0: Ostium realtime + Dukascopy backfill; `run_smoke.sh ostium` |
 | Backtest | ⛔ | Pipeline pendent |
 | Ostium LAB | 🧪 | Validació RWA; [lab/ostium/README.md](../lab/ostium/README.md). **Test canònic full cycle:** `lab/ostium/scripts/test_full_cycle_multicall.py` (open→wait→find→close amb multicall + tradingStorage; no subgraph). Multicall scan: decode Trade(9), SANITY_CHECK, SCAN_ONLY sense PRIVATE_KEY. Legacy subgraph-dependent: `lab/ostium/_archive/scripts/test_full_cycle.py`. **Neteja testnet:** `lab/ostium/scripts/close_all_open_trades.py` (scan + close; SCAN_ONLY=1 llista sense PK; SCAN_ONLY=0 tanca fins a MAX_CLOSE). Run: `docker compose -p lab_ostium run --rm -e RPC_URL -e PRIVATE_KEY -e SCAN_ONLY=0 -e MAX_CLOSE=3 ostium-cli python3 scripts/close_all_open_trades.py`. |
