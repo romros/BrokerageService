@@ -46,7 +46,7 @@ BASE_URL="${BASE_URL:-http://127.0.0.1:8081/trade}"
 if [ "$RECREATE" -eq 1 ]; then
   echo "=== Recreant només trading_service (NO realtime) ==="
   docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml \
-    -f deploy/compose/overrides/ostium-live-trading.yml up -d trading_service
+    -f deploy/compose/overrides/ostium-live-trading.yml up -d --force-recreate trading_service
   echo "  Esperant 3s..."
   sleep 3
   echo ""
