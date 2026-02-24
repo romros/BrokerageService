@@ -70,7 +70,7 @@
 | `TradingCore` | [`application/trading/trading_core.py`](../../application/trading/trading_core.py) |
 
 Responsabilitat: orquestra open/close d'ordres — quality gate → venue dispatch.
-`broker_routes._do_order_open` / `_do_order_close` deleguen a `TradingCore`.
+`broker_routes` crida OrderOpenService/OrderCloseService; aquests deleguen a `TradingCore` (T5.40).
 
 Errors domain-level (sense HTTP):
 - `AdapterNotAvailableError` — adapter_factory no configurat → 503

@@ -28,7 +28,7 @@
 | Reconcile | ✅ | Operatiu |
 | Consumeix realtime_datalayer via HTTP | ✅ | Phase 2: HttpDataLayerReader + RealtimeDataLayerClient |
 | Quality gate fail-closed | ✅ | Phase 5: gate=BAD → 422 DATA_QUALITY_GATE_BAD; cap venue call |
-| NO_TRADE enforçat | ✅ | Phase 5: `_do_order_open` comprova gate via `assert_data_quality_ok()` |
+| NO_TRADE enforçat | ✅ | Phase 5: OrderOpenService comprova gate via `assert_data_quality_ok()` |
 | BacktestMarketDataProvider | ✅ | Phase 10: registry-aware (ostium_local / dukascopy fallback) |
 | Backtest runner offline | ✅ | Phase 11: `simple_trend`, KPIs, artifact JSON |
 | Backtest API REST | ✅ | Phase 12: `POST /backtests/run` + `GET /backtests/runs/{run_id}` |
@@ -112,7 +112,7 @@ docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml 
 - [x] Ordres open/close funcionen amb Lighter (paper mode)
 - [x] Consumeix candles del realtime_datalayer via HTTP (Phase 2: HttpDataLayerReader)
 - [x] Quality gate fail-closed (Phase 5: gate=BAD → 422, cap venue call)
-- [x] NO_TRADE enforçat (`_do_order_open` comprova gate)
+- [x] NO_TRADE enforçat (OrderOpenService comprova gate)
 - [x] BacktestMarketDataProvider registry-aware (Phase 10)
 - [x] Backtest runner offline + KPIs (Phase 11)
 - [x] Backtest API REST (Phase 12)

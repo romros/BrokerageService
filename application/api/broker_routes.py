@@ -6,9 +6,7 @@ POST /orders/open i /orders/close amb JSON body.
 """
 
 import asyncio
-import json
 import os
-import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, List, Callable, Any, Dict
@@ -52,11 +50,6 @@ from domain.errors import PositionNotFoundError, MarketNotFoundError
 from foundation.config.constants import (
     CANONICAL_TIMEZONE,
     OSTIUM_POSITIONS_TIMEOUT_S,
-    TRADE_TX_WAIT_TIMEOUT_S_ENV,
-    DEFAULT_TRADE_TX_WAIT_TIMEOUT_S,
-    OPERATIONS_JSONL_ENV,
-    DEFAULT_OPERATIONS_JSONL,
-    OPERATIONS_REHYDRATE_MAX_LINES,
     CANONICAL_TIMEZONE_NAME,
     DATA_LAYER_ENABLED_ENV,
     DATA_LAYER_STARTUP_GATE_ENV,
@@ -119,103 +112,6 @@ _ostium_ingest_enabled: bool = False
 _ostium_ingest_poll_s: int = 2
 _data_layer_reader: Optional[Any] = None  # Split vNext Phase 2: IDataLayerReader (HTTP o local)
 
-# T5.11b: idempotència close — (venue, position_id, client_close_id) → result
-_close_idempotency_cache: dict = {}
-
-# T5.14: operation status — operation_id → {kind, venue, symbol, position_id?, tx_hash?, status, created_at, last_update, error?}
-_operations_store: Dict[str, dict] = {}
-
-# T5.19: idempotència open per client_order_id → operation_id
-_open_idempotency_cache: Dict[str, str] = {}
-
-
-def _op_get_path() -> Path:
-    """T5.15: path del fitxer JSONL (logs/operations.jsonl per defecte)."""
-    raw = os.getenv(OPERATIONS_JSONL_ENV, DEFAULT_OPERATIONS_JSONL).strip()
-    return Path(raw) if raw else Path(DEFAULT_OPERATIONS_JSONL)
-
-
-def _op_append(op: dict) -> None:
-    """T5.15: append JSONL (best-effort, no bloqueja)."""
-    try:
-        path = _op_get_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(op, ensure_ascii=False) + "\n")
-    except Exception as e:
-        logger.warning("operations JSONL append failed: %s", e)
-
-
-def _op_rehydrate() -> None:
-    """T5.15: rehidratar _operations_store des del JSONL (últims N events)."""
-    global _operations_store
-    path = _op_get_path()
-    if not path.exists():
-        return
-    try:
-        lines = path.read_text(encoding="utf-8").strip().splitlines()
-        tail = lines[-OPERATIONS_REHYDRATE_MAX_LINES:] if len(lines) > OPERATIONS_REHYDRATE_MAX_LINES else lines
-        for line in tail:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                op = json.loads(line)
-                oid = op.get("operation_id")
-                if oid:
-                    _operations_store[oid] = op
-            except json.JSONDecodeError:
-                continue
-        if _operations_store:
-            logger.info("operations rehydrated: %d from %s", len(_operations_store), path)
-    except Exception as e:
-        logger.warning("operations rehydrate failed: %s", e)
-
-
-def _op_id() -> str:
-    """Short operation id (12 chars)."""
-    return uuid.uuid4().hex[:12]
-
-
-def _op_create(operation_id: str, kind: str, venue: str, symbol: str, position_id: str = "") -> None:
-    now = datetime.now(timezone.utc).isoformat()
-    op = {
-        "operation_id": operation_id,
-        "kind": kind,
-        "venue": venue,
-        "symbol": symbol,
-        "position_id": position_id or "",
-        "tx_hash": "",
-        "status": "in_progress",
-        "created_at": now,
-        "last_update": now,
-        "error": None,
-    }
-    _operations_store[operation_id] = op
-    _op_append(op)
-
-
-def _op_update(
-    operation_id: str,
-    status: str,
-    position_id: str = "",
-    tx_hash: str = "",
-    error: Optional[str] = None,
-) -> None:
-    if operation_id not in _operations_store:
-        return
-    op = _operations_store[operation_id]
-    op["last_update"] = datetime.now(timezone.utc).isoformat()
-    op["status"] = status
-    if position_id:
-        op["position_id"] = position_id
-    if tx_hash:
-        op["tx_hash"] = tx_hash
-    if error is not None:
-        op["error"] = error
-    _op_append(op)
-
-
 def set_broker_deps(
     candle_store: Any = _UNSET,
     adapter_factory: Any = _UNSET,
@@ -259,7 +155,8 @@ def set_broker_deps(
     if data_layer_reader is not _UNSET:
         _data_layer_reader = data_layer_reader
     # T5.15: rehidratar operations des del JSONL a startup
-    _op_rehydrate()
+    from application.services.operation_service import get_operation_service
+    get_operation_service().rehydrate()
     logger.info(
         f"Broker API deps: mode={_mode}, venue={_venue}, market_data_env={_market_data_env}, "
         f"market_data_source={_market_data_source}, adapter_factory={'set' if _adapter_factory else 'None'}"
@@ -995,236 +892,61 @@ async def get_trades(
 # ============ Orders ============
 
 
-async def _do_order_open(req: OrderOpenRequest) -> OrderOpenResponse:
-    """Lògica comuna per obrir posició. Delega a TradingCore (Phase E)."""
-    from application.trading.trading_core import (
-        TradingCore,
-        AdapterNotAvailableError,
-        VenueNotConfiguredError,
-    )
-    from application.errors import DataQualityGateBadError, LiveTradingDisabledError, RiskLimitExceededError
-    from application.api.error_codes import LIVE_TRADING_DISABLED, RISK_LIMIT_EXCEEDED
-    from application.services.position_guard import PositionAlreadyOpenError
+def _map_order_close_errors(e: Exception) -> None:
+    """Map domain errors to HTTP. Llança HTTPException."""
+    from application.trading.trading_core import AdapterNotAvailableError, VenueNotConfiguredError
 
-    core = TradingCore(
-        adapter_factory=_adapter_factory,
-        data_layer_reader=_data_layer_reader,
-        known_venues=list(KNOWN_VENUES),
-        mode=_mode,
-    )
-    try:
-        result = await core.open_order(req)
-    except DataQualityGateBadError as e:
-        _http_error(
-            422,
-            DATA_QUALITY_GATE_BAD,
-            f"NO_TRADE: quality gate BAD for {e.symbol} — {e.reason}",
-        )
-    except LiveTradingDisabledError as e:
+    if isinstance(e, LiveTradingDisabledError):
         _http_error(403, LIVE_TRADING_DISABLED, str(e))
-    except RiskLimitExceededError as e:
-        _http_error(422, RISK_LIMIT_EXCEEDED, str(e))
-    except PositionAlreadyOpenError as e:
-        _http_error(409, POSITION_ALREADY_OPEN, str(e))
-    except AdapterNotAvailableError as e:
+    if isinstance(e, AdapterNotAvailableError):
         _http_error(503, ADAPTER_NOT_AVAILABLE, str(e))
-    except VenueNotConfiguredError as e:
+    if isinstance(e, VenueNotConfiguredError):
         _http_error(422, VENUE_NOT_CONFIGURED, str(e))
-    except MarketNotFoundError as e:
-        _http_error(404, SYMBOL_NOT_FOUND, str(e))
-    except Exception as e:
-        logger.error("order_open %s %s: %s", req.venue, req.symbol, e)
-        raise HTTPException(status_code=500, detail=str(e))
-    return OrderOpenResponse(
-        success=result.success,
-        position_id=result.position_id,
-        order_id=result.order_id,
-        executed_price=result.executed_price,
-        executed_size=result.executed_size,
-        tx_hash=result.tx_hash,
-    )
-
-
-async def _do_order_close(req: OrderCloseRequest) -> OrderCloseResponse:
-    """Lògica comuna per tancar posició. Delega a TradingCore (Phase E). Idempotència per client_close_id."""
-    cid = getattr(req, "client_close_id", None) or ""
-    if cid:
-        key = (req.venue, req.position_id, cid)
-        if key in _close_idempotency_cache:
-            cached = _close_idempotency_cache[key]
-            logger.info("order_close idempotent: venue=%s position_id=%s client_close_id=%s", req.venue, req.position_id, cid)
-            return OrderCloseResponse(
-                success=cached["success"],
-                tx_hash=cached.get("tx_hash", ""),
-                position_id=cached.get("position_id", req.position_id),
-            )
-
-    from application.trading.trading_core import (
-        TradingCore,
-        AdapterNotAvailableError,
-        VenueNotConfiguredError,
-    )  # lazy import to reduce startup cost
-
-    core = TradingCore(
-        adapter_factory=_adapter_factory,
-        data_layer_reader=_data_layer_reader,
-        known_venues=list(KNOWN_VENUES),
-        mode=_mode,
-    )
-    try:
-        result = await core.close_order(req)
-        resp = OrderCloseResponse(success=result.success, position_id=req.position_id)
-        if cid:
-            _close_idempotency_cache[(req.venue, req.position_id, cid)] = {
-                "success": result.success,
-                "tx_hash": getattr(result, "tx_hash", "") or "",
-                "position_id": req.position_id,
-            }
-        return resp
-    except LiveTradingDisabledError as e:
-        _http_error(403, LIVE_TRADING_DISABLED, str(e))
-    except AdapterNotAvailableError as e:
-        _http_error(503, ADAPTER_NOT_AVAILABLE, str(e))
-    except VenueNotConfiguredError as e:
-        _http_error(422, VENUE_NOT_CONFIGURED, str(e))
-    except PositionNotFoundError as e:
+    if isinstance(e, PositionNotFoundError):
         _http_error(404, POSITION_NOT_FOUND, str(e))
-    except Exception as e:
-        logger.error("order_close %s %s: %s", req.venue, req.position_id, e)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-def _get_trade_tx_wait_timeout_s() -> float:
-    """Timeout per open/close (wait receipt, reconcile). Default 15s."""
-    raw = os.getenv(TRADE_TX_WAIT_TIMEOUT_S_ENV, str(DEFAULT_TRADE_TX_WAIT_TIMEOUT_S)).strip()
-    try:
-        return float(raw) if raw else DEFAULT_TRADE_TX_WAIT_TIMEOUT_S
-    except ValueError:
-        return DEFAULT_TRADE_TX_WAIT_TIMEOUT_S
-
-
-async def _run_open_operation(operation_id: str, body: OrderOpenRequest) -> None:
-    """T5.19: Background task — quality gate + open_trade + confirm. Actualitza operation."""
-    try:
-        result = await _do_order_open(body)
-        _op_update(
-            operation_id,
-            "confirmed",
-            position_id=result.position_id,
-            tx_hash=getattr(result, "tx_hash", "") or "",
-        )
-        logger.info(
-            "order_open confirmed: venue=%s symbol=%s position_id=%s op=%s",
-            body.venue,
-            body.symbol,
-            result.position_id,
-            operation_id,
-        )
-    except HTTPException as e:
-        detail = (
-            e.detail.get("detail", str(e.detail))
-            if isinstance(e.detail, dict)
-            else str(e.detail)
-        )
-        code = e.detail.get("code", "") if isinstance(e.detail, dict) else ""
-        err_msg = f"{code}: {detail}" if code else detail
-        _op_update(operation_id, "error", error=err_msg)
-        logger.warning("order_open error: op=%s %s", operation_id, err_msg)
-    except Exception as e:
-        _op_update(operation_id, "error", error=str(e))
-        logger.exception("order_open exception: op=%s venue=%s symbol=%s", operation_id, body.venue, body.symbol)
 
 
 @trading_router.post("/orders/open", response_model=OrderOpenResponse)
 async def order_open(body: OrderOpenRequest = Body(...)):
     """T5.19: Fast-ACK 202 — retorna <1s amb operation_id; feina lenta en background."""
-    cid = (body.client_order_id or "").strip()
-    if cid and cid in _open_idempotency_cache:
-        operation_id = _open_idempotency_cache[cid]
-        if operation_id in _operations_store:
-            return JSONResponse(
-                status_code=202,
-                content={
-                    "success": True,
-                    "pending": True,
-                    "position_id": "",
-                    "order_id": "",
-                    "executed_price": 0.0,
-                    "executed_size": 0.0,
-                    "tx_hash": "",
-                    "operation_id": operation_id,
-                },
-            )
+    from application.services.order_open_service import fast_ack_open, get_cached_idempotent_response
 
-    operation_id = _op_id()
-    _op_create(operation_id, "open", body.venue, body.symbol)
-    if cid:
-        _open_idempotency_cache[cid] = operation_id
+    cached = get_cached_idempotent_response((body.client_order_id or "").strip())
+    if cached is not None:
+        return JSONResponse(status_code=202, content=cached)
 
-    asyncio.create_task(_run_open_operation(operation_id, body))
-
-    return JSONResponse(
-        status_code=202,
-        content={
-            "success": True,
-            "pending": True,
-            "position_id": "",
-            "order_id": "",
-            "executed_price": 0.0,
-            "executed_size": 0.0,
-            "tx_hash": "",
-            "operation_id": operation_id,
-        },
-    )
+    _, content = fast_ack_open(body, _adapter_factory, _data_layer_reader, _mode)
+    return JSONResponse(status_code=202, content=content)
 
 
 @trading_router.post("/orders/close", response_model=OrderCloseResponse)
 async def order_close(body: OrderCloseRequest = Body(...)):
     """Tancar posició. JSON body. percent dins (0, 100]. Si timeout → 202 pending. T5.14: operation_id per poll."""
-    operation_id = _op_id()
-    _op_create(operation_id, "close", body.venue, "", position_id=body.position_id)
+    from application.services.order_close_service import close_with_timeout
 
-    async def _run_close() -> OrderCloseResponse:
-        try:
-            result = await _do_order_close(body)
-            _op_update(operation_id, "confirmed", position_id=body.position_id)
-            return OrderCloseResponse(
-                success=result.success,
-                position_id=body.position_id,
-                tx_hash=result.tx_hash or "",
-                operation_id=operation_id,
-            )
-        except Exception as e:
-            _op_update(operation_id, "error", error=str(e))
-            raise
-
-    timeout_s = _get_trade_tx_wait_timeout_s()
-    task = asyncio.create_task(_run_close())
-    done, _ = await asyncio.wait([task], timeout=timeout_s, return_when=asyncio.FIRST_COMPLETED)
-    if task in done:
-        result = task.result()
-        logger.info("order_close tx_confirmed: venue=%s position_id=%s", body.venue, body.position_id)
-        return result
-    _op_update(operation_id, "pending", position_id=body.position_id)
-    logger.warning("order_close tx_wait_timeout: venue=%s position_id=%s timeout_s=%.0f op=%s", body.venue, body.position_id, timeout_s, operation_id)
-    return JSONResponse(
-            status_code=202,
-            content={
-                "success": True,
-                "pending": True,
-                "tx_hash": "",
-                "position_id": body.position_id,
-                "operation_id": operation_id,
-            },
+    try:
+        completed, result_dict, pending_dict = await close_with_timeout(
+            body, _adapter_factory, _data_layer_reader, _mode
         )
+        if completed and result_dict is not None:
+            return OrderCloseResponse(**result_dict)
+        if pending_dict is not None:
+            return JSONResponse(status_code=202, content=pending_dict)
+    except Exception as e:
+        _map_order_close_errors(e)
+        logger.error("order_close %s %s: %s", body.venue, body.position_id, e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @trading_router.get("/operations/{operation_id}")
 async def get_operation(operation_id: str):
     """T5.14: Estat d'una operació open/close. Per poll quan 202 pending."""
-    if operation_id not in _operations_store:
+    from application.services.operation_service import get_operation_service
+
+    op = get_operation_service().get(operation_id)
+    if op is None:
         raise HTTPException(status_code=404, detail="operation not found")
-    return _operations_store[operation_id]
+    return op
 
 
 @trading_router.get("/preflight")
