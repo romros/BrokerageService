@@ -61,7 +61,7 @@ async def run_compat(
     symbol: str,
     window_minutes: int,
     datafiles_root: str,
-    broker: str = "gtrade",
+    broker: str = "candles",
     canonical_tz: str = "America/New_York",
     candles_b_override: Optional[List] = None,
     out_path: Optional[str] = None,
@@ -212,7 +212,7 @@ async def run_compat(
 async def run_compat_full(
     symbol: str,
     datafiles_root: str,
-    broker: str = "gtrade",
+    broker: str = "candles",
     canonical_tz: str = "America/New_York",
     candles_b_override: Optional[List] = None,
     out_path: Optional[str] = None,
@@ -421,12 +421,12 @@ def main() -> int:
     )
     parser.add_argument(
         "--datafiles-root",
-        default=os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT),
-        help="Datafiles root",
+        default=os.getenv("DATAFILES_ROOT", os.path.join(DEFAULT_DATAFILES_ROOT, "realtime_datalayer")),
+        help="Datafiles root (default: /datafiles/realtime_datalayer — Ostium live store)",
     )
     parser.add_argument(
         "--broker",
-        default=os.getenv("VENUE", "gtrade"),
+        default=os.getenv("VENUE", "candles"),
         help="Broker/venue for store path",
     )
     args = parser.parse_args()

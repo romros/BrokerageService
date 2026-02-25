@@ -1,6 +1,6 @@
 # ESTAT DEL PROJECTE — BrokerageService
 
-**Data:** 2026-02-24
+**Data:** 2026-02-25
 **Repo/Path:** `/mnt/volume-SQ/dev/BrokerageService`
 **Venues:** Ostium (principal) · Dukascopy (historical/backtest). **Legacy arxivat:** Lighter/gTrade → `_archive/`.
 **TZ canònica (config):** `CANONICAL_TZ=America/New_York`

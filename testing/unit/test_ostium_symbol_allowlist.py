@@ -26,8 +26,8 @@ from foundation.config.constants import (
 
 
 def test_ostium_symbol_allowlist_filters_ingest_symbols():
-    """ingest_symbols = allowlist - quarantine; XAUUSD exclòs per defecte."""
-    # Default: EURUSD,GBPUSD allowlist; XAUUSD,XAU quarantine
+    """ingest_symbols = allowlist - quarantine; quarantena buida per defecte (T6.10 XAUUSD PASS_BACKTEST)."""
+    # Default: EURUSD,GBPUSD allowlist; quarantine buida (XAUUSD ha passat compat T6.10)
     orig_sym = os.environ.pop(OSTIUM_SYMBOLS_ENV, None)
     orig_quar = os.environ.pop(OSTIUM_QUARANTINE_SYMBOLS_ENV, None)
     try:
@@ -36,9 +36,7 @@ def test_ostium_symbol_allowlist_filters_ingest_symbols():
         ingest = get_ostium_ingest_symbols()
         assert "EURUSD" in allowlist
         assert "GBPUSD" in allowlist
-        assert "XAUUSD" in quarantine or "XAU" in quarantine
-        assert "XAUUSD" not in ingest
-        assert "XAU" not in ingest
+        assert len(quarantine) == 0, f"quarantine per defecte ha de ser buida, got: {quarantine}"
         assert "EURUSD" in ingest
         assert "GBPUSD" in ingest
     finally:

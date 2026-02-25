@@ -17,7 +17,7 @@ cd "$PROJECT_ROOT"
 PROFILE=${1:-ostium}
 SYMBOL=${2:-EURUSD}
 OVERRIDES_DIR="$PROJECT_ROOT/deploy/compose/overrides"
-DATAFILES_ROOT="${DATAFILES_ROOT:-$PROJECT_ROOT/datafiles}"
+DATAFILES_ROOT="${DATAFILES_ROOT:-$PROJECT_ROOT/datafiles/realtime_datalayer}"
 
 export PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 
@@ -30,7 +30,7 @@ case "$PROFILE" in
     fi
     # Broker ha d'estar up amb Ostium per tenir dades; si no, compat pot fallar
     export DATAFILES_ROOT
-    export VENUE="${VENUE:-gtrade}"
+    export VENUE="${VENUE:-candles}"
     python3 -m application.tools.ostium_compat_report \
       --symbol "$SYMBOL" \
       --minutes "${OSTIUM_COMPAT_WINDOW_MINUTES:-1440}" \
