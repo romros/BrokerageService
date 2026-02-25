@@ -27,13 +27,17 @@ def test_rotation_daily_path_and_latest_run():
         outdir = Path(tmp) / "forensics"
         from application.services.ostium_tick_recorder import OstiumTickRecorder
 
+        # Usar data d'avui per evitar que _run_retention esborri el dir
+        # (retention_days=7 esborraria dates > 7 dies enrere)
+        now = datetime.now(timezone.utc)
+        date_str = now.strftime("%Y%m%d")
+        ts = int(now.replace(hour=12, minute=0, second=0, microsecond=0).timestamp())
+
         rec = OstiumTickRecorder(outdir=str(outdir), retention_days=7)
-        # ts = 2026-02-18 12:00 UTC
-        ts = int(datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc).timestamp())
         rec.record_tick("EURUSD", ts, 1.0850)
         rec.record_tick("EURUSD", ts + 1, 1.0851)
 
-        daily_dir = outdir / "daily" / "20260218"
+        daily_dir = outdir / "daily" / date_str
         assert daily_dir.exists()
         jsonl_file = daily_dir / "EURUSD.jsonl"
         assert jsonl_file.exists()
@@ -47,7 +51,7 @@ def test_rotation_daily_path_and_latest_run():
 
         latest_file = outdir / "daily" / "LATEST_RUN.txt"
         assert latest_file.exists()
-        assert latest_file.read_text().strip() == "daily/20260218"
+        assert latest_file.read_text().strip() == f"daily/{date_str}"
     print("OK test_rotation_daily_path_and_latest_run")
 
 
@@ -79,8 +83,13 @@ def test_jsonl_format_monotonic_dupes():
         outdir = Path(tmp) / "forensics"
         from application.services.ostium_tick_recorder import OstiumTickRecorder
 
-        rec = OstiumTickRecorder(outdir=str(outdir), retention_days=7)
-        ts = int(datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc).timestamp())
+        # retention_days=0 per evitar que _run_retention esborri el dir
+        # (tests de format no validen retenció)
+        now = datetime.now(timezone.utc)
+        date_str = now.strftime("%Y%m%d")
+        ts = int(now.replace(hour=12, minute=0, second=0, microsecond=0).timestamp())
+
+        rec = OstiumTickRecorder(outdir=str(outdir), retention_days=0)
         rec.record_tick("GBPUSD", ts, 1.2650)
         rec.record_tick("GBPUSD", ts + 2, 1.2652)
         rec.record_tick("GBPUSD", ts, 1.2649)  # dupe (ts <= last)
@@ -94,7 +103,7 @@ def test_jsonl_format_monotonic_dupes():
         assert s["dupes_detected"] == 2
         assert s["last_tick_ts"] == ts + 2
 
-        jsonl_file = outdir / "daily" / "20260218" / "GBPUSD.jsonl"
+        jsonl_file = outdir / "daily" / date_str / "GBPUSD.jsonl"
         lines = jsonl_file.read_text().strip().split("\n")
         assert len(lines) == 2
         data0 = json.loads(lines[0])
@@ -110,8 +119,9 @@ def test_best_effort_does_not_block_candles():
         outdir = Path(tmp) / "forensics"
         from application.services.ostium_tick_recorder import OstiumTickRecorder
 
-        rec = OstiumTickRecorder(outdir=str(outdir), retention_days=7)
-        ts = int(datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc).timestamp())
+        now = datetime.now(timezone.utc)
+        ts = int(now.replace(hour=12, minute=0, second=0, microsecond=0).timestamp())
+        rec = OstiumTickRecorder(outdir=str(outdir), retention_days=0)
         rec.record_tick("EURUSD", ts, 1.08)
 
         call_count = [0]
@@ -136,8 +146,9 @@ def test_data_status_includes_tick_recorder():
         outdir = Path(tmp) / "forensics"
         from application.services.ostium_tick_recorder import OstiumTickRecorder, get_ostium_tick_recorder
 
-        rec = OstiumTickRecorder(outdir=str(outdir), retention_days=7)
-        ts = int(datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc).timestamp())
+        now = datetime.now(timezone.utc)
+        ts = int(now.replace(hour=12, minute=0, second=0, microsecond=0).timestamp())
+        rec = OstiumTickRecorder(outdir=str(outdir), retention_days=0)
         rec.record_tick("EURUSD", ts, 1.08)
 
         retrieved = get_ostium_tick_recorder()

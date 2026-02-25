@@ -307,7 +307,7 @@ python3 -m application.tools.ostium_compat_report --symbol XAUUSD --mode full
 | Símbol | Compat | allowed_for_backtest | allowed_for_live | Quarantined | Corr | Dir agree 1m | Dir agree filtrat | Diff preu p95 |
 |--------|--------|---------------------|-----------------|-------------|------|--------------|-------------------|---------------|
 | EURUSD | **PASS_BACKTEST** | ✅ true | ❌ false | No | 0.968 | 89.9% | **96.7%** (eligible=427) | ~0.5 pips |
-| XAUUSD | **PASS_BACKTEST** (rolling) | ✅ true | ❌ false | Sí (quarantine config) | 0.967 (market_open) | 91.3% | **96.6%** (eligible=1039) | ~$0.98 |
+| XAUUSD | **PASS_BACKTEST** (rolling+full) | ✅ true | ❌ false | Sí (quarantine config) | 0.971 (full, market_open) | 91.8% | **96.7%** (eligible=5262) | ~$0.98 |
 
 **Interpretació (2026-02-25, rolling 1440m, market_open filter T6.8):**
 - Les diferències de **preu absolut** entre Ostium i Dukascopy són negligibles per ambdós símbols.
@@ -435,9 +435,64 @@ else:
 - `test_tick_at_closed_minute_ignored` — tick bucket closed → ignorat, comptador +1
 - `test_no_spike_at_boundary` — candle boundary no conté break_price
 
-**Nota:** Els 4 spikes pre-existents (2026-02-18, 02-20, 02-23, 02-24) segueixen en disc.
-El full 7d XAUUSD millorarà progressivament a mesura que passin dies amb dades netes.
-Passaran ~5-7 dies fins que la finestra full no inclogui spikes antics.
+**Nota:** Els spikes pre-existents han estat reparats per T6.10 (veure secció següent).
+
+### T6.10 — Repair històric XAUUSD sobre mount real (2026-02-25)
+
+**Problema:** Els spikes `spike_to_break_price` (break_price dins bucket `market_open`) ja existien al store real `/datafiles/realtime_datalayer` (volum Docker compartit) i el compat full 7d seguia donant `INCOMPATIBLE (corr_market_open=0.571)`.
+
+**Causa anterior:** Les sessions prèvies aplicaven el repair al path `/app/datafiles/realtime_datalayer` (path local del contenidor `historical-datalayer`) en lloc del volum compartit. El compat oficial llegeix de `/datafiles/realtime_datalayer`.
+
+**Tip arquitectura (confirmat):** `app_factory.py` quan `role=realtime_datalayer` instancia `CSVCandleStore(root=DATAFILES_ROOT/realtime_datalayer, broker="candles")`. Tant `realtime_datalayer` com `historical_datalayer` munten el mateix volum `/mnt/volume-SQ/dev/BrokerageService/datafiles` → `/datafiles`.
+
+**Tool creat:** `application/tools/ostium_rebuild_candles_from_ticks.py`
+- Llegeix ticks JSONL (`daily/YYYYMMDD/<symbol>.jsonl`), aplica T6.9 gate + `spike_pct_threshold=0.99`
+- Backup → patch al store (prefer new data)
+- Paràmetre nou: `--spike-threshold` (default 0.99); stats `ticks_spike_filtered`
+
+**Execució repair (2026-02-25, sobre mount real):**
+```bash
+docker exec realtime-datalayer python3 /app/application/tools/ostium_rebuild_candles_from_ticks.py \
+    --symbol XAUUSD --from 2026-02-18T00:00:00Z --to 2026-02-26T00:00:00Z \
+    --ticks-root /datafiles/realtime_datalayer/ticks \
+    --candles-root /datafiles/realtime_datalayer --broker candles --write
+```
+
+**Spikes corregits:**
+- `2026-02-20T21:58Z`: close `4996.32 → 5106.897` (diff=110.58) ✅ (ticks JSONL disponibles)
+- `2026-02-25T21:58Z`: close `4996.32 → 5165.023` (diff=168.70) ✅ (ticks JSONL disponibles)
+- `2026-02-18T21:58Z`: patch conservador `l/c = open = 4976.300` ✅ (sense ticks JSONL pel bucket)
+
+**Ticks no disponibles:** `20260218` no té ticks al bucket `21:58`. `20260223/20260224` zero_range ja filtrats per T6.8.
+
+**Resultat compat full 7d post-repair:**
+
+| Mètrica | Abans T6.10 | Després T6.10 |
+|---------|:-----------:|:-------------:|
+| corr_raw | 0.402 | 0.429 |
+| corr_market_open | 0.571 | **0.971** ✅ |
+| dir_agree_filtered | 96.7% | 96.7% |
+| excluded | 3 | 3 |
+| n_open_pairs | 6882 | 6882 |
+| **verdict** | INCOMPATIBLE ❌ | **PASS_BACKTEST ✅** |
+
+**Rolling 1440m post-repair:** PASS_BACKTEST (corr=0.968, excluded=1) ✅ — sense regressions.
+
+**Compat a executar amb paràmetres explícits (obligatori, default usa broker=gtrade buit):**
+```bash
+docker exec historical-datalayer python3 -m application.tools.ostium_compat_report \
+    --symbol XAUUSD --mode full \
+    --datafiles-root /datafiles/realtime_datalayer --broker candles
+```
+
+**Fix colateral (test_ostium_tick_recorder.py):** Tests que usaven timestamps de `2026-02-18` amb `retention_days=7` fallaven perquè el dia era exactament al límit de la finestra de retenció i `_run_retention` esborrava el directori just creat. Fix: tests de rotació/format usen `datetime.now()` + `retention_days=0`.
+
+**Tests:** 74/74 passen (`testing/run_all.py`). 8/8 nous tests del rebuild passen.
+
+**Artifacts:**
+- Backup: `/app/_archive/20260225_221530_XAUUSD_rebuild_backup/`
+- Repair report: `/app/datafiles/realtime_datalayer/artifacts/compat/20260225_221530_xauusd_rebuild_from_ticks_report.json`
+- Compat after: `/datafiles/realtime_datalayer/artifacts/compat/20260225_221704_compat_full_XAUUSD_20260218_20260225.json`
 
 ---
 
