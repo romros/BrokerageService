@@ -115,6 +115,7 @@ class OstiumCandleIngestService:
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self._ticks: Dict[str, Dict[int, List[_Tick]]] = defaultdict(lambda: defaultdict(list))
+        self._ignored_ticks_closed: Dict[str, int] = defaultdict(int)  # T6.9: ticks ignorats per minute market_closed
         self._degraded_symbols: set = set()
         self._degraded_reason: Dict[str, str] = {}
         self._symbol_backoff_until: Dict[str, int] = {}
@@ -246,6 +247,7 @@ class OstiumCandleIngestService:
                 "candle_last_ts": m.get("last_candle_ts"),
                 "errors_count": self._errors_count.get(symbol, 0),
                 "last_error": self._last_error.get(symbol),
+                "ignored_ticks_closed": self._ignored_ticks_closed.get(symbol, 0),  # T6.9
                 "state": state,
                 "market_state": market_state,
                 "market_open": m_open,
@@ -316,7 +318,19 @@ class OstiumCandleIngestService:
                             self._first_seen_ts[symbol] = now_ts
                         tick = _Tick(ts=result["timestamp"], price=result["price"])
                         minute_start = (tick.ts // 60) * 60
-                        self._ticks[symbol][minute_start].append(tick)
+                        # T6.9 — Gate: ignorar ticks el bucket del qual és market_closed.
+                        # Evita que ticks del break (preu congelat Ostium) contaminin
+                        # l'última candle open → spike_to_break_price.
+                        _get_tick_state = self._market_hours_fn or (lambda s, t: get_market_state(s, t))
+                        _tick_open, _tick_reason = _get_tick_state(symbol, minute_start)
+                        if not _tick_open:
+                            self._ignored_ticks_closed[symbol] += 1
+                            logger.debug(
+                                "ignored tick %s minute_start=%s reason=%s (market_closed bucket)",
+                                symbol, minute_start, _tick_reason,
+                            )
+                        else:
+                            self._ticks[symbol][minute_start].append(tick)
                         if symbol in self._degraded_symbols:
                             self._autorecover(symbol)
                         if self.tick_recorder:

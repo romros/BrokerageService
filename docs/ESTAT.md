@@ -404,6 +404,41 @@ Cada spike genera 2 bad returns → 8 parells anòmals en 6838. Amb 4 spikes (8 
 - `20260225_211321_compat_XAUUSD_1440m.json` (rolling, PASS_BACKTEST)
 - `20260225_211327_compat_full_XAUUSD_20260218_20260225.json` (full, INCOMPATIBLE)
 
+### T6.9 — Fix recorder: gate market_closed per bucket del tick (2026-02-25)
+
+**Problema:** El recorder Ostium insereix ticks al bucket del seu `minute_start = (tick_ts//60)*60`.
+Quan Ostium publica el "preu de break" (~4996.32) just a la frontera de tancament (17:00 NY),
+el tick cau dins el bucket de 16:58 NY (últim minut obert) i corromp la candle: `low/close = 4996.32`.
+
+**Fix (`ostium_candle_ingest_service.py`):** Gate market_hours al punt d'inserció del tick.
+Abans d'afegir el tick a `self._ticks[symbol][minute_start]`, es verifica que `minute_start`
+és `market_open`. Si no → tick ignorat + `_ignored_ticks_closed[symbol]++` + log DEBUG.
+
+```python
+# T6.9 — Gate: ignorar ticks el bucket del qual és market_closed
+_tick_open, _tick_reason = _get_tick_state(symbol, minute_start)
+if not _tick_open:
+    self._ignored_ticks_closed[symbol] += 1
+    logger.debug("ignored tick %s minute_start=%s reason=%s", symbol, minute_start, _tick_reason)
+else:
+    self._ticks[symbol][minute_start].append(tick)
+```
+
+**Observabilitat:** `get_symbol_stats()` exposa `ignored_ticks_closed` per símbol.
+
+**Deploy:** `docker cp` + `docker restart realtime-datalayer` (gap ~5s, 2026-02-25 21:40 UTC).
+
+**Resultat post-deploy (rolling 1440m):** PASS_BACKTEST (corr=0.968, excluded=2) ✅
+
+**Tests 0-network:** 10/10 a `test_ostium_ingest.py` (3 nous T6.9):
+- `test_tick_at_open_minute_accepted` — tick bucket open → inserit
+- `test_tick_at_closed_minute_ignored` — tick bucket closed → ignorat, comptador +1
+- `test_no_spike_at_boundary` — candle boundary no conté break_price
+
+**Nota:** Els 4 spikes pre-existents (2026-02-18, 02-20, 02-23, 02-24) segueixen en disc.
+El full 7d XAUUSD millorarà progressivament a mesura que passin dies amb dades netes.
+Passaran ~5-7 dies fins que la finestra full no inclogui spikes antics.
+
 ---
 
 ## Phase 10 — BacktestMarketDataProvider (registry-aware)
