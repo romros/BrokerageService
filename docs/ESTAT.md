@@ -315,6 +315,21 @@ python3 -m application.tools.ostium_compat_report --symbol XAUUSD --mode full
 - **dir_agree_filtered**: exclou minuts "flat" (moviment < ε = 0.5pip per FX, $0.5 per XAU). Amb el filtre: EURUSD 96.7%, XAUUSD 95.9% → ambdós superen el llindar 95% → **PASS_BACKTEST**.
 - `allowed_for_live=false` fins acumular mostra suficient per PASS estricte (dir_agree_1m ≥ 95%).
 
+### Evidence T6.6 — Execució real 2026-02-25 (rang 2026-02-18 → 2026-02-25)
+
+| Símbol | Mode | aligned_total | aligned_ratio | corr | dir_agree_filtered | verdict | Artifact |
+|--------|------|:---:|:---:|:---:|:---:|:---:|---|
+| EURUSD | rolling 1440m | 1434 / 1440 | 0.9958 | 0.951 | 98.1% (eligible=777) | **PASS_BACKTEST** | `latest_EURUSD.json` |
+| EURUSD | full (7d) | 7001 / 7025 | 0.9851 | 0.956 | 97.6% (eligible=3971) | **PASS_BACKTEST** | `latest_full_EURUSD.json` |
+| XAUUSD | rolling 1440m | 1369 / 1369 | 0.9935 | 0.219 | 96.6% | **INCOMPATIBLE** | `latest_XAUUSD.json` |
+| XAUUSD | full (7d) | 6734 / 6734 | 0.9854 | 0.415 | 96.7% | **INCOMPATIBLE** | `latest_full_XAUUSD.json` |
+
+**Go/No-Go:**
+- ✅ **EURUSD**: PASS_BACKTEST estable. aligned_ratio ~99.6% rolling, ~98.5% full 7d. Backtest autoritzat.
+- ❌ **XAUUSD**: INCOMPATIBLE — corr molt baix (0.219–0.415) malgrat dir_agree_filtered >96%. El preu Ostium XAUUSD no segueix Dukascopy en valors absoluts; **quarantina mantinguda**. Requereix investigació del feed (offset de preu? unitats? símbols creuats?).
+
+**Artifacts (host):** `datafiles/realtime_datalayer/artifacts/compat/`
+
 **Nota:** El PASS anterior (18-feb, corr=1.000) era espuri — llegia del store `gtrade/` (Dukascopy via gTrade), no les candles Ostium reals. El run del 20-feb llegeix correctament de `realtime_datalayer/candles/`.
 
 **Què canvia quan PASS → primary (mini-taula):**
@@ -773,6 +788,7 @@ HISTORICAL_MIXED_ALLOWED=0 docker compose up -d trading_service
 | 2026-02-25 | T6.2: CompatReport canònic (re-run) | ✅ CLI `--minutes`, `--out`; artifact a `datafiles/artifacts/compat/`; logs compat_report start/done; run_compat.sh amb --minutes 1440 i --out; ESTAT actualitzat. | `python3 -m application.tools.ostium_compat_report --symbol EURUSD --minutes 1440` |
 | 2026-02-25 | T6.3: Compat results visible | ✅ `latest_<symbol>.json` (overwrite) a artifacts/compat/; stdout RESULT amb symbol, verdict, corr, dir_agree_filtered, path, latest. | `cat datafiles/artifacts/compat/latest_EURUSD.json` |
 | 2026-02-25 | T6.5: CompatReport FULL OVERLAP + LAST N (rolling) | ✅ `--mode rolling\|full`; full determina rang [earliest,latest] Ostium, obté Dukascopy, calcula compat sobre tot l'overlap; `latest_full_<sym>.json` (no toca rolling); stdout/log amb `ostium_total`, `duka_total`, `aligned_total`, `aligned_ratio`; 4 tests nous 0-network. | `python3 -m application.tools.ostium_compat_report --symbol EURUSD --mode full` |
+| 2026-02-25 | T6.6: Execució real 4×compat (EURUSD+XAUUSD, rolling+full) | ✅ 8 artifacts creats (4 timestampats + 4 `latest_*`). EURUSD rolling: PASS_BACKTEST (corr=0.951, aligned_ratio=0.9958). EURUSD full 7d: PASS_BACKTEST (corr=0.956, aligned_ratio=0.9851, 7001/7025). XAUUSD rolling: INCOMPATIBLE (corr=0.219 — feed offset?). XAUUSD full 7d: INCOMPATIBLE (corr=0.415). XAUUSD quarantina mantinguda. | `ls datafiles/realtime_datalayer/artifacts/compat/` |
 
 **DEGRADED vs CLOSED vs WARNING:** `closed` = mercat tancat (cap de setmana FX/XAU); no és incident. `warning` = market_state=unknown sense dades; no és degraded. `DEGRADED` = errors reals (duplicates, ts_step_errors, stale quan market_open). **Degraded és non-blocking:** continua polling amb backoff (base 2s, max 60s); autorecover quan arriba tick nou; pause només per `paused_closed` (market_closed). `/symbols` inclou `next_poll_in_s`, `degrade_reason`.
 
