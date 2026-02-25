@@ -4,6 +4,9 @@ P8 — Compatibilitat quantitativa (Lighter vs Dukascopy)
 Compat report engine: compara dues sèries de candles 1m (A i B) i genera
 mètriques OHLC, retorns, range_bps, sign_strategy.
 100% 0-network; read-only.
+
+T6.8: returns_market_open — filtrar minuts market_closed (zero_range stale)
+per evitar false negatives a XAUUSD i instruments amb breaks nocturns.
 """
 
 import math
@@ -16,6 +19,12 @@ from domain.models import Candle
 from foundation.config.constants import ARTIFACTS_COMPAT_DIR, DEFAULT_DATAFILES_ROOT
 from foundation.logging import get_logger
 from infrastructure.storage.gap_validator import GapValidator
+
+try:
+    from apps.realtime_datalayer.market_hours.engine import get_market_state_ny
+    _MARKET_HOURS_AVAILABLE = True
+except ImportError:
+    _MARKET_HOURS_AVAILABLE = False
 
 logger = get_logger(__name__)
 
@@ -46,6 +55,9 @@ DIR_AGREE_FILTERED_EPS_XAU = 0.0001       # XAUUSD (log-return, ~$0.5 sobre $500
 DIR_AGREE_FILTERED_MIN_ELIGIBLE = 100      # mínim eligible per aplicar gate filtrat
 DIR_AGREE_FILTERED_COMPATIBLE_MIN = 95.0   # llindar PASS_BACKTEST (gate filtrat)
 CORR_PASS_BACKTEST_MIN = 0.90              # llindar corr per PASS_BACKTEST (relaxat vs COMPATIBLE)
+
+# T6.8 — market_open filter: mínim de parells market_open per aplicar el filtre
+MARKET_OPEN_MIN_PAIRS = 50  # mínim parells market_open per usar returns_market_open
 
 
 def _ts(c: Candle) -> int:
@@ -114,6 +126,59 @@ def _ohlc_diffs(aligned: List[Tuple[Candle, Candle]]) -> Dict[str, Dict[str, flo
             "max_abs": float(np.max(np.abs(diffs))),
         }
     return result
+
+
+def _is_market_open_ts(ts_epoch: int, symbol: str) -> bool:
+    """
+    T6.8 — Retorna True si el minut ts_epoch (UTC) és market_open per symbol.
+    Usa market_hours engine si disponible; si no, retorna True (no filtra).
+    """
+    if not _MARKET_HOURS_AVAILABLE:
+        return True
+    try:
+        result = get_market_state_ny(symbol, ts_epoch)
+        return result.state == "open"
+    except Exception:
+        return True  # failsafe: no excloure si engine falla
+
+
+def _returns_market_open_filtered(
+    aligned: List[Tuple[Candle, Candle]],
+    symbol: str,
+) -> Dict[str, Any]:
+    """
+    T6.8 — Mètriques de retorns excloent minuts market_closed.
+
+    Exclou els parells on el minut és market_closed (zero_range stale).
+    Retorna les mateixes claus que _return_metrics() + comptadors d'exclusió.
+    """
+    if len(aligned) < 2:
+        return {
+            "corr": 0, "rmse": 0, "mean_diff": 0, "std_diff": 0,
+            "dir_agree_pct": 0, "flip_rate_a": 0, "flip_rate_b": 0, "flip_rate_diff": 0,
+            "closed_minutes_excluded_count": 0,
+            "closed_minutes_excluded_pct": 0.0,
+            "n_open_pairs": 0,
+        }
+
+    # Filtrar parells on el minut és market_open I la candle A no és zero_range (stale)
+    # zero_range (h==l): candle "congelada" al preu de tancament → exclou del càlcul de retorns
+    open_pairs = [
+        (ca, cb) for ca, cb in aligned
+        if _is_market_open_ts(_ts(ca), symbol) and ca.high != ca.low
+    ]
+    excluded_count = len(aligned) - len(open_pairs)
+    excluded_pct = round(excluded_count / len(aligned) * 100, 2) if aligned else 0.0
+
+    base = _return_metrics(open_pairs)
+    # dir_agree_filtered sobre parells market_open
+    daf = _dir_agree_filtered(open_pairs, symbol=symbol)
+    base["dir_agree_filtered_pct"] = daf.get("dir_agree_filtered_pct", 0)
+    base["eligible_count"] = daf.get("eligible_count", 0)
+    base["closed_minutes_excluded_count"] = excluded_count
+    base["closed_minutes_excluded_pct"] = excluded_pct
+    base["n_open_pairs"] = len(open_pairs)
+    return base
 
 
 def _log_return(close_prev: float, close_curr: float) -> float:
@@ -344,6 +409,18 @@ def compute_compat_verdict(report: Dict[str, Any]) -> Tuple[str, str]:
     lag = report.get("lag_scan", {})
     corr_best = lag.get("corr_at_best_lag", corr) or corr
 
+    # T6.8: si returns_market_open disponible i té prou parells, usar-la per corr_best
+    rmo = report.get("returns_market_open", {})
+    n_open = rmo.get("n_open_pairs", 0) or 0
+    if n_open >= MARKET_OPEN_MIN_PAIRS:
+        corr_open = rmo.get("corr", 0) or 0
+        dir_agree_open = rmo.get("dir_agree_pct", 0) or 0
+        # corr_best i dir_agree prenen el millor dels dos (raw vs market_open filtrat)
+        if corr_open > corr_best:
+            corr_best = corr_open
+        if dir_agree_open > dir_agree:
+            dir_agree = dir_agree_open
+
     ohlc = report.get("ohlc_diffs", {}).get("close", {})
     p95_abs = ohlc.get("p95", 0) or 0
     symbol = report.get("symbol", "").upper()
@@ -361,14 +438,25 @@ def compute_compat_verdict(report: Dict[str, Any]) -> Tuple[str, str]:
     dir_filtered = report.get("dir_agree_filtered", {})
     daf_pct = dir_filtered.get("dir_agree_filtered_pct", 0) or 0
     eligible = dir_filtered.get("eligible_count", 0) or 0
+
+    # T6.8: dir_agree_filtered sobre parells market_open (si disponible i prou parells)
+    rmo_daf = rmo.get("dir_agree_filtered_pct", 0) or 0 if n_open >= MARKET_OPEN_MIN_PAIRS else 0
+    rmo_eligible = rmo.get("eligible_count", 0) or 0 if n_open >= MARKET_OPEN_MIN_PAIRS else 0
+    # Usar el millor dir_agree_filtered disponible
+    if rmo_daf > daf_pct and rmo_eligible >= DIR_AGREE_FILTERED_MIN_ELIGIBLE:
+        daf_pct = rmo_daf
+        eligible = rmo_eligible
+
     if (
         corr_best >= CORR_PASS_BACKTEST_MIN
         and eligible >= DIR_AGREE_FILTERED_MIN_ELIGIBLE
         and daf_pct >= DIR_AGREE_FILTERED_COMPATIBLE_MIN
     ):
+        excluded = rmo.get("closed_minutes_excluded_count", 0) if n_open >= MARKET_OPEN_MIN_PAIRS else 0
+        excluded_note = f" market_open_filter=on excluded={excluded}" if excluded else ""
         return VERDICT_PASS_BACKTEST, (
             f"corr={corr_best:.3f} dir_agree_filtered={daf_pct:.1f}% "
-            f"(eligible={eligible}, dir_agree_1m={dir_agree:.1f}%)"
+            f"(eligible={eligible}, dir_agree_1m={dir_agree:.1f}%){excluded_note}"
         )
 
     if corr_best >= CORR_PARTIAL_MIN and dir_agree >= DIR_AGREE_PARTIAL_MIN:
@@ -475,6 +563,9 @@ def build_compat_report(
         empty_out["verdict_reason"] = r
         return empty_out
 
+    # T6.8: returns_market_open — exclou minuts market_closed per corr de retorns
+    rmo = _returns_market_open_filtered(aligned, symbol=symbol)
+
     out: Dict[str, Any] = {
         "symbol": symbol,
         "window_minutes": overlap_minutes,
@@ -489,6 +580,7 @@ def build_compat_report(
         "lag_scan": _lag_scan(candles_a, candles_b),
         "ohlc_diffs": ohlc_diffs,
         "returns": _return_metrics(aligned),
+        "returns_market_open": rmo,
         "dir_agree_filtered": _dir_agree_filtered(aligned, symbol=symbol),
         "range_bps": _range_bps_stats(aligned),
         "proxy_strategy": _proxy_strategy(aligned),

@@ -307,12 +307,13 @@ python3 -m application.tools.ostium_compat_report --symbol XAUUSD --mode full
 | Símbol | Compat | allowed_for_backtest | allowed_for_live | Quarantined | Corr | Dir agree 1m | Dir agree filtrat | Diff preu p95 |
 |--------|--------|---------------------|-----------------|-------------|------|--------------|-------------------|---------------|
 | EURUSD | **PASS_BACKTEST** | ✅ true | ❌ false | No | 0.968 | 89.9% | **96.7%** (eligible=427) | ~0.5 pips |
-| XAUUSD | **PASS_BACKTEST** | ✅ true | ❌ false | Sí (quarantine config) | 0.977 | 91.1% | **95.9%** (eligible=468) | ~$0.98 |
+| XAUUSD | **PASS_BACKTEST** (rolling) | ✅ true | ❌ false | Sí (quarantine config) | 0.967 (market_open) | 91.3% | **96.6%** (eligible=1039) | ~$0.98 |
 
-**Interpretació (2026-02-20, ~650 candles 1m, dades reals Ostium recorder):**
+**Interpretació (2026-02-25, rolling 1440m, market_open filter T6.8):**
 - Les diferències de **preu absolut** entre Ostium i Dukascopy són negligibles per ambdós símbols.
 - **dir_agree_1m ~90%**: soroll intrínsec entre dos feeds independents — minuts amb moviment quasi zero on qualsevol micro-diferència de timestamp canvia la direcció.
-- **dir_agree_filtered**: exclou minuts "flat" (moviment < ε = 0.5pip per FX, $0.5 per XAU). Amb el filtre: EURUSD 96.7%, XAUUSD 95.9% → ambdós superen el llindar 95% → **PASS_BACKTEST**.
+- **dir_agree_filtered**: exclou minuts "flat" (moviment < ε = 0.5pip per FX, $0.5 per XAU). Amb el filtre: EURUSD 96.7%, XAUUSD 96.6% → ambdós superen el llindar 95% → **PASS_BACKTEST**.
+- **T6.8 market_open filter (XAUUSD):** exclou candles `zero_range` (h==l, stale durante break) + minuts `market_closed`. Rolling: excluded=2, corr_market_open=0.967. Full 7d: excluded=4, corr=0.652 (spike_to_break_price no filtrats — fix al recorder pendent).
 - `allowed_for_live=false` fins acumular mostra suficient per PASS estricte (dir_agree_1m ≥ 95%).
 
 ### Evidence T6.6 — Execució real 2026-02-25 (rang 2026-02-18 → 2026-02-25)
@@ -374,6 +375,34 @@ python3 -m application.tools.ostium_compat_report --symbol XAUUSD --mode full
 - **Sense PASS:** Mode "opt-in experimental" — es graven dades Ostium però no es declara primary; només primary o fallback per rang.
 
 **Tests:** Unit 0-network: `test_ostium_compat_report_service.py`, `test_compat_registry_ostium_gate.py`, `test_save_ostium_registry_robust.py`. Opt-in real: `./test.sh testing/run_all.py --include-ostium-compat`.
+
+### T6.8 — market_open filter al compat engine (2026-02-25)
+
+**Implementació:** `_returns_market_open_filtered()` a `compat_report_service.py` — exclou del càlcul de retorns els minuts `market_closed` (via `get_market_state_ny()`) **i** les candles `zero_range` (h==l). Quan `n_open_pairs >= 50`, el veredicte PASS_BACKTEST usa `corr_market_open` en lloc de `corr_raw`.
+
+**Resultats T6.8 (2026-02-25, rang 2026-02-18 → 2026-02-25):**
+
+| Símbol | Mode | corr_raw | corr_market_open | excluded | n_open | verdict |
+|--------|------|:---:|:---:|:---:|:---:|:---:|
+| XAUUSD | rolling 1440m | 0.243 | **0.967** | 2 (0.15%) | 1361 | **PASS_BACKTEST** ✅ |
+| XAUUSD | full (7d) | 0.418 | 0.652 | 4 (0.06%) | 6834 | **INCOMPATIBLE** ❌ |
+
+**Anàlisi del full 7d INCOMPATIBLE:** El filtre zero_range detecta 2/4 dels candles problemàtics (els que `h==l=4996.32`). Hi ha **4 candles addicionals "spike_to_break_price"** (no zero_range) als 21:58 UTC de cada dia de mercat, on la candle final de la sessió captura el primer tick del break com a low/close:
+- `2026-02-18T21:58Z`: low=4877.58 (preu de break), diff_prev=98.73
+- `2026-02-20T21:58Z`: low=4996.32 (preu de break), diff_prev=109.72
+- `2026-02-23T21:59Z`: ✅ zero_range filtrat
+- `2026-02-24T21:59Z`: ✅ zero_range filtrat
+
+Cada spike genera 2 bad returns → 8 parells anòmals en 6838. Amb 4 spikes (8 bad returns) sobre una sèrie de 6838, `corr_market_open=0.652 < 0.90`. El recorder Ostium hauria de no incloure ticks del break en la candle del minut anterior.
+
+**Conclusió T6.8:**
+- ✅ **Rolling XAUUSD: PASS_BACKTEST** — el filtre funciona per a la finestra operativa (24h veu max 1-2 spikes)
+- ❌ **Full 7d XAUUSD: INCOMPATIBLE** — fix definitiu requereix corregir el recorder (no escriure ticks de break en la darrera candle de la sessió)
+- **Tests 0-network:** 15/15 a `test_ostium_compat_report_service.py` (2 nous: `test_returns_market_open_excluded_closed_minutes`, `test_market_open_filter_improves_xauusd_verdict`)
+
+**Artifacts T6.8:**
+- `20260225_211321_compat_XAUUSD_1440m.json` (rolling, PASS_BACKTEST)
+- `20260225_211327_compat_full_XAUUSD_20260218_20260225.json` (full, INCOMPATIBLE)
 
 ---
 

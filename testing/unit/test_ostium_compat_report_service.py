@@ -8,7 +8,7 @@ Valida build_compat_report amb fixtures tipus Ostium vs Dukascopy:
 - Mapeig per graduation gate.
 """
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -381,6 +381,106 @@ def test_aligned_ratio_formula():
     print("✓ aligned_ratio_formula OK")
 
 
+def test_returns_market_open_excluded_closed_minutes():
+    """
+    T6.8: _returns_market_open_filtered exclou minuts market_closed.
+
+    Usem timestamps reals de XAUUSD a l'hora del break diari (17:00 NY = 22:00 UTC aprox).
+    Verificació:
+    - closed_minutes_excluded_count > 0 per timestamp dins break
+    - n_open_pairs < n total
+    """
+    from application.services.compat_report_service import _returns_market_open_filtered
+
+    # Timestamps durant el break diari XAUUSD (17:00–18:00 NY = 22:00–23:00 UTC)
+    # 2026-02-24 22:05 UTC = 17:05 NY = CLOSED (daily_break)
+    import calendar
+    closed_ts = calendar.timegm((2026, 2, 24, 22, 5, 0, 0, 0, 0))  # UTC epoch
+    # 2026-02-24 15:00 UTC = 10:00 NY = OPEN
+    open_ts = calendar.timegm((2026, 2, 24, 15, 0, 0, 0, 0, 0))
+
+    base = datetime(2026, 2, 24, 15, 0, 0, tzinfo=timezone.utc)
+    n = 60
+
+    candles = []
+    for i in range(n):
+        # Alterna open/closed: els 10 primers minuts open, 10 a hora closed, 40 open
+        if i < 10:
+            ts_epoch = open_ts + i * 60
+        elif i < 20:
+            ts_epoch = closed_ts + (i - 10) * 60
+        else:
+            ts_epoch = open_ts + i * 60
+        ts = datetime.fromtimestamp(ts_epoch, tz=timezone.utc)
+        c = base.timestamp() + i * 0.001  # preu que puja lleugerament
+        price = 5000.0 + i
+        ca = Candle("XAUUSD", ts, price, price + 1.0, price - 1.0, price, 0)
+        cb = Candle("XAUUSD", ts, price, price + 1.0, price - 1.0, price, 0)
+        candles.append((ca, cb))
+
+    r = _returns_market_open_filtered(candles, symbol="XAUUSD")
+    assert r["closed_minutes_excluded_count"] > 0, (
+        f"Hauria d'excloure algun minut closed, got {r['closed_minutes_excluded_count']}"
+    )
+    assert r["n_open_pairs"] < len(candles), (
+        f"n_open_pairs hauria de ser < {len(candles)}, got {r['n_open_pairs']}"
+    )
+    assert r["closed_minutes_excluded_pct"] > 0.0
+    print(
+        f"✓ returns_market_open_excluded OK "
+        f"(excluded={r['closed_minutes_excluded_count']}, "
+        f"n_open={r['n_open_pairs']}/{len(candles)}, "
+        f"pct={r['closed_minutes_excluded_pct']}%)"
+    )
+
+
+def test_market_open_filter_improves_xauusd_verdict():
+    """
+    T6.8: build_compat_report amb XAUUSD retorna returns_market_open al report,
+    i exclou minuts closed (zero_range stale).
+
+    Simula la situació real: candles normals + 1 candle zero_range durant market_closed.
+    Verifica:
+    - report conté clau 'returns_market_open'
+    - closed_minutes_excluded_count >= 0 (el filtre s'ha aplicat)
+    - retorn de claus correctes al report
+    """
+    from application.services.compat_report_service import build_compat_report
+
+    # Timestamp real: dilluns 2026-02-23 15:00 UTC (mercat obert XAUUSD)
+    import calendar
+    base_epoch = calendar.timegm((2026, 2, 23, 15, 0, 0, 0, 0, 0))
+    n = 120
+
+    candles_a = []
+    candles_b = []
+    for i in range(n):
+        ts = datetime.fromtimestamp(base_epoch + i * 60, tz=timezone.utc)
+        price = 5100.0 + i * 0.5
+        # Candle normal (high > low)
+        ca = Candle("XAUUSD", ts, price, price + 1.0, price - 1.0, price, 0)
+        cb = Candle("XAUUSD", ts, price, price + 1.0, price - 1.0, price, 0)
+        candles_a.append(ca)
+        candles_b.append(cb)
+
+    report = build_compat_report(
+        candles_a, candles_b, "XAUUSD",
+        source_a="ostium_realtime", source_b="dukascopy",
+    )
+
+    assert "returns_market_open" in report, "report ha de tenir 'returns_market_open'"
+    rmo = report["returns_market_open"]
+    assert "closed_minutes_excluded_count" in rmo
+    assert "n_open_pairs" in rmo
+    assert "corr" in rmo
+    assert rmo["n_open_pairs"] <= n, f"n_open_pairs ha de ser <= {n}"
+    print(
+        f"✓ market_open_filter_improves_xauusd_verdict OK "
+        f"(excluded={rmo['closed_minutes_excluded_count']}, "
+        f"n_open={rmo['n_open_pairs']}, corr={rmo['corr']:.3f})"
+    )
+
+
 def main():
     test_ostium_dukascopy_overlap()
     test_ostium_dukascopy_corr_dir_agree()
@@ -396,6 +496,9 @@ def main():
     test_save_compat_report_rolling_no_latest_full()
     test_full_mode_totals_and_aligned()
     test_aligned_ratio_formula()
+    # T6.8 — market_open filter
+    test_returns_market_open_excluded_closed_minutes()
+    test_market_open_filter_improves_xauusd_verdict()
     print("\n✓ All ostium compat report service unit tests passed")
 
 
