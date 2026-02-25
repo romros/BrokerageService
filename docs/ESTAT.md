@@ -1,6 +1,6 @@
 # ESTAT DEL PROJECTE — BrokerageService
 
-**Data:** 2026-02-21
+**Data:** 2026-02-24
 **Repo/Path:** `/mnt/volume-SQ/dev/BrokerageService`
 **Venues:** Ostium (principal) · Dukascopy (historical/backtest). **Legacy arxivat:** Lighter/gTrade → `_archive/`.
 **TZ canònica (config):** `CANONICAL_TZ=America/New_York`
@@ -43,7 +43,7 @@
 - ✅ **Phase 20:** Mixed stitching parquet+realtime. `application/data/mixed_ohlcv_stitcher.py`: merge monotònic sense duplicats (realtime guanya en overlap), policy `HISTORICAL_MIXED_ALLOWED` (default=1), `source=mixed` quan dues fonts, cursor `next_ts` consistent. `scripts/run_historical_cron.sh` (daily/retry-failed/gap-repair). 6 tests 0-network.
 - ✅ **Market-hours fix + golden tests (2026-02-21):** Corregit bug weekend a `engine.py` (XAUUSD/DAXEUR/SPXUSD mostraven `open` dissabte; NVDAUSD obria en cap de setmana). Break XAU/indices corregit a 17:00–18:00 NY (era 16:59–18:10). Nou helper `_next_sunday_18()`. Tests anti-regressió `test_market_hours_golden_weekend.py` (7 tests).
 - ✅ **Phase C: Historical dashboard + nginx proxy + cron metadata (2026-02-21):** `GET /health` i `/status` a historical_datalayer. Nginx `datalayer-proxy` unifica port 8081: `/realtime/*` → realtime:8082, `/data/*` → historical:8002. `application/data/cron_metadata.py` (atomic write/read `_cron/last_runs.json`). `run_historical_cron.sh` escriu metadata. `get_historical_router()` exposa `/ohlcv` i `/coverage` sense prefix. 19 tests 0-network.
-- ✅ **Phase D: Gateway single-port complet (2026-02-21):** Nginx `:8081` exposa `/trade/*` → trading_service:8010 (strip prefix) i `/backtests/*` → trading_service:8010/api/v1/backtests/* (alias). `datalayer-proxy` ara és el punt d'entrada únic per tots els serveis. `scripts/smoke_gateway.sh` verifica tots els prefixos. Exec Ostium NO implementat — pendent Phase E (refactor trading).
+- ✅ **Phase D: Gateway single-port complet (2026-02-21):** Nginx `:8081` exposa `/trade/*` → trading_service:8010 (strip prefix) i `/backtests/*` → trading_service:8010/api/v1/backtests/* (alias). `datalayer-proxy` ara és el punt d'entrada únic per tots els serveis. `scripts/smoke_gateway.sh` verifica tots els prefixos. Ostium exec Phase G/H implementat (paper + LIVE).
 - 🟡 **gTrade/Lighter** arxivats (T5.32) → `_archive/`; paper intern depèn de `infrastructure/venues/lighter` per symbols
 - 🧪 **Ostium LAB** — [lab/ostium/README.md](../lab/ostium/README.md); monitor continu via `run_lab.sh ostium-monitor`
 - ✅ **Ostium Core (Trade Layer) read-only:** posicions via TradingStorage.getOpenTrade (Trade(9)); EURUSD=pair_id 2; smoke `smoke_ostium_preflight_call.py` 0-TX opt-in
@@ -53,7 +53,7 @@
   - **Run:** `./scripts/up_ostium_live.sh`
   - **Smoke only:** `./scripts/run_ostium_live_smoke.sh --recreate --clean`
 
-> **Phases 2–20 + Phase C + Phase D completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Parquet (15) + DuckDB (16) + Backtest Freqtrade-style (17) + Ops robustos (18) + Data API long-range + Coverage API (19) + Mixed stitching + Cron (20) + Historical dashboard + nginx proxy (C) + Gateway single-port (D). Pipeline prod-ish per backfill 2003→avui. 72 tests 0-network, run_all verd. **Single-port API: `:8081/realtime`, `:8081/data`, `:8081/trade`.** Exec Ostium (venue trading) pendent Phase E.
+> **Phases 2–20 + Phase C + Phase D completades.** EURUSD i XAUUSD: **PASS_BACKTEST**. Parquet (15) + DuckDB (16) + Backtest Freqtrade-style (17) + Ops robustos (18) + Data API long-range + Coverage API (19) + Mixed stitching + Cron (20) + Historical dashboard + nginx proxy (C) + Gateway single-port (D). Pipeline prod-ish per backfill 2003→avui. 74 tests 0-network, run_all verd. **Single-port API: `:8081/realtime`, `:8081/data`, `:8081/trade`.** Ostium exec Phase G/H implementat (paper + LIVE).
 
 ### Single-port API (Phase D)
 
@@ -123,7 +123,7 @@ Categories addicionals: `CONTRACT_REVERT` (revert reason si el RPC el retorna). 
 - Observabilitat: check de la crida view = `ostium.pf.call.getOpenTrade` (equivalent a "preflight call open").
 - **Core positions via TradingStorage:** OstiumClient llegeix open trades amb TradingStorage.getOpenTrade (Trade(9)); smoke preflight 0-TX valida amb `OSTIUM_RPC_URL TRADER_ADDRESS PAIR_ID=2 INDEX=0` (i opcional `OSTIUM_TRADING_STORAGE_ADDRESS`).
 
-**Nota:** exec Ostium (venue trading) NO implementat. Refactor trading_service pendent **Phase E**. Estat i reproducció d’errors del trade-cycle testnet: [scripts/network_smokes/ESTAT.md](../scripts/network_smokes/ESTAT.md).
+**Nota:** Ostium exec Phase G/H implementat (paper + LIVE). Phase E (TradingCore) completada. Estat i reproducció d’errors del trade-cycle testnet: [scripts/network_smokes/ESTAT.md](../scripts/network_smokes/ESTAT.md).
 
 ### Boundaries ràpides per servei
 
@@ -760,6 +760,7 @@ HISTORICAL_MIXED_ALLOWED=0 docker compose up -d trading_service
 | 2026-02-24 | Ostium LIVE smoke (T5): override + wrapper | ✅ `ostium-live-trading.yml` per trading_service mode LIVE; `run_ostium_live_smoke.sh` wrapper; TRADING_CANARY_MODE=ostium; RPC_URL/PRIVATE_KEY per SDK. **Regla: NO recrear realtime_datalayer.** Docs: overrides/README, ESTAT, lab/ostium/README. | `./scripts/run_ostium_live_smoke.sh` · `./scripts/run_ostium_live_smoke.sh --recreate` |
 | 2026-02-24 | T5.40: Extract use-cases from broker_routes | ✅ OperationService, OrderOpenService, OrderCloseService a `application/services/`; broker_routes API fina (valida, crida serveis, retorna); operations.jsonl sense canvis; 74 tests passen. | `./test.sh testing/run_all.py` |
 | 2026-02-24 | T5.41: Ports + Wiring | ✅ `application/ports/` (ExecutionPort, MarketDataPort, OperationStorePort); serveis reben ports injectats; `application/wiring.py` centralitza construcció; broker_routes delega a wiring; 74 tests passen. | `./test.sh testing/run_all.py` |
+| 2026-02-24 | Fix smoke backtests | ✅ `GET /api/v1/backtests/runs` afegit; smoke gateway passa; arxiu root (run_smoke.sh legacy, etc.) → `_archive/root/2026-02-legacy-purge/`. | `./scripts/smoke_gateway.sh` |
 
 **DEGRADED vs CLOSED vs WARNING:** `closed` = mercat tancat (cap de setmana FX/XAU); no és incident. `warning` = market_state=unknown sense dades; no és degraded. `DEGRADED` = errors reals (duplicates, ts_step_errors, stale quan market_open). **Degraded és non-blocking:** continua polling amb backoff (base 2s, max 60s); autorecover quan arriba tick nou; pause només per `paused_closed` (market_closed). `/symbols` inclou `next_poll_in_s`, `degrade_reason`.
 
@@ -785,6 +786,25 @@ HISTORICAL_MIXED_ALLOWED=0 docker compose up -d trading_service
 **Com validar:** `curl data_status`; `./scripts/run_soak.sh N data-layer`; `docker compose down && up`.
 
 **Backlog (no compromès):** [_archive/ESTAT_2026Q1.md](_archive/ESTAT_2026Q1.md)
+
+---
+
+## Roadmap post-CompatReport (brúixola)
+
+**Ordre recomanat** després de la prova Dukascopy↔Ostium. Format: Done / Next.
+
+| # | Item | Estat | DoD / Notes |
+|---|------|-------|-------------|
+| 1 | **CompatReport canònic (T6.1)** | Next | thresholds explícits + artifact JSON a `artifacts/compat/` + 1 comandament; PASS_BACKTEST en finestra 7–30 dies per EURUSD i XAUUSD |
+| 2 | **Política SL/TP** | Next | Decidir: A) client-side (Freqtrade tanca) o B) virtual SL/TP al broker. Recomanació: A per quarantena; B com a hardening prod |
+| 3 | **Freqtrade smoke strategy** | Next | Estratègia tonta 1h: fetch candles → open → close → ledger/ops ok. Paper primer. DoD: 1 dia sense errors sistèmics |
+| 4 | **Backtest llarg Dukascopy 2004→2026** | Next | Timeframe 1h; mateix cost model que paper-live (spread+slippage+fees conservadors); walkforward per anys. DoD: estratègia passa criteris ROI/DD/trades |
+| 5 | **Alerts mínims + runbook curt** | Next | *Abans de paper-live.* stale/missing/dup; runbook start/continue/rollback |
+| 6 | **Paper-live quarantena 1 mes** | Next | Mesures diàries: PnL, latència open/close, %202, errors per codi. DoD: 30 dies DD dins límit, sense errors sistèmics |
+| 7 | **Prefetch/cron + rotació logs** | Next | *Abans de prod.* prefetch idempotent; rotació artifacts/logs |
+| 8 | **Prod petit capital + guardrails** | Next | circuit breaker, max exposure, max daily loss, alerts. DoD: 2–4 setmanes stable |
+
+**Operativa Data Layer:** Alerts abans de 6 (paper-live); prefetch/rotació abans de 8 (prod).
 
 **DoD tasca coherència Ostium (2026-02-17):**
 - [x] Docs coherents: ESTAT.md i AGENTS_ARQUITECTURA.md no es contradiuen
@@ -872,6 +892,6 @@ docker compose down && docker compose up -d brokerage
 | Execution (paper/live) | ✅/🟡 | Ostium paper/LIVE OK; live hardening 90% |
 | Data Layer | ✅ | P4–P7c; Ostium+Dukascopy. Lighter candlestick arxivat. |
 | Ostium Data Layer | ✅ | prod v0: Ostium realtime + Dukascopy backfill; `run_smoke.sh ostium` |
-| Backtest | ⛔ | Pipeline pendent |
+| Backtest | ✅ | API + runner (Phases 10–12, 17); pipeline prod opcional |
 | Ostium LAB | 🧪 | Validació RWA; [lab/ostium/README.md](../lab/ostium/README.md). **Test canònic full cycle:** `lab/ostium/scripts/test_full_cycle_multicall.py` (open→wait→find→close amb multicall + tradingStorage; no subgraph). Multicall scan: decode Trade(9), SANITY_CHECK, SCAN_ONLY sense PRIVATE_KEY. Legacy subgraph-dependent: `lab/ostium/_archive/scripts/test_full_cycle.py`. **Neteja testnet:** `lab/ostium/scripts/close_all_open_trades.py` (scan + close; SCAN_ONLY=1 llista sense PK; SCAN_ONLY=0 tanca fins a MAX_CLOSE). Run: `docker compose -p lab_ostium run --rm -e RPC_URL -e PRIVATE_KEY -e SCAN_ONLY=0 -e MAX_CLOSE=3 ostium-cli python3 scripts/close_all_open_trades.py`. |
 

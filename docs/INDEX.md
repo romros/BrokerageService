@@ -17,6 +17,7 @@ Hub canònic. Tota la navegació comença aquí.
 | [docs/SAFETY_RUNBOOK.md](SAFETY_RUNBOOK.md) | Runbook operatiu (guardes, riscos, rollback) |
 | [docs/LAB_OSTIUM_PRICE_MONITORING.md](LAB_OSTIUM_PRICE_MONITORING.md) | Investigació tècnica monitoratge de preus Ostium |
 | [docs/plantilla_tasca.md](plantilla_tasca.md) | Plantilla per definir tasques |
+| [docs/DIAGNOSI_PROJECTE_2026-02.md](DIAGNOSI_PROJECTE_2026-02.md) | Diagnòsi arquitectura, objectius, operativa (2026-02) |
 
 ---
 

@@ -78,9 +78,9 @@
 
 - **Multi-venue per disseny:** un venue pot aportar **execució**, **market data**, o totes dues coses.
 - **Data Layer és canònic:** candles 1m es serveixen **sense venue** via `candle_store` + policy (primary/fallback/mixed).
-- **Primary (authoritative):** dades gravades pel servei (recorder). Exemple actual: Data Layer prod v0 sobre Lighter backfill provider. Ostium està integrat com a **prod-ish opt-in recorder** (`OSTIUM_ENABLED=1`), però **NO es declara primary** fins passar gates (soak + compat).
+- **Primary (authoritative):** Ostium ingest 24/7 (realtime); Dukascopy backfill històric. Lighter/gTrade arxivats (T5.32).
 - **Fallback històric:** **Dukascopy** (read-only) amb stitching **gated** per compat.
-- **Exec venue (actual):** Lighter està implementat i "execution-ready". El canvi d'execució (p.ex. Ostium) ve després.
+- **Exec venue (actual):** Ostium execution-ready (paper + LIVE). Lighter/gTrade arxivats.
 - ✅ **Normes de codi:** imports a capçalera + zero hardcode.
 - ✅ **Testing:** scripts Python (sense pytest), runner únic `testing/run_all.py`.
 - ✅ **LAB-first:** exploració abans de tocar arquitectura; LAB no és producció; evidència a `docs/ESTAT.md`.
@@ -132,7 +132,7 @@ Responsable de:
 ### 3.1 Fonts
 
 - **Primary (authoritative):** dades gravades pel servei (recorder).  
-  Exemple actual: **Data Layer prod v0** sobre Lighter backfill provider. Ostium està integrat com a **prod-ish opt-in recorder** (`OSTIUM_ENABLED=1`), però **NO es declara primary** fins passar gates (soak + compat).
+  Exemple actual: **Ostium ingest** (realtime) + **Dukascopy** backfill històric. Lighter/gTrade arxivats (T5.32).
 - **Fallback (read-only):** vendor extern per prehistòria o gaps.  
   Exemple: **Dukascopy 1m**
 
@@ -448,14 +448,14 @@ Decisió de "venue principal" sempre és en 2 eixos:
 
 ---
 
-## 14) Estat actual (2026-02-17)
+## 14) Estat actual (2026-02-24)
 
 ### Execution
-- **Lighter:** ✅ Execution-ready (MVP 100%, paper testnet validat)
-- **Ostium:** 🧪 LAB (testnet validat, mainnet pendent)
+- **Lighter/gTrade:** Arxivat (T5.32) → `_archive/`
+- **Ostium:** ✅ Execution-ready (paper + LIVE; Phase G/H; smoke `up_ostium_live.sh`)
 
 ### Data Layer
-- **Primary recorder (Lighter):** ✅ Data Layer prod v0 sobre Lighter backfill provider
+- **Primary recorder (realtime):** Ostium ingest 24/7 (`OSTIUM_ENABLED=1`); Dukascopy backfill històric
 - **Ostium recorder:** ✅ prod-ish opt-in (`OSTIUM_ENABLED=1`)
   - OstiumCandleIngestService: poll REST `/latest-price`, build candles 1m, persist `candle_store`
   - `DATA_LAYER_WRITE_MODE=realtime_plus_backfill` → Ostium ingest ON + Dukascopy backfill; `backfill_only` → ingest OFF
@@ -467,7 +467,7 @@ Decisió de "venue principal" sempre és en 2 eixos:
 - **Stitching gated:** ✅ Implementat (P7 mixed)
 
 ### Backtest
-- ⛔ Pipeline pendent (contracte previst)
+- ✅ API + runner implementats (Phases 10–12, 17); registry-aware; Parquet/Freqtrade-style; pipeline prod opcional
 
 **Operativa diària:** Vegeu `docs/ESTAT.md`
 
@@ -475,7 +475,8 @@ Decisió de "venue principal" sempre és en 2 eixos:
 
 ## 15) Changelog
 
-- **2026-02-24** — LOT SANEJAMENT: docs coherents (ESTAT source of truth § Ostium LIVE); scripts legacy arxivats a `scripts/_archive/2026-02-ostium-legacy/`; entrypoints canònics `up_ostium_live.sh`, `run_ostium_live_smoke.sh`.
+- **2026-02-24** — Docs coherents: ESTAT + AGENTS §14 actualitzats (Ostium exec Phase G/H implementat; Lighter/gTrade arxivats; Backtest API completa); Phase E = TradingCore completada. DIAGNOSI_PROJECTE_2026-02.md.
+- **2026-02-24** — LOT SANEJAMENT: scripts legacy arxivats; entrypoints canònics `up_ostium_live.sh`, `run_ostium_live_smoke.sh`.
 - **2026-02-18** — Split vNext Phase 2: trading_service consumeix realtime_datalayer via HTTP (RealtimeDataLayerClient, IDataLayerReader, REALTIME_DATALAYER_BASE_URL). OHLCV/coverage/data_status forward quan env set.
 - **2026-02-18** — Realtime DataLayer hot-reload: GET/PUT /symbols per canviar símbols sense restart; config persistent a `{REALTIME_DATALAYER_ROOT}/config/symbols.json`; instrument resolution (spot/perp) amb override.
 - **2026-02-18** — Split vNext Phase 1: SERVICE_ROLE, entrypoints per servei (apps/*/app.py), create_app(role), role boundaries, compose amb entrypoints reals.
