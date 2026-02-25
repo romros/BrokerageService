@@ -93,6 +93,8 @@ COMPAT_REGISTRY_RELATIVE_PATH = "compat_probe/compat_registry.json"
 
 # Ostium compat (Ostium vs Dukascopy graduation gate)
 OSTIUM_COMPAT_REGISTRY_RELATIVE_PATH = "compat_reports/ostium_compat_registry.json"
+# T6.2: Artifact path canònic per compat reports (Dukascopy ↔ Ostium)
+ARTIFACTS_COMPAT_DIR = "artifacts/compat"
 
 # Storage tuning
 MONTHS_TO_CHECK_BACKWARD = 12  # How many months to scan for files

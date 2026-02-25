@@ -276,10 +276,19 @@ docker logs trading_service 2>&1 | grep -E "quality_gate|QUALITY_GATE"
 
 **Com validar:**
 ```bash
-./scripts/run_compat.sh ostium [symbol]   # default symbol=EURUSD
+# Rolling (24h) — operatiu, per decidir si operem / quarantena:
+python3 -m application.tools.ostium_compat_report --symbol EURUSD --mode rolling --minutes 1440
+python3 -m application.tools.ostium_compat_report --symbol XAUUSD --mode rolling --minutes 1440
+
+# Full overlap (T6.5) — auditoria, tot el rang disponible Ostium vs Dukascopy:
+python3 -m application.tools.ostium_compat_report --symbol EURUSD --mode full
+python3 -m application.tools.ostium_compat_report --symbol XAUUSD --mode full
+
+# O via wrapper (default symbol=EURUSD, mode rolling)
+./scripts/run_compat.sh ostium [symbol]
 ```
 
-**Artifact path:** `datafiles/compat_reports/<ts>_compat_<symbol>_<Nm>m.json` (ex: `20260217_143022_compat_EURUSD_650m.json`)
+   **Artifact path (T6.2):** `datafiles/artifacts/compat/<ts>_compat_<symbol>_<Nm>m.json` (ex: `20260225_120000_compat_EURUSD_1440m.json`). **T6.3:** `latest_<symbol>.json` (overwrite) per resultat immediat; stdout RESULT amb symbol, verdict, corr, dir_agree_filtered, path, latest. Si PASS_BACKTEST → acceptable portar estratègia a paper-live.
 
 **Registry:** `datafiles/compat_reports/ostium_compat_registry.json` — font de veritat per `get_ostium_primary_allowed(symbol)`.
 
@@ -761,6 +770,9 @@ HISTORICAL_MIXED_ALLOWED=0 docker compose up -d trading_service
 | 2026-02-24 | T5.40: Extract use-cases from broker_routes | ✅ OperationService, OrderOpenService, OrderCloseService a `application/services/`; broker_routes API fina (valida, crida serveis, retorna); operations.jsonl sense canvis; 74 tests passen. | `./test.sh testing/run_all.py` |
 | 2026-02-24 | T5.41: Ports + Wiring | ✅ `application/ports/` (ExecutionPort, MarketDataPort, OperationStorePort); serveis reben ports injectats; `application/wiring.py` centralitza construcció; broker_routes delega a wiring; 74 tests passen. | `./test.sh testing/run_all.py` |
 | 2026-02-24 | Fix smoke backtests | ✅ `GET /api/v1/backtests/runs` afegit; smoke gateway passa; arxiu root (run_smoke.sh legacy, etc.) → `_archive/root/2026-02-legacy-purge/`. | `./scripts/smoke_gateway.sh` |
+| 2026-02-25 | T6.2: CompatReport canònic (re-run) | ✅ CLI `--minutes`, `--out`; artifact a `datafiles/artifacts/compat/`; logs compat_report start/done; run_compat.sh amb --minutes 1440 i --out; ESTAT actualitzat. | `python3 -m application.tools.ostium_compat_report --symbol EURUSD --minutes 1440` |
+| 2026-02-25 | T6.3: Compat results visible | ✅ `latest_<symbol>.json` (overwrite) a artifacts/compat/; stdout RESULT amb symbol, verdict, corr, dir_agree_filtered, path, latest. | `cat datafiles/artifacts/compat/latest_EURUSD.json` |
+| 2026-02-25 | T6.5: CompatReport FULL OVERLAP + LAST N (rolling) | ✅ `--mode rolling\|full`; full determina rang [earliest,latest] Ostium, obté Dukascopy, calcula compat sobre tot l'overlap; `latest_full_<sym>.json` (no toca rolling); stdout/log amb `ostium_total`, `duka_total`, `aligned_total`, `aligned_ratio`; 4 tests nous 0-network. | `python3 -m application.tools.ostium_compat_report --symbol EURUSD --mode full` |
 
 **DEGRADED vs CLOSED vs WARNING:** `closed` = mercat tancat (cap de setmana FX/XAU); no és incident. `warning` = market_state=unknown sense dades; no és degraded. `DEGRADED` = errors reals (duplicates, ts_step_errors, stale quan market_open). **Degraded és non-blocking:** continua polling amb backoff (base 2s, max 60s); autorecover quan arriba tick nou; pause només per `paused_closed` (market_closed). `/symbols` inclou `next_poll_in_s`, `degrade_reason`.
 
@@ -795,7 +807,7 @@ HISTORICAL_MIXED_ALLOWED=0 docker compose up -d trading_service
 
 | # | Item | Estat | DoD / Notes |
 |---|------|-------|-------------|
-| 1 | **CompatReport canònic (T6.1)** | Next | thresholds explícits + artifact JSON a `artifacts/compat/` + 1 comandament; PASS_BACKTEST en finestra 7–30 dies per EURUSD i XAUUSD |
+| 1 | **CompatReport canònic (T6.1/T6.2)** | Done | thresholds explícits; artifact a `datafiles/artifacts/compat/`; comanda `--symbol EURUSD --minutes 1440`; run_compat.sh actualitzat (2026-02-25) |
 | 2 | **Política SL/TP** | Next | Decidir: A) client-side (Freqtrade tanca) o B) virtual SL/TP al broker. Recomanació: A per quarantena; B com a hardening prod |
 | 3 | **Freqtrade smoke strategy** | Next | Estratègia tonta 1h: fetch candles → open → close → ledger/ops ok. Paper primer. DoD: 1 dia sense errors sistèmics |
 | 4 | **Backtest llarg Dukascopy 2004→2026** | Next | Timeframe 1h; mateix cost model que paper-live (spread+slippage+fees conservadors); walkforward per anys. DoD: estratègia passa criteris ROI/DD/trades |

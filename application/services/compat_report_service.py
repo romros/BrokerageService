@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from domain.models import Candle
-from foundation.config.constants import DEFAULT_DATAFILES_ROOT
+from foundation.config.constants import ARTIFACTS_COMPAT_DIR, DEFAULT_DATAFILES_ROOT
 from foundation.logging import get_logger
 from infrastructure.storage.gap_validator import GapValidator
 
@@ -504,22 +504,66 @@ def build_compat_report(
 def save_compat_report(
     report: Dict[str, Any],
     datafiles_root: Optional[str] = None,
+    out_path: Optional[str] = None,
+    mode: str = "rolling",
+    from_ts: Optional[datetime] = None,
+    to_ts: Optional[datetime] = None,
 ) -> str:
     """
-    Guarda report JSON a datafiles/compat_reports/<ts>_compat_<symbol>_<Nm>.json
+    Guarda report JSON.
+
+    Si out_path és especificat: escriu allà (directori o path complet).
+    Altrament: datafiles_root/artifacts/compat/<ts>_compat_<symbol>_<Nm>m.json (T6.2 canònic).
+
+    mode="rolling" (default): filename <ts>_compat_<symbol>_<Nm>m.json + latest_<symbol>.json
+    mode="full" (T6.5): filename <ts>_compat_full_<symbol>_<from>_<to>.json + latest_full_<symbol>.json
+                        NO toca latest_<symbol>.json (rolling).
     """
     import json
     import os
     from pathlib import Path
 
     root = datafiles_root or os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT)
-    out_dir = Path(root) / COMPAT_REPORTS_DIR
-    out_dir.mkdir(parents=True, exist_ok=True)
     ts_str = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     symbol = report.get("symbol", "UNKNOWN")
-    nm = report.get("window_minutes", 0)
-    path = out_dir / f"{ts_str}_compat_{symbol}_{nm}m.json"
+
+    if mode == "full":
+        from_str = from_ts.strftime("%Y%m%d") if from_ts else "unknown"
+        to_str = to_ts.strftime("%Y%m%d") if to_ts else "unknown"
+        filename = f"{ts_str}_compat_full_{symbol}_{from_str}_{to_str}.json"
+    else:
+        nm = report.get("window_minutes", 0)
+        filename = f"{ts_str}_compat_{symbol}_{nm}m.json"
+
+    if out_path:
+        p = Path(out_path)
+        if p.suffix == ".json":
+            path = p
+            path.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            out_dir = p
+            out_dir.mkdir(parents=True, exist_ok=True)
+            path = out_dir / filename
+    else:
+        out_dir = Path(root) / ARTIFACTS_COMPAT_DIR
+        out_dir.mkdir(parents=True, exist_ok=True)
+        path = out_dir / filename
+
     with open(path, "w") as f:
         json.dump(report, f, indent=2)
     logger.info("compat_report saved path=%s", path)
+
+    if mode == "full":
+        # T6.5: latest_full_<symbol>.json — no toca latest_<symbol>.json (rolling)
+        latest_path = path.parent / f"latest_full_{symbol}.json"
+        with open(latest_path, "w") as f:
+            json.dump(report, f, indent=2)
+        logger.info("compat_report latest_full path=%s", latest_path)
+    else:
+        # T6.3: latest_<symbol>.json per visibilitat immediata
+        latest_path = path.parent / f"latest_{symbol}.json"
+        with open(latest_path, "w") as f:
+            json.dump(report, f, indent=2)
+        logger.info("compat_report latest path=%s", latest_path)
+
     return str(path)

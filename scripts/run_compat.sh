@@ -5,7 +5,7 @@
 #   ./scripts/run_compat.sh ostium [symbol]
 #
 # Ostium: llegeix candles del candle_store (Ostium recorded), compara amb Dukascopy,
-# genera artifact a datafiles/compat_reports/ i actualitza ostium_compat_registry.
+# genera artifact a datafiles/artifacts/compat/ (T6.2) i actualitza ostium_compat_registry.
 # Només si PASS → ostium_primary_allowed=true.
 
 set -e
@@ -33,6 +33,8 @@ case "$PROFILE" in
     export VENUE="${VENUE:-gtrade}"
     python3 -m application.tools.ostium_compat_report \
       --symbol "$SYMBOL" \
+      --minutes "${OSTIUM_COMPAT_WINDOW_MINUTES:-1440}" \
+      --out "$DATAFILES_ROOT/artifacts/compat" \
       --datafiles-root "$DATAFILES_ROOT" \
       --broker "$VENUE"
     ;;
