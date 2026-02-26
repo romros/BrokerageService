@@ -86,6 +86,13 @@ curl -I "http://localhost:8000/api/v1/broker/ohlcv/ETH?tf=1m&limit=10" | grep -i
 | **Primary Ostium però gaps** | X-Data-Missing-Minutes > 0, coverage window_72h missing | Activar read-through (`ENABLE_READ_THROUGH=1`); Dukascopy omple gaps; comprovar que compat PASS per mixed |
 | **Registry desalineat** | data_status primary_allowed_by_symbol=true però compat no s'ha executat recent | Executar `./scripts/run_compat.sh ostium <symbol>`; si verdict FAIL → registry es sobrescriu; revisar artifact JSON |
 
+**Compat cron-like (T6.12 — 2026-02-26):** Comanda periòdica recomanada (1×dia o post-incident):
+```bash
+./scripts/run_compat.sh ostium EURUSD  # exit 0 si PASS_BACKTEST
+./scripts/run_compat.sh ostium XAUUSD  # exit 0 si PASS_BACKTEST
+```
+Espera: `CONFIG broker=candles datafiles_root=/datafiles/realtime_datalayer`; `verdict=PASS_BACKTEST`; `corr_market_open ~0.94–0.97`; `dir_agree_filtered >95%`; `ostium_total >1000`. Artifacts a `datafiles/realtime_datalayer/artifacts/compat/latest_<SYM>.json`.
+
 ---
 
 ## 4) Kill switches

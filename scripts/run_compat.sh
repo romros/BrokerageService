@@ -7,6 +7,9 @@
 # Ostium: llegeix candles del candle_store (Ostium recorded), compara amb Dukascopy,
 # genera artifact a datafiles/artifacts/compat/ (T6.2) i actualitza ostium_compat_registry.
 # Només si PASS → ostium_primary_allowed=true.
+#
+# Execució: Docker efímer (codi muntat en viu + volum datafiles).
+# Patró igual que test.sh: python:3.11-slim + pip install + codi muntat.
 
 set -e
 
@@ -17,9 +20,18 @@ cd "$PROJECT_ROOT"
 PROFILE=${1:-ostium}
 SYMBOL=${2:-EURUSD}
 OVERRIDES_DIR="$PROJECT_ROOT/deploy/compose/overrides"
-DATAFILES_ROOT="${DATAFILES_ROOT:-$PROJECT_ROOT/datafiles/realtime_datalayer}"
 
-export PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+# Paths dins el container Docker efímer
+DATAFILES_CONTAINER="/datafiles"
+OSTIUM_ROOT_CONTAINER="/datafiles/realtime_datalayer"
+
+IMAGE="python:3.11-slim"
+CONTAINER_NAME="brokerage-compat-$$"
+
+ENV_ARGS=""
+if [ -f .env ]; then
+  ENV_ARGS="--env-file .env"
+fi
 
 case "$PROFILE" in
   ostium)
@@ -28,15 +40,26 @@ case "$PROFILE" in
       echo "Override no trobat: $OVERRIDE"
       exit 1
     fi
+    VENUE="${VENUE:-candles}"
+    WINDOW="${OSTIUM_COMPAT_WINDOW_MINUTES:-1440}"
     # Broker ha d'estar up amb Ostium per tenir dades; si no, compat pot fallar
-    export DATAFILES_ROOT
-    export VENUE="${VENUE:-candles}"
-    python3 -m application.tools.ostium_compat_report \
-      --symbol "$SYMBOL" \
-      --minutes "${OSTIUM_COMPAT_WINDOW_MINUTES:-1440}" \
-      --out "$DATAFILES_ROOT/artifacts/compat" \
-      --datafiles-root "$DATAFILES_ROOT" \
-      --broker "$VENUE"
+    docker run --rm \
+      --name "$CONTAINER_NAME" \
+      -v "$PROJECT_ROOT:/app" \
+      -v "$PROJECT_ROOT/datafiles:$DATAFILES_CONTAINER" \
+      -w /app \
+      $ENV_ARGS \
+      "$IMAGE" \
+      bash -c "
+        pip install --quiet -r requirements.txt 2>&1 | tail -1
+        export PYTHONPATH=/app:\$PYTHONPATH
+        python3 -m application.tools.ostium_compat_report \
+          --symbol '$SYMBOL' \
+          --minutes '$WINDOW' \
+          --out '$OSTIUM_ROOT_CONTAINER/artifacts/compat' \
+          --datafiles-root '$OSTIUM_ROOT_CONTAINER' \
+          --broker '$VENUE'
+      "
     ;;
   *)
     echo "Profile desconegut: $PROFILE (ostium)"

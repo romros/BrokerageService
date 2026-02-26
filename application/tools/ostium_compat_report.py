@@ -434,6 +434,13 @@ def main() -> int:
     symbol = args.symbol.upper()
     mode = args.mode
 
+    # Config resolved — imprimeix sempre per evidència (cron/audit)
+    print(
+        f"CONFIG broker={args.broker} datafiles_root={args.datafiles_root} "
+        f"symbol={symbol} mode={mode} "
+        f"window_minutes={args.minutes if args.minutes is not None else args.window_minutes if mode != 'full' else 'N/A (full)'}"
+    )
+
     if mode == "full":
         logger.info("compat_report start symbol=%s mode=full", symbol)
         result = asyncio.run(
@@ -487,8 +494,8 @@ def main() -> int:
 
     if result.get("registry_write_error"):
         return 3  # Registry write failed (permisos, etc.)
-    if result["verdict"] == VERDICT_COMPATIBLE:
-        return 0
+    if result["verdict"] in (VERDICT_COMPATIBLE, VERDICT_PASS_BACKTEST):
+        return 0  # PASS o PASS_BACKTEST
     if result["verdict"] == VERDICT_PARTIAL:
         return 2  # PARTIAL
     return 1  # FAIL
