@@ -57,6 +57,16 @@ DEFAULT_PAPER_MAINTENANCE_MARGIN_RATIO = 0.05  # 5% maintenance margin (conserva
 PAPER_FEE_BPS_ENV = "PAPER_FEE_BPS"
 DEFAULT_PAPER_FEE_BPS = 0  # 0 bps = no fee per default
 
+# T7.1 Client-side SL/TP policy (paper + live)
+PAPER_SL_PCT_ENV = "PAPER_SL_PCT"
+DEFAULT_PAPER_SL_PCT = 2.0       # 2% SL per defecte
+PAPER_TP_PCT_ENV = "PAPER_TP_PCT"
+DEFAULT_PAPER_TP_PCT = 4.0       # 4% TP per defecte (RR 1:2)
+PAPER_TTL_S_ENV = "PAPER_TTL_S"
+DEFAULT_PAPER_TTL_S = 3600       # 1h TTL: forçar close si no toca SL/TP
+PAPER_POLL_S_ENV = "PAPER_POLL_S"
+DEFAULT_PAPER_POLL_S = 5         # Polling cada 5s per client-side monitor
+
 # Backtest defaults
 DEFAULT_BACKTEST_SPEED_MULTIPLIER = 1000  # 1000x speed
 PRICE_POLL_INTERVAL_SECONDS = 30          # Seconds between price polls

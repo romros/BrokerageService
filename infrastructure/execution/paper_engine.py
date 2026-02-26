@@ -44,6 +44,7 @@ from domain.models.trade import (
     CLOSE_REASON_MANUAL,
     CLOSE_REASON_STOP_LOSS,
     CLOSE_REASON_TAKE_PROFIT,
+    CLOSE_REASON_TTL,
 )
 from foundation.logging import get_logger
 
@@ -462,6 +463,41 @@ class PaperExecutionEngine(IExecutionEngine):
 
         # TP/SL (només posicions no liquidades)
         closed.extend(await self.check_stops(current_prices))
+        return closed
+
+    async def check_ttl(self, ttl_s: float) -> list:
+        """
+        T7.1: Tanca posicions que superen ttl_s des de l'obertura.
+        Usa current_price (última coneguda) o open_price com a fallback.
+        Retorna llista d'OrderResult de posicions tancades.
+        """
+        closed = []
+        now = datetime.now(self._tz)
+        for position_id, position in list(self._positions.items()):
+            if position.open_time is None:
+                continue
+            # Normalitza timezone per comparació
+            open_time = position.open_time
+            if open_time.tzinfo is None:
+                open_time = open_time.replace(tzinfo=self._tz)
+            age_s = (now - open_time).total_seconds()
+            if age_s >= ttl_s:
+                price = position.current_price or position.open_price
+                logger.info(
+                    "TTL close position=%s symbol=%s age_s=%.0f ttl_s=%.0f price=%.5f",
+                    position_id,
+                    position.symbol,
+                    age_s,
+                    ttl_s,
+                    price,
+                )
+                result = await self.close_position(
+                    position_id,
+                    f"ttl_{position_id}",
+                    current_price=price,
+                    close_reason=CLOSE_REASON_TTL,
+                )
+                closed.append(result)
         return closed
 
     def get_trade_history(

@@ -15,6 +15,7 @@ CLOSE_REASON_MANUAL = "manual"
 CLOSE_REASON_STOP_LOSS = "stop_loss"
 CLOSE_REASON_TAKE_PROFIT = "take_profit"
 CLOSE_REASON_LIQUIDATION = "liquidation"
+CLOSE_REASON_TTL = "ttl"  # T7.1: forçar close per temps (time-to-live)
 
 
 @dataclass

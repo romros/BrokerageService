@@ -95,6 +95,32 @@ Espera: `CONFIG broker=candles datafiles_root=/datafiles/realtime_datalayer`; `v
 
 ---
 
+## 3b) SL/TP client-side (T7.1)
+
+**Política (paper + live):** SL/TP són condicions de tancament client-side; CLOSE sempre és MARKET.
+- `PAPER_SL_PCT` (default 2%): % de pèrdua màxima des d'entry
+- `PAPER_TP_PCT` (default 4%): % de guany des d'entry (RR 1:2)
+- `PAPER_TTL_S` (default 3600s): forçar close si no toca SL/TP en 1h
+- `PAPER_POLL_S` (default 5s): freqüència de polling
+
+**Smoke paper (requereix trading_service up):**
+```bash
+# Cicle ràpid (TTL=60s, poll=2s)
+python3 -m application.tools.run_paper_trade \
+  --symbol EURUSD --side long --collateral 100 --leverage 5 \
+  --ttl-s 60 --poll-s 2 --base-url http://localhost:8081
+```
+Espera: `CONFIG ...` + `OPEN ok position_id=...` + `MONITOR elapsed=... price=...` + `CLOSE reason=TTL|TP|SL` + `RESULT ... ok=True`.
+
+**Rollback:** Si el runner no pot tancar per xarxa, tancar manualment:
+```bash
+curl -X POST http://localhost:8081/trade/api/v1/broker/orders/close \
+  -H 'Content-Type: application/json' \
+  -d '{"venue":"paper","position_id":"<id>","percent":100}'
+```
+
+---
+
 ## 4) Kill switches
 
 | Variable | Efecte |
