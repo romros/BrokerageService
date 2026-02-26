@@ -121,6 +121,51 @@ curl -X POST http://localhost:8081/trade/api/v1/broker/orders/close \
 
 ---
 
+## 3c) LIVE smoke mínim (T7.2)
+
+**Tool:** `application/tools/run_live_smoke_trade.py` — cicle open→wait→close+idempotent.
+
+```bash
+# EURUSD, col·lateral mínim, wait 10s
+python3 -m application.tools.run_live_smoke_trade \
+  --venue ostium --symbol EURUSD --side long \
+  --collateral 1.5 --leverage 2 --wait-s 10 \
+  --base-url http://localhost:8081
+
+# XAUUSD
+python3 -m application.tools.run_live_smoke_trade \
+  --venue ostium --symbol XAUUSD --side long \
+  --collateral 1.5 --leverage 2 --wait-s 10 \
+  --base-url http://localhost:8081
+```
+
+**Espera (stdout):**
+```
+CONFIG venue=ostium symbol=EURUSD ...
+OPEN ok position_id=... open_ack_ms=...
+WAIT wait_s=10.0s position_id=...
+CLOSE ok close_ack_ms=...
+CLOSE idempotent ok already_closed=true idem_ack_ms=...
+RESULT symbol=EURUSD ... ok=True
+ARTIFACT datafiles/realtime_datalayer/artifacts/trading/latest_live_smoke_EURUSD.json
+```
+
+**Artifact:** `datafiles/realtime_datalayer/artifacts/trading/latest_live_smoke_<SYMBOL>.json`
+
+**Rollback:** Si el tool queda amb posició oberta (timeout/xarxa):
+```bash
+curl -X POST http://localhost:8081/trade/api/v1/broker/orders/close \
+  -H 'Content-Type: application/json' \
+  -d '{"venue":"ostium","position_id":"<id>","percent":100}'
+```
+
+**Flags:**
+- `--max-duration-s` (default 60): timeout global — si s'excedeix, exit=3
+- `--close-retries` (default 3): intents de close abans de declarar error
+- `--artifact-dir`: path on escriure el JSON (relatiu al CWD o absolut)
+
+---
+
 ## 4) Kill switches
 
 | Variable | Efecte |
