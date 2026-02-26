@@ -1,0 +1,17 @@
+# Override per trading_service en mode PAPER (kill-switch LIVE).
+# Simètric a ostium-live-trading.yml però amb ENABLE_LIVE_TRADING=0.
+# NO toca realtime_datalayer ni historical_datalayer.
+#
+# Ús (via scripts canònics):
+#   ./scripts/live_off.sh           → PAPER (zero tx)
+#
+# Manual:
+#   docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml \
+#     -f deploy/compose/overrides/live.off.yml up -d --force-recreate trading_service
+
+services:
+  trading_service:
+    environment:
+      - MODE=paper
+      - VENUE=paper
+      - ENABLE_LIVE_TRADING=0

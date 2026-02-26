@@ -220,6 +220,54 @@ curl -X POST http://localhost:8081/trade/api/v1/broker/orders/close \
 
 ---
 
+## 3e) Activar/desactivar LIVE — scripts canònics (T7.3.1)
+
+**Scripts idempotents que fan `--force-recreate trading_service` ONLY. MAI toquen `realtime_datalayer`.**
+
+### LIVE ON (Ostium testnet)
+```bash
+./scripts/live_on.sh
+# o amb gateway directe:
+./scripts/live_on.sh --base-url http://127.0.0.1:8010
+```
+**Requereix:** `lab/ostium/.env` amb `RPC_URL` i `PRIVATE_KEY`.
+
+**Espera (stdout):**
+```
+=== LIVE ON: activant trading_service mode LIVE Ostium ===
+  realtime_datalayer: Running → OK (no tocar)
+  Aplicant override LIVE + recreant trading_service...
+  Preflight → mode=live live_enabled=True
+✓ Mode confirmed: LIVE (mode=live live_enabled=True)
+```
+
+### LIVE OFF (tornar a PAPER — rollback segur)
+```bash
+./scripts/live_off.sh
+```
+**No requereix** credencials. Sempre executa amb `ENABLE_LIVE_TRADING=0`.
+
+**Espera (stdout):**
+```
+=== LIVE OFF: tornant trading_service a mode PAPER ===
+  Aplicant override PAPER + recreant trading_service...
+  Preflight → mode=paper live_enabled=False
+✓ Mode confirmed: PAPER (mode=paper live_enabled=False)
+```
+
+**Verificació manual post:**
+```bash
+curl -s 'http://localhost:8081/trade/api/v1/broker/preflight?venue=ostium&symbol=EURUSD' | python3 -m json.tool
+# → mode, live_enabled, ready
+```
+
+**Notes:**
+- Exit 0 = mode confirmat; exit 3 = mode no verificat (però acció aplicada)
+- `live_off.sh` és sempre segur (zero tx possible en mode paper)
+- Overrides: `ostium-live-trading.yml` (LIVE) / `live.off.yml` (PAPER)
+
+---
+
 ## 4) Kill switches
 
 | Variable | Efecte |
