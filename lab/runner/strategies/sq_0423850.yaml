@@ -1,0 +1,15 @@
+name: sq_0423850
+description: "SQ Strategy 0.423850 — Bollinger Lower crossover (LONG only). XAUUSD H4, 2016-2026."
+symbol: XAUUSD
+timeframe: 1h
+ttl_bars: 0
+sl_atr_coef: 2.0
+tp_atr_coef: 3.0
+atr_period: 10
+# Paràmetres estratègia
+bb_period: 10
+bb_std: 1.9
+# Filtres temporals (com SQ original)
+no_trade_weekend: true       # divendres 17:00 - diumenge 17:00 (NY)
+exit_on_friday: true         # tanca posicions obertes divendres a les 17:00 NY
+exit_on_friday_hour_ny: 17

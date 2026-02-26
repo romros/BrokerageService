@@ -1,0 +1,8 @@
+name: smoke
+description: "SmokeStrategy — sempre LONG, tanca per TTL. Pipeline-first."
+symbol: EURUSD
+timeframe: 1h
+ttl_bars: 3
+sl_atr_coef: 0.0
+tp_atr_coef: 0.0
+atr_period: 10

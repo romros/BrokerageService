@@ -1,0 +1,14 @@
+{
+  "strategy": "smoke",
+  "symbol": "EURUSD",
+  "tf": "1h",
+  "from": "2020-01-02",
+  "to": "2020-01-31",
+  "n_trades": 165,
+  "net_pnl_pct": -1.5639,
+  "win_rate_pct": 50.91,
+  "avg_trade_pct": -0.0095,
+  "max_drawdown_pct": 1.8334,
+  "wins": 84,
+  "losses": 81
+}

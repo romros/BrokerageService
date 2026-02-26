@@ -1,0 +1,14 @@
+{
+  "strategy": "sq_0423850",
+  "symbol": "EURUSD",
+  "tf": "1h",
+  "from": "2020-01-02",
+  "to": "2020-01-31",
+  "n_trades": 1,
+  "net_pnl_pct": 0.1424,
+  "win_rate_pct": 100.0,
+  "avg_trade_pct": 0.1424,
+  "max_drawdown_pct": 0.0,
+  "wins": 1,
+  "losses": 0
+}
