@@ -159,10 +159,64 @@ curl -X POST http://localhost:8081/trade/api/v1/broker/orders/close \
   -d '{"venue":"ostium","position_id":"<id>","percent":100}'
 ```
 
-**Flags:**
-- `--max-duration-s` (default 60): timeout global — si s'excedeix, exit=3
+**Flags (T7.2.1):**
+- `--max-duration-s` (default 60): timeout global — si s'excedeix, fa best-effort close i exit=3
 - `--close-retries` (default 3): intents de close abans de declarar error
 - `--artifact-dir`: path on escriure el JSON (relatiu al CWD o absolut)
+- `CONFIG` mostra `enable_live_trading` i `resolved_mode=LIVE|PAPER` per audit
+
+---
+
+## 3d) LIVE TTL-only monitor (T7.3)
+
+**Tool:** `application/tools/run_live_ttl_trade.py` — open→poll preu→close per TTL.
+
+```bash
+# EURUSD TTL=60s, poll 5s, max 120s
+python3 -m application.tools.run_live_ttl_trade \
+  --venue ostium --symbol EURUSD --side long \
+  --collateral 1.5 --leverage 2 \
+  --ttl-s 60 --poll-s 5 --max-duration-s 120 \
+  --base-url http://localhost:8081
+
+# XAUUSD TTL=60s
+python3 -m application.tools.run_live_ttl_trade \
+  --venue ostium --symbol XAUUSD --side long \
+  --collateral 1.5 --leverage 2 \
+  --ttl-s 60 --poll-s 5 --max-duration-s 120 \
+  --base-url http://localhost:8081
+```
+
+**Espera (stdout):**
+```
+CONFIG venue=ostium symbol=EURUSD ... enable_live_trading=1 resolved_mode=LIVE ...
+OPEN ok position_id=... executed_price=... open_ack_ms=...
+MONITOR poll=1 price=... source=price/latest elapsed=5s remaining=55s
+MONITOR poll=2 price=... ...
+...
+TTL reached elapsed=60.1s ttl_s=60 → CLOSE position_id=...
+CLOSE ok close_ack_ms=... reason=ttl
+CLOSE idempotent ok already_closed=true
+RESULT symbol=EURUSD close_reason=ttl poll_count=12 total_ms=... ok=True
+ARTIFACT datafiles/realtime_datalayer/artifacts/trading/latest_live_ttl_EURUSD.json
+```
+
+**Artifact:** `datafiles/realtime_datalayer/artifacts/trading/latest_live_ttl_<SYMBOL>.json`
+- Inclou: `poll_count`, `ttl_elapsed_s`, mostres de `monitor.samples` (price, source, elapsed)
+
+**Rollback:** Si el tool no pot tancar (timeout/xarxa):
+```bash
+curl -X POST http://localhost:8081/trade/api/v1/broker/orders/close \
+  -H 'Content-Type: application/json' \
+  -d '{"venue":"ostium","position_id":"<id>","percent":100}'
+```
+
+**Flags:**
+- `--ttl-s` (default 60): temps de vida de la posició
+- `--poll-s` (default 5): interval de polling de preu
+- `--max-duration-s` (default 120): timeout global (ha de ser > ttl_s + overhead close)
+- `--close-retries` (default 3): intents de close en cas d'error
+- Tolerant a errors transitoris de preu (continua fins TTL)
 
 ---
 

@@ -1,5 +1,5 @@
 """
-run_live_smoke_trade.py — T7.2 LIVE/testnet smoke: open → wait → close + idempotència
+run_live_smoke_trade.py — T7.2/T7.2.1 LIVE/testnet smoke: open → wait → close + idempotència
 
 Fa un cicle mínim: open → sleep(wait_s) → close → close-again (idempotent).
 No SL/TP ni TTL: és un smoke de la "plomeria real" (latència, ack, idempotència).
@@ -18,17 +18,23 @@ No SL/TP ni TTL: és un smoke de la "plomeria real" (latència, ack, idempotènc
     [--artifact-dir datafiles/realtime_datalayer/artifacts/trading]
 
 Observabilitat:
-  CONFIG ...
+  CONFIG venue=... symbol=... enable_live_trading=... resolved_mode=LIVE|PAPER ...
   OPEN ok position_id=... open_ack_ms=...
+  WAIT wait_s=...
   CLOSE ok close_ack_ms=...
   CLOSE idempotent ok already_closed=true
   ARTIFACT .../latest_live_smoke_<SYMBOL>.json
+
+T7.2.1:
+  - CONFIG inclou enable_live_trading + resolved_mode (LIVE/PAPER)
+  - Timeout fa best-effort close (evitar posicions obertes)
+  - Artifact reflecteix timeout + close_attempted + close_success
 
 Exit codes:
   0 = OK
   1 = open failed
   2 = close failed
-  3 = timeout exceeded
+  3 = timeout exceeded (best-effort close intentat)
 """
 
 import argparse
@@ -150,6 +156,16 @@ async def _close_trade(
 # Smoke principal
 # ─────────────────────────────────────────────
 
+def _resolve_mode() -> tuple[str, str]:
+    """
+    Llegeix ENABLE_LIVE_TRADING de l'entorn i retorna (raw_value, resolved_mode).
+    resolved_mode = "LIVE" si ENABLE_LIVE_TRADING=1, "PAPER" en cas contrari.
+    """
+    raw = os.environ.get("ENABLE_LIVE_TRADING", "0")
+    resolved = "LIVE" if raw.strip() in ("1", "true", "True", "yes") else "PAPER"
+    return raw, resolved
+
+
 async def run_live_smoke(
     base_url: str,
     venue: str,
@@ -169,21 +185,24 @@ async def run_live_smoke(
     run_start = time.monotonic()
     ts_iso = datetime.now(timezone.utc).isoformat()
 
+    enable_live_raw, resolved_mode = _resolve_mode()
+
     print(
         f"CONFIG venue={venue} symbol={symbol} side={side} "
         f"collateral={collateral} leverage={leverage}x "
         f"wait_s={wait_s} max_duration_s={max_duration_s} "
-        f"close_retries={close_retries} base_url={base_url} ts={ts_iso}"
+        f"close_retries={close_retries} base_url={base_url} "
+        f"enable_live_trading={enable_live_raw} resolved_mode={resolved_mode} ts={ts_iso}"
     )
     logger.info(
         "run_live_smoke START venue=%s symbol=%s side=%s collateral=%.2f leverage=%.1fx "
-        "wait_s=%.0f max_duration_s=%.0f ts=%s",
-        venue, symbol, side, collateral, leverage, wait_s, max_duration_s, ts_iso,
+        "wait_s=%.0f max_duration_s=%.0f resolved_mode=%s ts=%s",
+        venue, symbol, side, collateral, leverage, wait_s, max_duration_s, resolved_mode, ts_iso,
     )
 
     artifact: dict = {
         "tool": "run_live_smoke_trade",
-        "version": "T7.2",
+        "version": "T7.2.1",
         "ts_start": ts_iso,
         "config": {
             "venue": venue,
@@ -194,6 +213,8 @@ async def run_live_smoke(
             "wait_s": wait_s,
             "max_duration_s": max_duration_s,
             "base_url": base_url,
+            "enable_live_trading": enable_live_raw,
+            "resolved_mode": resolved_mode,
         },
         "result": "pending",
     }
@@ -267,8 +288,24 @@ async def run_live_smoke(
 
         # ── Check timeout global ──
         if time.monotonic() - run_start >= max_duration_s:
-            print(f"TIMEOUT max_duration_s={max_duration_s} exceeded before close")
+            print(f"TIMEOUT max_duration_s={max_duration_s} exceeded — attempting best-effort close position_id={position_id}")
+            logger.warning("TIMEOUT max_duration_s=%.0f exceeded, best-effort close position_id=%s", max_duration_s, position_id)
+            t_timeout = time.monotonic()
+            be_ok, be_data = await _close_trade(session, base_url, venue, position_id, attempt=1)
+            be_ms = int((time.monotonic() - t_timeout) * 1000)
+            if be_ok:
+                print(f"CLOSE after timeout ok be_close_ms={be_ms} position_id={position_id}")
+            else:
+                print(f"WARN CLOSE after timeout failed position_id={position_id} — use manual rollback")
+                logger.error("best-effort close after timeout FAILED position_id=%s", position_id)
             artifact["result"] = "timeout"
+            artifact["timeout"] = {
+                "max_duration_s": max_duration_s,
+                "close_attempted": True,
+                "close_success": be_ok,
+                "be_close_ms": be_ms,
+                "close_response": be_data,
+            }
             _write_artifact(artifact_dir, symbol, artifact)
             return 3
 
