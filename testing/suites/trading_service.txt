@@ -19,6 +19,7 @@ testing/unit/test_broker_api_trades.py
 testing/apps/trading_service/test_paper_venue_adapter.py
 testing/unit/test_paper_risk_engine.py
 testing/unit/test_sl_tp_client_policy.py
+testing/apps/trading_service/test_paper_sl_tp_smoke.py
 testing/unit/test_reconcile_service.py
 testing/unit/test_idempotency.py
 testing/integration/test_paper_positions_flow.py
