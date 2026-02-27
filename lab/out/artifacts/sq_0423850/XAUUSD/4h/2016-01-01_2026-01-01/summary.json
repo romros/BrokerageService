@@ -1,0 +1,19 @@
+{
+  "strategy": "sq_0423850",
+  "symbol": "XAUUSD",
+  "tf": "4h",
+  "from": "2016-01-01",
+  "to": "2026-01-01",
+  "execution_contract": "v2: signals at bar i using data[0..i-1]; entry at open[i+1]; SL/TP intra-bar (high/low), SL-first if both hit; TTL exit at open[entry+ttl_bars]; friday exit at open of next available bar after Fri 17h NY",
+  "sync_job_id": "5fdebf37",
+  "coverage_from": "2003-05",
+  "coverage_to": "2026-02",
+  "months_missing_in_range": [],
+  "n_trades": 45,
+  "net_pnl_pct": 14.8408,
+  "win_rate_pct": 57.78,
+  "avg_trade_pct": 0.3298,
+  "max_drawdown_pct": 4.417,
+  "wins": 26,
+  "losses": 19
+}
