@@ -1,13 +1,16 @@
 """
-Data API — Phase 14/16/19/20/T8.1.
+Data API — Phase 14/16/19/20/T8.1/T8.6.
 
 Prefix: /api/v1/data
 
-GET  /ohlcv/{symbol}      → candles OHLCV registry-aware (Ostium local o Dukascopy fallback)
-                            Si existeix Parquet históric → DuckDB (Phase 16)
-                            Mixed stitching parquet+realtime (Phase 20)
-GET  /coverage/{symbol}   → Coverage index per símbol (Phase 19)
-POST /sync                → Sync idempotent Dukascopy→Parquet (T8.1)
+GET  /ohlcv/{symbol}           → candles OHLCV registry-aware (Ostium local o Dukascopy fallback)
+                                  Si existeix Parquet históric → DuckDB (Phase 16)
+                                  Mixed stitching parquet+realtime (Phase 20)
+GET  /coverage/{symbol}        → Coverage index per símbol (Phase 19)
+POST /coverage/{symbol}/rebuild → Rebuild coverage index des del disc (T8.2)
+POST /sync                     → Inicia sync async (T8.6) — retorna job_id immediatament
+GET  /sync                     → Llista jobs recents
+GET  /sync/{job_id}            → Progrés d'un job concret
 
 Dissenyat per ser consumit per un adaptador Freqtrade backtest.
 """
@@ -16,7 +19,7 @@ import asyncio
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -216,10 +219,72 @@ async def get_coverage(
 
 
 # ---------------------------------------------------------------------------
-# T8.1: Sync endpoint — backfill idempotent Dukascopy → Parquet
+# T8.2: Rebuild coverage index des del disc (Parquet = source of truth)
 # ---------------------------------------------------------------------------
 
-MAX_SYNC_YEARS = 10  # guardrail: màxim anys per crida sense chunking
+@router.post("/coverage/{symbol}/rebuild")
+async def post_rebuild_coverage(
+    symbol: str,
+    tf: str = Query(default="1m", description="Timeframe (només 1m)"),
+):
+    """
+    Reconstrueix el coverage index llegint els Parquets reals al disc.
+
+    - Font de veritat: fitxers .parquet
+    - No baixa dades, no modifica Parquets
+    - Idempotent: 2a execució retorna changed=false si res ha canviat
+    - Detecta mesos missing (entre primer i últim done però absents al disc)
+
+    Response:
+    {
+      "symbol": "XAUUSD",
+      "timeframe": "1m",
+      "months_done": 264,
+      "months_empty": 13,
+      "months_missing": ["2022-11", "2022-12"],
+      "total_rows": 7500000,
+      "coverage_from": "2003-05",
+      "coverage_to": "2026-02",
+      "changed": true,
+      "index_path": "/datafiles/historical_parquet/_coverage/XAUUSD_tf1m.json"
+    }
+    """
+    sym = symbol.strip().upper()
+    if not sym or not sym.isalnum() or len(sym) > 10:
+        raise HTTPException(
+            status_code=422,
+            detail={"detail": "symbol invàlid", "code": INVALID_PARAMS},
+        )
+    if tf not in SUPPORTED_TIMEFRAMES:
+        raise HTTPException(
+            status_code=422,
+            detail={"detail": f"timeframe '{tf}' no suportat", "code": INVALID_PARAMS},
+        )
+
+    datafiles_root = os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT)
+
+    from application.data.rebuild_coverage import rebuild_coverage_index
+    result = await asyncio.get_event_loop().run_in_executor(
+        None, rebuild_coverage_index, datafiles_root, sym, tf
+    )
+
+    return JSONResponse(content={
+        "symbol": result.symbol,
+        "timeframe": result.timeframe,
+        "months_done": result.months_done,
+        "months_empty": result.months_empty,
+        "months_missing": result.months_missing,
+        "total_rows": result.total_rows,
+        "coverage_from": result.coverage_from,
+        "coverage_to": result.coverage_to,
+        "changed": result.changed,
+        "index_path": result.index_path,
+    })
+
+
+# ---------------------------------------------------------------------------
+# T8.6: Sync async amb SyncManager — job tracking + N workers
+# ---------------------------------------------------------------------------
 
 DUKASCOPY_EARLIEST = date(2003, 1, 1)  # primera data disponible a Dukascopy
 
@@ -241,34 +306,47 @@ class SyncRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+def _get_sync_manager(request: Request):
+    """Obté el SyncManager des del app.state o crea un de fallback (test/dev)."""
+    mgr = getattr(request.app.state, "sync_manager", None)
+    if mgr is None:
+        # Fallback: crea manager inline (no persisteix entre crides)
+        from application.data.sync_manager import SyncManager
+        datafiles_root = os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT)
+        mgr = SyncManager(datafiles_root=datafiles_root)
+        request.app.state.sync_manager = mgr
+        logger.warning("SyncManager creat inline (no inicialitzat al lifespan)")
+    return mgr
+
+
 @router.post("/sync")
-async def post_sync(req: SyncRequest):
+async def post_sync(req: SyncRequest, request: Request):
     """
-    Sync idempotent Dukascopy → Parquet per un símbol/timeframe (T8.1).
+    Inicia un job de sync async Dukascopy→Parquet (T8.6).
 
-    Comportament:
-      - Detecta cobertura existent (CoverageIndex)
-      - Baixa NOMÉS el delta [last_covered+1_mes, to]
-      - Si ja és up_to_date → retorna status=up_to_date sense descarregar res
-      - Idempotent: cridar 2 cops seguits → 2n sempre status=up_to_date
+    Retorna immediatament amb job_id i status=RUNNING.
+    El job s'executa en background amb N workers concurrent.
 
-    Guardrails:
-      - Màxim MAX_SYNC_YEARS anys per crida
-      - tf ha de ser '1m'
+    Reentrança: 2a crida amb el mateix rang → retorna el job existent (is_new=false).
 
     Response:
       {
-        "status": "up_to_date|synced|partial|error",
+        "job_id": "a1b2c3d4",
+        "is_new": true,
+        "status": "RUNNING",
         "symbol": "XAUUSD",
         "tf": "1m",
-        "requested_from": "2016-01-01",
-        "requested_to": "2026-02-27",
-        "months_written": 3,
-        "months_skipped": 120,
-        "months_failed": 0,
-        "candles_written": 134523,
-        "coverage_from": "2016-01-01",
-        "coverage_to": "2026-02-01"
+        "total_units": 12,
+        "done": 0,
+        "skipped": 262,
+        "failed": 0,
+        "retries": 0,
+        "started_at": "2026-02-27T10:00:00Z",
+        "updated_at": "2026-02-27T10:00:00Z",
+        "failed_months": [],
+        "coverage_from": null,
+        "coverage_to": null,
+        "message": "new_job"
       }
     """
     sym = req.symbol.strip().upper()
@@ -283,7 +361,6 @@ async def post_sync(req: SyncRequest):
 
     today = date.today()
 
-    # Resolució de dates
     if req.to_date:
         try:
             to_d = date.fromisoformat(req.to_date)
@@ -292,103 +369,73 @@ async def post_sync(req: SyncRequest):
     else:
         to_d = today
 
-    datafiles_root = os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT)
-
-    # Detectar cobertura existent per decidir from_d (delta)
-    from application.data.coverage_index import CoverageIndex
-    idx = CoverageIndex(root_path=datafiles_root, symbol=sym)
-    done_months = idx.months_done()
-
     if req.from_date:
         try:
             from_d = date.fromisoformat(req.from_date)
         except ValueError:
             raise HTTPException(status_code=422, detail={"detail": "from invàlid; format YYYY-MM-DD", "code": INVALID_PARAMS})
-    elif done_months:
-        # Avancem des de l'últim mes cobert + 1
-        last_done = done_months[-1]
-        y, m = int(last_done[:4]), int(last_done[5:7])
-        m += 1
-        if m > 12:
-            m = 1
-            y += 1
-        from_d = date(y, m, 1)
     else:
         from_d = DUKASCOPY_EARLIEST
 
     from_d = max(from_d, DUKASCOPY_EARLIEST)
 
-    # Guardrail: màxim MAX_SYNC_YEARS anys per crida
-    max_to = date(from_d.year + MAX_SYNC_YEARS, from_d.month, from_d.day)
-    if to_d > max_to:
+    if from_d > to_d:
         raise HTTPException(
             status_code=422,
-            detail={
-                "detail": f"rang massa gran (>{MAX_SYNC_YEARS} anys per crida); divideix en crides més curtes",
-                "code": INVALID_PARAMS,
-            },
+            detail={"detail": "from ha de ser anterior o igual a to", "code": INVALID_PARAMS},
         )
 
-    # Comprovar si ja és up_to_date
-    if from_d > to_d:
-        # Calcular coverage actual per la resposta
-        coverage_from_str = done_months[0] if done_months else None
-        coverage_to_str = done_months[-1] if done_months else None
-        return JSONResponse(content={
-            "status": "up_to_date",
-            "symbol": sym,
-            "tf": req.tf,
-            "requested_from": str(from_d),
-            "requested_to": str(to_d),
-            "months_written": 0,
-            "months_skipped": 0,
-            "months_failed": 0,
-            "candles_written": 0,
-            "coverage_from": coverage_from_str,
-            "coverage_to": coverage_to_str,
-        })
+    manager = _get_sync_manager(request)
+    job, is_new = await manager.start_job(sym, req.tf, str(from_d), str(to_d))
 
-    # Executar backfill (async, però asyncio.run no funciona dins event loop — usem await directament)
-    from application.tools.run_historical_backfill import run_historical_backfill
-    result = await run_historical_backfill(
-        symbol=sym,
-        from_date=from_d,
-        to_date=to_d,
-        datafiles_root=datafiles_root,
-        skip_existing=True,
-        sleep_s=0.5,
-        retry_failed=False,
-        update_coverage=True,
-    )
+    snap = job.snapshot()
+    snap["is_new"] = is_new
+    snap["message"] = "new_job" if is_new else "existing_job"
+    return JSONResponse(content=snap)
 
-    # Recalcular coverage després del sync
-    idx2 = CoverageIndex(root_path=datafiles_root, symbol=sym)
-    done2 = idx2.months_done()
-    coverage_from_str = done2[0] if done2 else None
-    coverage_to_str = done2[-1] if done2 else None
 
-    if result["months_failed"] > 0 and result["months_written"] == 0:
-        status = "error"
-    elif result["months_failed"] > 0:
-        status = "partial"
-    elif result["months_written"] == 0:
-        status = "up_to_date"
-    else:
-        status = "synced"
+@router.get("/sync")
+async def list_sync_jobs(
+    request: Request,
+    limit: int = Query(default=10, ge=1, le=50, description="Màxim jobs retornats"),
+):
+    """
+    Llista els jobs de sync recents, ordenats per started_at desc.
+    """
+    manager = _get_sync_manager(request)
+    jobs = manager.list_jobs(limit=limit)
+    return JSONResponse(content={"jobs": [j.snapshot() for j in jobs], "total": len(jobs)})
 
-    return JSONResponse(content={
-        "status": status,
-        "symbol": sym,
-        "tf": req.tf,
-        "requested_from": str(from_d),
-        "requested_to": str(to_d),
-        "months_written": result["months_written"],
-        "months_skipped": result["months_skipped"],
-        "months_failed": result["months_failed"],
-        "candles_written": result["candles_total"],
-        "coverage_from": coverage_from_str,
-        "coverage_to": coverage_to_str,
-    })
+
+@router.get("/sync/{job_id}")
+async def get_sync_job(job_id: str, request: Request):
+    """
+    Retorna el progrés d'un job de sync concret.
+
+    Response:
+      {
+        "job_id": "a1b2c3d4",
+        "status": "RUNNING|DONE|FAILED|INTERRUPTED",
+        "symbol": "XAUUSD",
+        "tf": "1m",
+        "total_units": 12,
+        "done": 7,
+        "skipped": 262,
+        "failed": 0,
+        "retries": 1,
+        "eta_s": 150.0,
+        "coverage_from": "2003-05",
+        "coverage_to": "2022-12",
+        "failed_months": [],
+        "started_at": "...",
+        "updated_at": "..."
+      }
+    """
+    manager = _get_sync_manager(request)
+    job = manager.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail={"detail": f"job '{job_id}' no trobat", "code": "JOB_NOT_FOUND"})
+    return JSONResponse(content=job.snapshot())
 
 
 # ---------------------------------------------------------------------------
@@ -417,9 +464,28 @@ def get_historical_router() -> APIRouter:
         summary="Coverage index (historical)",
     )
     hist_router.add_api_route(
+        "/coverage/{symbol}/rebuild",
+        post_rebuild_coverage,
+        methods=["POST"],
+        summary="Rebuild coverage index des del disc (T8.2)",
+    )
+    # T8.6: Sync async amb SyncManager
+    hist_router.add_api_route(
         "/sync",
         post_sync,
         methods=["POST"],
-        summary="Sync idempotent Dukascopy→Parquet (T8.1)",
+        summary="Inicia sync async Dukascopy→Parquet (T8.6)",
+    )
+    hist_router.add_api_route(
+        "/sync",
+        list_sync_jobs,
+        methods=["GET"],
+        summary="Llista jobs sync recents",
+    )
+    hist_router.add_api_route(
+        "/sync/{job_id}",
+        get_sync_job,
+        methods=["GET"],
+        summary="Progrés d'un job sync",
     )
     return hist_router

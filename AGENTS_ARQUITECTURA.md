@@ -396,8 +396,24 @@ Per fonts de dades (ex. Ostium):
 
 ## 11) Docker / Runtime (normes operatives)
 
-**Recorda:** execucions dins Docker usen la imatge construïda; si canvies codi:
-`docker compose build brokerage`
+**Recorda:** execucions dins Docker usen la imatge construïda; si canvies codi cal rebuildar el servei corresponent.
+
+**Noms de servei** (per a `docker compose build/up/exec`):
+- `historical_datalayer` → contenidor `historical-datalayer`
+- `realtime_datalayer`  → contenidor `realtime-datalayer`
+- `trading_service`     → contenidor `trading-service-split`
+
+**Nota important:** la flag `-f` és obligatòria perquè el compose de split és un overlay:
+```bash
+# Rebuildar un servei (sempre des de /mnt/volume-SQ/dev/BrokerageService)
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml build historical_datalayer
+
+# Reiniciar (recrea el contenidor amb la nova imatge)
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.split.yml up -d historical_datalayer
+
+# Executar tests dins del contenidor
+docker exec historical-datalayer python3 -m pytest testing/unit/test_X.py -v
+```
 
 ### 11.1 TZ del container
 

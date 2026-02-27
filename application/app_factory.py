@@ -408,6 +408,19 @@ def create_app(role: str | None = None) -> FastAPI:
             except Exception as e:
                 logger.warning("BackfillService not started: %s", e)
 
+        # T8.6: SyncManager singleton — historical_datalayer (o monolithic)
+        if role in ("historical_datalayer", None):
+            try:
+                from application.data.sync_manager import SyncManager
+                sync_workers = int(os.getenv("SYNC_WORKERS", "4"))
+                app.state.sync_manager = SyncManager(
+                    datafiles_root=config["datafiles_root"],
+                    workers=sync_workers,
+                )
+                logger.info("SyncManager init (workers=%d, root=%s)", sync_workers, config["datafiles_root"])
+            except Exception as e:
+                logger.warning("SyncManager not started: %s", e)
+
         heartbeat_task = None
         if os.getenv(TESTING_ENV, "").strip() == "1" or os.getenv(BROKER_DIAG_ENV, "").strip() == "1":
             async def _heartbeat_loop():
