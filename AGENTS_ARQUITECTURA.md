@@ -448,11 +448,12 @@ Decisió de "venue principal" sempre és en 2 eixos:
 
 ---
 
-## 14) Estat actual (2026-02-24)
+## 14) Estat actual (2026-02-27)
 
 ### Execution
 - **Lighter/gTrade:** Arxivat (T5.32) → `_archive/`
 - **Ostium:** ✅ Execution-ready (paper + LIVE; Phase G/H; smoke `up_ostium_live.sh`)
+- **Toggle LIVE/PAPER:** ✅ `./scripts/live_on.sh` / `./scripts/live_off.sh` (T7.3.1)
 
 ### Data Layer
 - **Primary recorder (realtime):** Ostium ingest 24/7 (`OSTIUM_ENABLED=1`); Dukascopy backfill històric
@@ -465,9 +466,15 @@ Decisió de "venue principal" sempre és en 2 eixos:
 - **Compat:** ✅ Ostium vs Dukascopy — Corr 0.976, Dir 92.7% (PARTIAL, 388c)
   - Amb 1440c esperat PASS
 - **Stitching gated:** ✅ Implementat (P7 mixed)
+- **Sync idempotent (T8.1):** ✅ `POST /data/sync` — baixa delta Dukascopy→Parquet per símbol; idempotent; guardrail 10 anys/crida. Script: `./scripts/sync_xauusd_full.sh`
 
 ### Backtest
 - ✅ API + runner implementats (Phases 10–12, 17); registry-aware; Parquet/Freqtrade-style; pipeline prod opcional
+- ✅ **LAB Runner (T8.0):** `lab/runner/` — pipeline backtest propi (sense Freqtrade). Estratègies: `smoke` + `sq_0423850` (Bollinger+ATR, traducció SQ pseudocodi). Script: `./scripts/run_lab_backtest.sh`. Artifacts: `summary.json`, `trades.csv`, `equity.csv`.
+
+### Dades històriques
+- **XAUUSD:** sync Dukascopy en curs (2003→avui, ~278 mesos). Consulta: `./scripts/sync_xauusd_full.sh`
+- **EURUSD:** Parquet parcialment disponible (2020-01)
 
 **Operativa diària:** Vegeu `docs/ESTAT.md`
 
@@ -475,6 +482,8 @@ Decisió de "venue principal" sempre és en 2 eixos:
 
 ## 15) Changelog
 
+- **2026-02-27** — T8.0 LAB Runner MVP: `lab/runner/` (SmokeStrategy + sq_0423850 Bollinger+ATR); `run_lab_backtest.sh`. T8.1 `POST /data/sync` idempotent Dukascopy→Parquet. Sync XAUUSD 2003→avui en curs.
+- **2026-02-26** — T7.1–T7.3.1: SL/TP client-side, LIVE smoke/TTL tools, live_on/live_off scripts.
 - **2026-02-24** — Docs coherents: ESTAT + AGENTS §14 actualitzats (Ostium exec Phase G/H implementat; Lighter/gTrade arxivats; Backtest API completa); Phase E = TradingCore completada. DIAGNOSI_PROJECTE_2026-02.md.
 - **2026-02-24** — LOT SANEJAMENT: scripts legacy arxivats; entrypoints canònics `up_ostium_live.sh`, `run_ostium_live_smoke.sh`.
 - **2026-02-18** — Split vNext Phase 2: trading_service consumeix realtime_datalayer via HTTP (RealtimeDataLayerClient, IDataLayerReader, REALTIME_DATALAYER_BASE_URL). OHLCV/coverage/data_status forward quan env set.

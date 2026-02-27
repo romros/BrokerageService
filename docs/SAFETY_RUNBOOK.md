@@ -268,6 +268,70 @@ curl -s 'http://localhost:8081/trade/api/v1/broker/preflight?venue=ostium&symbol
 
 ---
 
+## 3f) Dades històriques — sync Dukascopy (T8.1)
+
+### Sync complet un símbol (ex: XAUUSD 2003→avui)
+
+```bash
+./scripts/sync_xauusd_full.sh        # llança en background si no corre / mostra progrés si corre
+```
+
+### Sync manual via API
+
+```bash
+# Bloc 1
+curl -X POST http://localhost:8081/data/sync \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"XAUUSD","tf":"1m","from":"2003-01-01","to":"2012-12-31"}'
+
+# Bloc 2
+curl -X POST http://localhost:8081/data/sync \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"XAUUSD","tf":"1m","from":"2013-01-01","to":"2022-12-31"}'
+
+# Bloc 3 (fins avui)
+curl -X POST http://localhost:8081/data/sync \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"XAUUSD","tf":"1m"}'
+```
+
+**Notes:**
+- Idempotent: cridar 2 cops → 2n retorna `status=up_to_date, months_written=0`
+- Màxim 10 anys per crida (guardrail)
+- Fallats: `status=partial` — re-cridar per reintentar
+
+### Comprovar coverage
+
+```bash
+curl -s http://localhost:8081/data/coverage/XAUUSD | python3 -c \
+  "import sys,json; d=json.load(sys.stdin); s=d['summary']; print(s)"
+```
+
+---
+
+## 3g) LAB Runner — backtest estratègies (T8.0)
+
+### Córrer un backtest
+
+```bash
+# SmokeStrategy (pipeline-first)
+./scripts/run_lab_backtest.sh --strategy smoke --symbol EURUSD \
+    --tf 1h --from 2020-01-02 --to 2020-01-31
+
+# SQ 0.423850 (Bollinger+ATR, XAUUSD — requereix dades sync)
+./scripts/run_lab_backtest.sh --strategy sq_0423850 --symbol XAUUSD \
+    --tf 1h --from 2016-01-01 --to 2026-01-01
+```
+
+**Artifacts generats:** `lab/runner/artifacts/<strategy>/<symbol>/<tf>/<from>_<to>/`
+- `summary.json` — KPIs (n_trades, net_pnl_pct, win_rate_pct, max_drawdown_pct)
+- `trades.csv` — entrada/sortida/pnl per trade
+- `equity.csv` — corba d'equity (base 100)
+
+**Rollback / aturar:** el backtest és offline (no toca producció). Ctrl+C segur.
+
+---
+
 ## 4) Kill switches
 
 | Variable | Efecte |

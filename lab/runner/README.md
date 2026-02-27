@@ -141,9 +141,27 @@ No cal tocar `run_backtest.py`.
 
 ---
 
+## Prerequisit: dades sincronitzades
+
+Abans de fer un backtest llarg cal tenir el dataset Dukascopy sincronitzat:
+
+```bash
+# Comprova i/o llança sync (idempotent)
+./scripts/sync_xauusd_full.sh
+
+# Comprova coverage
+curl -s http://localhost:8081/data/coverage/XAUUSD | python3 -c \
+  "import sys,json; d=json.load(sys.stdin); s=d['summary']; \
+   print(f'done={s[\"months_done\"]} rows={s[\"total_rows\"]}')"
+```
+
+El sync baixa ~278 mesos (2003→avui) en ~20-25 minuts i és idempotent (re-executar salta mesos ja descarregats).
+
+---
+
 ## Notes
 
-- Les dades vénen via `GET /data/api/v1/data/ohlcv/{symbol}` (historical_datalayer)
+- Les dades vénen via `GET /data/ohlcv/{symbol}` (gateway `/data/*` → historical_datalayer)
 - Timeframe: el runner agrega 1m → tf sol·licitat (ex. 1h = 60 candles 1m)
 - Si el servei no és accessible: `SKIP candles_loaded=0` (no FAIL)
 - Artifacts a `lab/runner/artifacts/` (no a `lab/out/` per separar per estratègia)
