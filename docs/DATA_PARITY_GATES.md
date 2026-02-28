@@ -51,11 +51,27 @@ El gap residual de 860,897 rows és 100% atribuïble als **55 mesos buits 2007-0
 4. **Invariants OHLC**: tots els candles passen validació (Bi5BackfillProvider fa h=max(o,h,c), l=min(o,l,c))
 5. Per backtesting des de 2003-05-05 fins 2006-12-31 i des de 2012-01 en endavant, la paritat és verificable
 
-### Mesos missing (2007-2011, confirmats buits Dukascopy)
+### Mesos missing (2007-2011) — T8.25 Evidence pack
 
-Els 55 mesos `2007-06 → 2011-12` estan confirmats com a buits per l'API Dukascopy. No es reintentar.
+**Llista exacta (55 mesos):** 2007-06 → 2011-12. See `lab/out/artifacts/parity/missing_months_EURUSD_m1.json`.
 
-**Report complet:** `lab/runner/out_compare/parity_EURUSD_M1_vs_SQ.json`
+**Spot-checks BI5 (T8.25):** Mostres 2007-07-10/15/20, 2008-03-15, 2010-06-15 — HTTP 200, 1440 rows/dia. El feed BI5 té dades per aquests dies; el Parquet no les inclou perquè el sync no les ha omplert (fallback BI5 aplica quan JSON retorna []). Conclusió: el conjunt de 55 mesos buits al nostre Parquet explica el delta -10.1%; BI5 podria recuperar-los (fora abast T8.25).
+
+**Artifacts:** `lab/out/artifacts/parity/missing_months_EURUSD_m1.json`, `bi5_spot_checks_EURUSD.json`
+
+### Repair 55 mesos via BI5 (T8.26)
+
+T8.25 demostra que BI5 té dades per 2007-06→2011-12. Per reparar el Parquet:
+
+```bash
+# Dry-run primer
+python3 -m application.tools.repair_missing_months_bi5 --symbol EURUSD --datafiles-root /datafiles --dry-run
+
+# Fix (rebaixa BI5 + reescriu)
+python3 -m application.tools.repair_missing_months_bi5 --symbol EURUSD --datafiles-root /datafiles --fix
+```
+
+O `./scripts/run_t826_repair_bi5.sh`. El script executa: dry-run → fix (inclou rebuild coverage) → `generate_parity_vs_sq_report` → escriu `parity_EURUSD_M1_vs_SQ.json`. Objectiu: delta vs SQ < 2–3%.
 
 ---
 
@@ -102,7 +118,7 @@ Coverage baixa perquè 2007-06→2011-12 confirmats buits. Invariants OK, gaps =
 
 \* Coverage >100%: el feed BI5 inclou dissabtes i diumenges (mercat tancat = flat bars).
 Expected calculat excloent weekends, però BI5 els inclou. OHLC invariants OK, 0 gaps.
-Flat ratio alt (28%) = cap de setmana on el bid/ask no varia (esperat per dades pre-2007).
+Flat ratio alt (28%) = cap de setmana on el bid/ask no varia (esperat per dades pre-2007). **T8.25:** Per interpretar qualitat FX, usar `flat_ratio_fx_interpretable` (= flat_weekday); flat_total inclou dissabte/diumenge.
 
 ### Conclusió (T8.24)
 
@@ -117,9 +133,20 @@ Flat ratio alt (28%) = cap de setmana on el bid/ask no varia (esperat per dades 
 
 ## Gate C: Dukascopy↔Ostium candle compatibility
 
-**Estat: PASS recheck (T8.18)**
+**Estat: PASS recheck (T8.18) / PARTIAL-acceptat (T8.25)**
 
-### Recheck 2026-02-28
+### Criteris explícits PASS_BACKTEST (T8.25)
+
+| Criteri | Llindar | Font |
+|---------|---------|------|
+| corr | ≥ 0.90 | `compat_report_service.CORR_PASS_BACKTEST_MIN` |
+| dir_agree_filtered | ≥ 95% | `DIR_AGREE_FILTERED_COMPATIBLE_MIN` |
+| eligible_count | ≥ 100 | `DIR_AGREE_FILTERED_MIN_ELIGIBLE` |
+| Finestra canònica | 1440 min | `OSTIUM_COMPAT_WINDOW_MINUTES=1440` |
+
+Comanda: `OSTIUM_COMPAT_WINDOW_MINUTES=1440 ./scripts/run_compat.sh ostium [EURUSD|XAUUSD]`
+
+### Recheck T8.18 (finestra 24h)
 
 Executat `./scripts/run_compat.sh ostium` per ambdós símbols:
 
@@ -127,6 +154,10 @@ Executat `./scripts/run_compat.sh ostium` per ambdós símbols:
 |--------|------|-------------------|---------------|-----------|
 | EURUSD | 0.956 | 99.0% | 0.9957 | **PASS_BACKTEST** |
 | XAUUSD | 0.959 | 96.9% | 0.9957 | **PASS_BACKTEST** |
+
+### Recheck T8.25 (finestra limitada per dades Ostium)
+
+Si el candle_store Ostium té pocs minuts (< 1440), eligible_count pot ser baix i verdict PARTIAL. Reexecutar amb Ostium gravant 24h+ per apple-to-apple.
 
 ### Historial
 
@@ -267,6 +298,8 @@ L'única eliminació possible és via `repair_empty_parquets.py --fix` (explíci
 
 | Data | Tasca | Canvi |
 |------|-------|-------|
+| 2026-02-28 | T8.26 | Repair 55 mesos buits via BI5: `repair_missing_months_bi5.py` (--dry-run/--fix), run_t826_repair_bi5.sh |
+| 2026-02-28 | T8.25 | Evidence pack: missing_months_report (empty_days_sample, bi5_spot_checks), Gate C criteris explícits, flat_ratio_fx_interpretable, run_t825_evidence_pack.sh |
 | 2026-02-28 | T8.24 | Gate A PASS: resync EURUSD 2003-05→2006-12 via BI5 (+1.88M rows, 44 mesos). Gate B recheck PASS (2004 BI5). Gate C recheck PARTIAL-acceptat |
 | 2026-02-28 | T8.23 | Dukascopy M1 pre-2007 via bi5: endpoint identificat, downloader + Bi5BackfillProvider + 15 tests |
 | 2026-02-28 | T8.21 | Indicator parity harness + seeding root cause confirmat (EMA200 drift 500 pips) |
