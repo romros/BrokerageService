@@ -1,7 +1,8 @@
 """
 SQ Strategy — EMA200 + RSI<35 + ATR SL/TP (EURUSD D1, LONG-only).
 
-Traduïda del pseudocodi SQ/MT4:
+Traduïda del pseudocodi SQ/MT4.
+T8.27: opció mt4_like_indicators al YAML usa indicadors MT4-exact (docs/INDICATOR_PARITY_SPEC.md).
   Instrument: EURUSD
   Timeframe: D1
   Direction: LONG only
@@ -29,8 +30,21 @@ Notes d'implementació vs SQ/MT4:
 
 from __future__ import annotations
 
+import yaml
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+
+_STRATEGY_DIR = Path(__file__).resolve().parent
+_YAML_PATH = _STRATEGY_DIR / "eurusd_ema200_rsi35_atr_d1.yaml"
+
+
+def _cfg() -> dict:
+    if _YAML_PATH.exists():
+        with open(_YAML_PATH) as f:
+            return yaml.safe_load(f) or {}
+    return {}
 
 
 def _ema(series: pd.Series, period: int) -> pd.Series:
@@ -56,9 +70,12 @@ def _rsi_wilder(series: pd.Series, period: int) -> pd.Series:
     return rsi
 
 
-def generate_signals(df: pd.DataFrame) -> pd.Series:
+def generate_signals(df: pd.DataFrame, **kwargs) -> pd.Series:
     """
     Genera senyals de trading LONG only basats en EMA200 + RSI<35.
+
+    kwargs (CLI override): indicator_mode, ema_seed. Si indicator_mode=mt4_like,
+    usa application.data.indicators_mt4_like amb ema_seed sma|first.
 
     Args:
         df: pd.DataFrame amb index DatetimeIndex UTC i columnes open/high/low/close/volume.
@@ -73,8 +90,16 @@ def generate_signals(df: pd.DataFrame) -> pd.Series:
         En pràctica: la condició es mira sobre els valors de la barra anterior (shift(1)).
     """
     close = df["close"]
-    ema200 = _ema(close, 200)
-    rsi14 = _rsi_wilder(close, 14)
+    cfg = {**_cfg(), **kwargs}
+    use_mt4 = cfg.get("mt4_like_indicators") or cfg.get("indicator_mode") == "mt4_like"
+    ema_seed = cfg.get("ema_seed", "sma")
+    if use_mt4:
+        from application.data.indicators_mt4_like import ema as ema_mt4like, rsi_wilder
+        ema200 = ema_mt4like(close, 200, seed_mode=ema_seed)
+        rsi14 = rsi_wilder(close, 14)
+    else:
+        ema200 = _ema(close, 200)
+        rsi14 = _rsi_wilder(close, 14)
 
     signals = pd.Series(0, index=df.index, dtype=int)
 

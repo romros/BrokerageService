@@ -49,6 +49,7 @@ from lab.runner.backtest.run_backtest import (
     candles_to_df,
     compute_atr,
 )
+from application.data.indicators_mt4_like import ema, rsi_wilder, atr_wilder
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -92,6 +93,7 @@ def export_indicators(
     out_path: Path,
     warmup_bars: int = WARMUP_BARS,
     day_offset_h: int = DAY_OFFSET_H,
+    mt4_like: bool = False,
 ) -> int:
     """
     Exporta indicadors barra-a-barra a CSV.
@@ -129,10 +131,15 @@ def export_indicators(
     # DataFrame
     df = candles_to_df(candles_d1)
 
-    # Indicadors
-    ema200 = _ema(df["close"], 200)
-    rsi14 = _rsi_wilder(df["close"], 14)
-    atr14 = compute_atr(df, 14)
+    # Indicadors (mt4_like = T8.29A: EMA/RSI/ATR MT4-exact, ema seed sma per defecte)
+    if mt4_like:
+        ema200 = ema(df["close"], 200, seed_mode="sma")
+        rsi14 = rsi_wilder(df["close"], 14)
+        atr14 = atr_wilder(df["high"], df["low"], df["close"], 14)
+    else:
+        ema200 = _ema(df["close"], 200)
+        rsi14 = _rsi_wilder(df["close"], 14)
+        atr14 = compute_atr(df, 14)
 
     # Senyals (Close[i-1] > EMA200[i-1] AND RSI14[i-1] < 35)
     signals = pd.Series(0, index=df.index, dtype=int)
@@ -197,6 +204,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--out", required=True, help="Path fitxer CSV de sortida")
     parser.add_argument("--warmup-bars", type=int, default=WARMUP_BARS)
     parser.add_argument("--day-offset-h", type=int, default=DAY_OFFSET_H)
+    parser.add_argument("--mt4-like", action="store_true",
+                        help="T8.27: usar indicadors MT4-exact (EMA seed SMA, RSI/ATR Wilder)")
     return parser.parse_args()
 
 
@@ -210,4 +219,5 @@ if __name__ == "__main__":
         out_path=Path(args.out),
         warmup_bars=args.warmup_bars,
         day_offset_h=args.day_offset_h,
+        mt4_like=args.mt4_like,
     ))

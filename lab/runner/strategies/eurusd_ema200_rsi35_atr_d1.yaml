@@ -17,3 +17,5 @@ exit_on_friday: false   # EOD OFF: no tanca posicions obertes el divendres
 day_offset_h: 5         # 0=00:00 UTC (default LAB), 5=05:00 UTC (=MT4 Dukascopy)
 # Warmup recomanat: 250 barres D1 per estabilitzar EMA200
 warmup_bars: 250
+# T8.27: indicadors MT4-exact (EMA seed SMA, RSI/ATR Wilder) per parity
+mt4_like_indicators: false   # true per millorar entry_match_rate vs MT4

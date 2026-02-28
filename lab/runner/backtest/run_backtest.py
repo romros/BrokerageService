@@ -731,6 +731,8 @@ def run_backtest(
     warmup_bars: int = 0,
     day_offset_h: int = 0,
     intrabar_mode: str = "sl_first",
+    indicator_mode: str = "default",
+    ema_seed: str = "sma",
 ) -> int:
     """
     Executa el backtest complet.
@@ -755,6 +757,8 @@ def run_backtest(
     cfg = load_strategy_config(strategy)
     cfg["_symbol"] = symbol
     cfg["_tf"] = tf
+    cfg["indicator_mode"] = indicator_mode
+    cfg["ema_seed"] = ema_seed
 
     tf_minutes = TF_TO_MINUTES.get(tf)
     if tf_minutes is None:
@@ -838,14 +842,24 @@ def run_backtest(
     # Construeix DataFrame
     df = candles_to_df(candles_tf)
 
-    # ATR (pel runner — SL/TP)
+    # ATR (pel runner — SL/TP). T8.29A: indicator_mode=mt4_like usa atr_wilder
     atr_period = int(cfg.get("atr_period", 10))
-    atr = compute_atr(df, atr_period)
+    use_mt4 = cfg.get("mt4_like_indicators") or cfg.get("indicator_mode") == "mt4_like"
+    if use_mt4:
+        from application.data.indicators_mt4_like import atr_wilder
+        atr = atr_wilder(df["high"], df["low"], df["close"], atr_period)
+    else:
+        atr = compute_atr(df, atr_period)
 
     # Càrrega i execució estratègia
     try:
         generate_signals = load_strategy_fn(strategy)
-        signals = generate_signals(df)
+        import inspect
+        sig = inspect.signature(generate_signals)
+        if "indicator_mode" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+            signals = generate_signals(df, indicator_mode=indicator_mode, ema_seed=ema_seed)
+        else:
+            signals = generate_signals(df)
     except Exception as exc:
         print(f"ERROR estratègia: {exc}")
         return 2
@@ -907,9 +921,12 @@ def _parse_args() -> argparse.Namespace:
                              "Default: 0 (o day_offset_h del config YAML)")
     parser.add_argument("--intrabar-mode", default="sl_first",
                         choices=list(INTRABAR_MODES),
-                        help="Mode resolució SL/TP quan ambdós toquen la mateixa barra. "
-                             "sl_first=conservador (default), tp_first=optimista, "
-                             "heuristic=distància a open")
+                        help="Mode resolució SL/TP quan ambdós toquen la mateixa barra.")
+    parser.add_argument("--indicator-mode", default="default",
+                        choices=("default", "mt4_like"),
+                        help="T8.29A: default=pandas ewm, mt4_like=EMA/RSI/ATR MT4-exact")
+    parser.add_argument("--ema-seed", default="sma", choices=("sma", "first"),
+                        help="T8.29A: EMA seed quan indicator_mode=mt4_like. sma=SMA(period), first=close[0]")
     return parser.parse_args()
 
 
@@ -927,4 +944,6 @@ if __name__ == "__main__":
         warmup_bars=args.warmup_bars,
         day_offset_h=args.day_offset_h,
         intrabar_mode=args.intrabar_mode,
+        indicator_mode=args.indicator_mode,
+        ema_seed=args.ema_seed,
     ))
