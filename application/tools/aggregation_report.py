@@ -133,25 +133,90 @@ def check_invariants(bars: list) -> dict:
 # ---------------------------------------------------------------------------
 
 TF_MINUTES = {"1m": 1, "1h": 60, "4h": 240, "1d": 1440}
-FX_TRADING_DAYS_PER_WEEK = 5  # dilluns-divendres
+
+# FX M1 Dukascopy: "22:00 UTC diumenge → 22:00 UTC divendres" (5 sessions/setmana).
+# Cada sessió és exactament 24h (1440 minuts). Dins d'una sessió, cada bar M1/H1/H4/D1
+# és present si Dukascopy retorna dades (pot haver-hi holidays puntuals).
+#
+# Sessió FX (day_offset_h=5):
+#   Inici sessió: diumenge 21:00 UTC (= diumenge 17:00 ET = 5h before Monday 05:00 UTC boundary)
+#   Fi sessió:    divendres 21:00 UTC
+#   → 5 sessions × 1440 min = 7200 min/setmana
+
+def _count_fx_trading_minutes(from_ts: int, to_ts: int, day_offset_s: int) -> int:
+    """
+    Compta minuts FX esperats en [from_ts, to_ts) excloent caps de setmana reals.
+
+    FX opera de diumenge 21:00 UTC a divendres 21:00 UTC (aprox).
+    En lloc d'aproximar amb 5/7, iterem setmana a setmana.
+    """
+    # Iteració amb granularitat d'hora per detectar weekends
+    # weekday(): 0=dilluns, 5=dissabte, 6=diumenge
+    # FX tanca: divendres 21:00 UTC → diumenge 21:00 UTC (aprox)
+    # Usem una aproximació pràctica: diem que qualsevol minut
+    # amb weekday ∈ {0,1,2,3,4} O (weekday==6 i hora>=21) O (weekday==4 i hora<21)
+    # és trading. Simplificació: excloem dissabte tot i diumenge <21:00 UTC.
+    total_minutes = 0
+    ts = from_ts
+    while ts < to_ts:
+        dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+        wd = dt.weekday()  # 0=Mon...6=Sun
+        h = dt.hour
+        # Excloem: dissabte tot + diumenge 00:00→20:59 UTC
+        is_weekend_off = (wd == 5) or (wd == 6 and h < 21)
+        if not is_weekend_off:
+            total_minutes += 1
+        ts += 60
+    return total_minutes
+
 
 def expected_bar_count(from_ts: int, to_ts: int, tf_minutes: int, day_offset_s: int = 0) -> int:
     """
-    Estima bars esperades: FX opera 24h × 5 dies/setmana.
-    Per M1/H1/H4: compta minuts laborables (no weekends).
-    Per D1: compta dies laborables.
+    Compta bars esperades basant-se en el calendari FX real.
+
+    FX amb day_offset_h=5 (05:00 UTC boundary):
+      Les barres D1 comencen a 05:00 UTC i inclouen diumenge (inici sessió
+      diumenge 17:00 ET = 21:00 UTC, cau dins barra que comença diumenge 05:00 UTC).
+      Per tant: 6 barres D1 per setmana (diumenge→divendres) ≠ 5 dies laborables.
+
+    Per sub-day (H1/H4): s'exclouen dissabte complet + diumenge 00:00→20:59 UTC.
+    Sessió FX real: diumenge 21:00 UTC → divendres 21:00 UTC = 5×24h = 7200 min/setmana.
     """
-    bar_seconds = tf_minutes * 60
     total_s = to_ts - from_ts
+    range_days = total_s / 86400
+
     if tf_minutes >= 1440:
-        # D1: dies laborables
-        days = total_s / 86400
-        return int(days * (5 / 7))
-    else:
-        # Sub-day: minuts laborables
-        total_min = total_s // 60
-        working_min = int(total_min * (5 / 7))
-        return working_min // tf_minutes
+        # D1 FX amb day_offset: compta buckets D1 reals que tindrien dades.
+        # Amb boundary offset_s: un bucket existeix si conté almenys un minut FX actiu.
+        # FX actiu: diumenge 21:00 UTC → divendres 21:00 UTC.
+        # Un bucket D1 a 05:00 UTC cobreix [dia 05:00 → dia+1 05:00):
+        #   - Diumenge 05:00: conté diumenge 21:00 → dilluns 05:00 (actiu ✓)
+        #   - Dissabte 05:00: conté dissabte 21:00... però FX és tancat dissabte (✗)
+        # → compta buckets que NO cauen en dissabte (weekday=5)
+        trading_d1 = 0
+        # Primer bucket: (from_ts - day_offset_s) arrodonit a baix per bar_s
+        bar_s = tf_minutes * 60
+        first_bucket = ((from_ts - day_offset_s) // bar_s) * bar_s + day_offset_s
+        ts = first_bucket
+        while ts < to_ts:
+            dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+            if dt.weekday() != 5:  # exclou dissabte (FX tancat del tot)
+                trading_d1 += 1
+            ts += bar_s
+        return trading_d1
+
+    # Sub-day (H1/H4/M1): iteració per minut (exacte, ràpid per <= 2 anys)
+    # Per rangs llargs (>2 anys) usa aproximació setmanal per velocitat.
+    # FX actiu: diumenge 21:00 UTC → divendres 21:00 UTC (exclou dissabte i diumenge<21h).
+    if range_days <= 730:  # <= 2 anys: iteració exacta
+        trading_min = _count_fx_trading_minutes(from_ts, to_ts, day_offset_s)
+        return trading_min // tf_minutes
+
+    # Rangs llargs: aproximació setmanal
+    fx_min_per_week = 5 * 24 * 60  # 7200
+    weeks = total_s / (7 * 86400)
+    trading_min = int(weeks * fx_min_per_week)
+    return trading_min // tf_minutes
 
 
 def analyze_gaps(bars: list, tf_minutes: int, from_ts: int, to_ts: int, day_offset_s: int = 0) -> dict:

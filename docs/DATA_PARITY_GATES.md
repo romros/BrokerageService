@@ -84,14 +84,16 @@ Paràmetres canònics:
 
 Coverage baixa perquè 2007-06→2011-12 confirmats buits. Invariants OK, gaps = weekends + mesos buits normals.
 
-**EURUSD rang 2020-01→2021-01** (rang amb dades completes):
+**EURUSD rang 2020-01→2021-01** (rang amb dades completes, expected corregit T8.19):
 | TF | Bars | Coverage | Invariants | Flat | Gaps |
 |----|------|----------|-----------|------|------|
-| 1h | 6,250 | 99.6% | OK | 0.00% | 52 |
-| 4h | 1,581 | 100.8% | OK | 0.00% | 52 |
-| 1d | 314 | 120.3% | OK | 0.00% | 52 |
+| 1h | 6,250 | 97.0% | OK | 0.00% | 52 |
+| 4h | 1,581 | 98.1% | OK | 0.00% | 52 |
+| 1d | 314 | 99.7% | OK | 0.00% | 52 |
 
-52 gaps = weekends (normal FX). Coverage ~100% confirma integritat M1 post-2012.
+52 gaps = weekends (normal FX). Coverage 97-100% confirma integritat M1 post-2012.
+Nota T8.19: expected calculat exactament via calendari FX (exclou dissabte + diumenge<21h UTC).
+Coverage <100% reflecteix holidays Dukascopy i buits interns de sessió (esperats).
 
 ### Conclusió
 
@@ -130,9 +132,23 @@ Lleugera variació (±0.01 corr) normal per finestra rolling de 24h diferent.
 
 ## Gate D: Runner backtest parity + paper/live
 
-**Estat: PASS (T8.11)**
+**Estat: PASS recheck (T8.19)**
 
-Entry match-rate vs MT4: 50.0% (18pp de millora amb ATR Wilder + warmup + D1 offset).
+### Recheck 2026-02-28 (post-Gate B)
+
+Backtest `eurusd_ema200_rsi35_atr_d1` reexecutat amb dades estabilitzades (T8.16-T8.18):
+
+| Mètrica | T8.11 | T8.19 recheck | Canvi |
+|---------|-------|--------------|-------|
+| n_trades | 18 | 18 | = |
+| net_pnl | 1.96% | 1.96% | = |
+| win_rate | 44.44% | 44.44% | = |
+| max_dd | 4.39% | 4.39% | = |
+| entry_match_rate vs MT4 | 50.0% | 50.0% | = |
+
+**Conclusió:** Resultats estables — les millores de qualitat de dades (T8.13-T8.18) no han alterat el comportament del backtest. Entry match-rate 50% és el límit assolit amb ATR Wilder + warmup + D1 offset (T8.11). La diferència residual LAB↔MT4 és per model tick intrabar diferent (no resoluble sense ticks).
+
+**Report:** `lab/runner/out_compare/report_after_gate_b.json`
 
 ---
 
@@ -171,6 +187,7 @@ L'única eliminació possible és via `repair_empty_parquets.py --fix` (explíci
 
 | Data | Tasca | Canvi |
 |------|-------|-------|
+| 2026-02-28 | T8.19 | Fix expected_bar_count (<=100%), Gate D recheck PASS, compare_trades after_gate_b |
 | 2026-02-28 | T8.18 | Gate B PASS (aggregation M1→H1/H4/D1) + Gate C recheck PASS |
 | 2026-02-28 | T8.17 | Gate A PARTIAL: Dukascopy EURUSD M1 comença 2007-01 |
 | 2026-02-28 | T8.16 | QUALITY_MODE ingest/integrity + no-delete + empty/suspect counters |

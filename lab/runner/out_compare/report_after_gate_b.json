@@ -1,0 +1,87 @@
+{
+  "ref_engine": "MT4",
+  "ref_n_trades": 22,
+  "tolerance": "1 day, 0:00:00",
+  "engines": {
+    "JFOREX": {
+      "n_trades": 22,
+      "entry_match_rate": 100.0,
+      "entry_matched": 22,
+      "exit_match_rate": 100.0,
+      "exit_matched": 22,
+      "pnl_dollar": 258.88,
+      "pnl_pct": 10.8625,
+      "pnl_dollar_diff_vs_ref": 1.6,
+      "pnl_pct_diff_vs_ref": 0.0723,
+      "median_hold_hours": 389.5,
+      "reason_breakdown": {
+        "tp": 12,
+        "sl": 10
+      }
+    },
+    "MT4": {
+      "n_trades": 22,
+      "entry_match_rate": 100.0,
+      "entry_matched": 22,
+      "exit_match_rate": 100.0,
+      "exit_matched": 22,
+      "pnl_dollar": 257.28,
+      "pnl_pct": 10.7902,
+      "pnl_dollar_diff_vs_ref": 0.0,
+      "pnl_pct_diff_vs_ref": 0.0,
+      "median_hold_hours": 389.5,
+      "reason_breakdown": {
+        "tp": 12,
+        "sl": 10
+      }
+    },
+    "MT5H": {
+      "n_trades": 22,
+      "entry_match_rate": 100.0,
+      "entry_matched": 22,
+      "exit_match_rate": 100.0,
+      "exit_matched": 22,
+      "pnl_dollar": 257.28,
+      "pnl_pct": 10.7902,
+      "pnl_dollar_diff_vs_ref": 0.0,
+      "pnl_pct_diff_vs_ref": 0.0,
+      "median_hold_hours": 389.5,
+      "reason_breakdown": {
+        "tp": 12,
+        "sl": 10
+      }
+    },
+    "MT5N": {
+      "n_trades": 22,
+      "entry_match_rate": 100.0,
+      "entry_matched": 22,
+      "exit_match_rate": 100.0,
+      "exit_matched": 22,
+      "pnl_dollar": 257.28,
+      "pnl_pct": 10.7902,
+      "pnl_dollar_diff_vs_ref": 0.0,
+      "pnl_pct_diff_vs_ref": 0.0,
+      "median_hold_hours": 389.5,
+      "reason_breakdown": {
+        "tp": 12,
+        "sl": 10
+      }
+    },
+    "LAB": {
+      "n_trades": 18,
+      "entry_match_rate": 50.0,
+      "entry_matched": 9,
+      "exit_match_rate": 33.33,
+      "exit_matched": 6,
+      "pnl_dollar": null,
+      "pnl_pct": 1.9556,
+      "pnl_dollar_diff_vs_ref": null,
+      "pnl_pct_diff_vs_ref": -8.8346,
+      "median_hold_hours": 240.0,
+      "reason_breakdown": {
+        "sl": 10,
+        "tp": 8
+      }
+    }
+  }
+}
