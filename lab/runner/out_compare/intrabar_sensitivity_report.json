@@ -1,0 +1,50 @@
+{
+  "task": "T8.20",
+  "strategy": "eurusd_ema200_rsi35_atr_d1",
+  "symbol": "EURUSD",
+  "tf": "1d",
+  "from": "2007-01-01",
+  "to": "2026-01-01",
+  "ref_engine": "MT4",
+  "tolerance": "1D",
+  "modes": {
+    "sl_first": {
+      "n_trades": 18,
+      "net_pnl_pct": 1.9556,
+      "win_rate_pct": 44.44,
+      "max_drawdown_pct": 4.3852,
+      "profit_factor": 1.1722,
+      "entry_match_rate_vs_mt4_pct": 50.0,
+      "trades_identical_to_sl_first": true
+    },
+    "tp_first": {
+      "n_trades": 18,
+      "net_pnl_pct": 1.9556,
+      "win_rate_pct": 44.44,
+      "max_drawdown_pct": 4.3852,
+      "profit_factor": 1.1722,
+      "entry_match_rate_vs_mt4_pct": 50.0,
+      "trades_identical_to_sl_first": true
+    },
+    "heuristic": {
+      "n_trades": 18,
+      "net_pnl_pct": 1.9556,
+      "win_rate_pct": 44.44,
+      "max_drawdown_pct": 4.3852,
+      "profit_factor": 1.1722,
+      "entry_match_rate_vs_mt4_pct": 50.0,
+      "trades_identical_to_sl_first": true
+    }
+  },
+  "dual_hit_bars_count": 0,
+  "entry_match_rate_range": {
+    "min": 50.0,
+    "max": 50.0,
+    "delta": 0.0
+  },
+  "conclusion": "Els 3 modes intrabar produeixen resultats IDÈNTICS (0 barres amb dual SL+TP hit a D1). La divergència LAB↔MT4 (50% entry match-rate) NO prové del tick order intrabar. La causa residual és: diferència de model de senyals (EMA/RSI/ATR warmup vs MT4 iATR) o diferències de D1 boundary (05:00 UTC vs MT4 session open). Recomanació: 'ticks no aporten valor addicional per parity D1'. Investigar: (a) comparació barra a barra de signals LAB vs MT4 export, (b) confirmar que el MT4 D1 boundary és exactament 05:00 UTC.",
+  "recommendation": "no_ticks_needed_for_d1_parity",
+  "mt4_n_trades": 22,
+  "lab_n_trades": 18,
+  "missing_trades_count": 4
+}

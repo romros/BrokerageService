@@ -88,13 +88,20 @@ SUNDAY = 6   # weekday() == 6
 API_PAGE_LIMIT = 5000
 
 # Execution contract string (per auditoria als artifacts)
-EXECUTION_CONTRACT = (
-    "v2: signals at bar i using data[0..i-1]; "
-    "entry at open[i+1]; "
-    "SL/TP intra-bar (high/low), SL-first if both hit; "
-    "TTL exit at open[entry+ttl_bars]; "
-    "friday exit at open of next available bar after Fri 17h NY"
-)
+def _execution_contract(intrabar_mode: str = "sl_first") -> str:
+    return (
+        "v2: signals at bar i using data[0..i-1]; "
+        "entry at open[i+1]; "
+        f"SL/TP intra-bar (high/low), intrabar_mode={intrabar_mode}; "
+        "TTL exit at open[entry+ttl_bars]; "
+        "friday exit at open of next available bar after Fri 17h NY"
+    )
+
+# Retrocompatibilitat: constant string per referència externa
+EXECUTION_CONTRACT = _execution_contract()
+
+# Intrabar modes vàlids
+INTRABAR_MODES = ("sl_first", "tp_first", "heuristic")
 
 # ---------------------------------------------------------------------------
 # HTTP helpers
@@ -409,6 +416,55 @@ def _is_friday_exit_bar(dt_utc: datetime, exit_hour: int) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Resolució intrabar SL/TP (T8.20)
+# ---------------------------------------------------------------------------
+
+def resolve_sl_tp_hit(
+    open_price: float,
+    high: float,
+    low: float,
+    sl: Optional[float],
+    tp: Optional[float],
+    mode: str,
+) -> tuple[Optional[str], Optional[float]]:
+    """
+    Determina si/com s'ha tocat SL o TP en una barra.
+
+    Retorna (reason, exit_price) o (None, None) si cap nivell tocat.
+
+    Modes:
+      sl_first   — si ambdós toquen → SL (conservador, default contractual)
+      tp_first   — si ambdós toquen → TP (optimista)
+      heuristic  — si ambdós toquen → l'ordre depèn de distància a open:
+                   si |open - sl| < |open - tp|  → SL primer (estava més a prop)
+                   altrament → TP primer
+
+    Si només un nivell toca → aquell (independent del mode).
+    Si cap toca → (None, None).
+    """
+    hit_sl = sl is not None and low <= sl
+    hit_tp = tp is not None and high >= tp
+
+    if hit_sl and hit_tp:
+        if mode == "tp_first":
+            return "tp", tp
+        if mode == "heuristic":
+            dist_sl = abs(open_price - sl) if sl is not None else float("inf")
+            dist_tp = abs(open_price - tp) if tp is not None else float("inf")
+            if dist_sl < dist_tp:
+                return "sl", sl
+            return "tp", tp
+        # sl_first (default)
+        return "sl", sl
+
+    if hit_sl:
+        return "sl", sl
+    if hit_tp:
+        return "tp", tp
+    return None, None
+
+
+# ---------------------------------------------------------------------------
 # Simulació de trades (Execution Contract v2)
 # ---------------------------------------------------------------------------
 
@@ -417,17 +473,17 @@ def simulate_trades(
     signals: pd.Series,
     atr: pd.Series,
     cfg: dict,
+    intrabar_mode: str = "sl_first",
 ) -> list[dict[str, Any]]:
     """
     Simula trades amb Execution Contract v2:
 
     - Senyal calculat a barra i (usant dades fins i-1, sense lookahead)
     - Entrada MARKET a open[i+1] (barra que obre just després)
-    - SL/TP comprovat intra-barra usant high/low:
-        · cada barra j >= entry_bar+1:
-            - si low[j] <= SL i high[j] >= TP: SL-first (fill a sl_price)
-            - si low[j] <= SL: fill a sl_price
-            - si high[j] >= TP: fill a tp_price
+    - SL/TP comprovat intra-barra usant high/low via resolve_sl_tp_hit(mode=intrabar_mode):
+        · sl_first  (default): si ambdós toquen → SL
+        · tp_first:            si ambdós toquen → TP
+        · heuristic:           si ambdós toquen → el nivell més proper a open
     - TTL: exit a open[entry_bar + ttl_bars] (obert a la barra TTL)
     - Filtre divendres: si la barra d'entrada seria en zona no-trade → no obrim
       Si posició oberta i barra actual és "friday exit" → tanquem a open[bar] (o close últim)
@@ -477,27 +533,11 @@ def simulate_trades(
                 reason = "ttl"
                 exit_price_val = opens[i]
 
-            # SL/TP intra-barra (SL-first)
-            elif sl_price is not None and tp_price is not None:
-                hit_sl = lows[i] <= sl_price
-                hit_tp = highs[i] >= tp_price
-                if hit_sl and hit_tp:
-                    reason = "sl"   # SL-first (conservador)
-                    exit_price_val = sl_price
-                elif hit_sl:
-                    reason = "sl"
-                    exit_price_val = sl_price
-                elif hit_tp:
-                    reason = "tp"
-                    exit_price_val = tp_price
-
-            elif sl_price is not None and lows[i] <= sl_price:
-                reason = "sl"
-                exit_price_val = sl_price
-
-            elif tp_price is not None and highs[i] >= tp_price:
-                reason = "tp"
-                exit_price_val = tp_price
+            # SL/TP intra-barra via resolve_sl_tp_hit (mode configurable T8.20)
+            else:
+                reason, exit_price_val = resolve_sl_tp_hit(
+                    opens[i], highs[i], lows[i], sl_price, tp_price, intrabar_mode
+                )
 
             if reason and exit_price_val is not None:
                 pnl_pct = (exit_price_val - entry_price) / entry_price * 100.0
@@ -690,6 +730,7 @@ def run_backtest(
     artifacts_dir: Optional[Path] = None,
     warmup_bars: int = 0,
     day_offset_h: int = 0,
+    intrabar_mode: str = "sl_first",
 ) -> int:
     """
     Executa el backtest complet.
@@ -703,6 +744,11 @@ def run_backtest(
       0  → barres D1 comencen a 00:00 UTC (default LAB original)
       5  → barres D1 comencen a 05:00 UTC (=00:00 UTC-5, equivalent MT4 Dukascopy)
       Altres tf (H4, H1, etc.) NO s'veuen afectats per aquest paràmetre.
+
+    intrabar_mode: comportament quan SL i TP toquen tots dos en la mateixa barra.
+      sl_first  (default) — SL guanya (conservador, contracte original)
+      tp_first            — TP guanya (optimista)
+      heuristic           — el nivell més proper a open guanya (determinista)
 
     Retorna 0=OK, 1=error dades, 2=error estratègia.
     """
@@ -742,15 +788,19 @@ def run_backtest(
 
     day_offset_s = day_offset_h * 3600
 
+    if intrabar_mode not in INTRABAR_MODES:
+        print(f"ERROR intrabar_mode no vàlid: {intrabar_mode}. Valors vàlids: {INTRABAR_MODES}")
+        return 2
+
     print(
         f"CONFIG strategy={strategy} symbol={symbol} tf={tf} "
         f"from={from_date} to={to_date} "
         f"ttl_bars={ttl_bars} sl={sl_coef} tp={tp_coef} "
         f"warmup_bars={warmup_bars} warmup_days={warmup_days} "
-        f"day_offset_h={day_offset_h} "
+        f"day_offset_h={day_offset_h} intrabar_mode={intrabar_mode} "
         f"ensure_sync={ensure_sync_flag} base_url={base_url}"
     )
-    print(f"CONTRACT {EXECUTION_CONTRACT}")
+    print(f"CONTRACT {_execution_contract(intrabar_mode)}")
 
     # Ensure sync (usa rang original, no el warmup)
     sync_info: Optional[dict] = None
@@ -801,7 +851,7 @@ def run_backtest(
         return 2
 
     # Simulació (Execution Contract v2) — inclou warmup però filtrem trades posteriorment
-    trades_all = simulate_trades(df, signals, atr, cfg)
+    trades_all = simulate_trades(df, signals, atr, cfg, intrabar_mode=intrabar_mode)
 
     # Filtra trades del warmup: només trades amb entry_ts >= from_ts
     trades = [t for t in trades_all if t["entry_ts"] >= from_ts]
@@ -812,11 +862,16 @@ def run_backtest(
 
     # KPIs i equity
     summary = compute_kpis(trades, symbol, tf, from_date, to_date, cfg, sync_info)
+    summary["intrabar_mode"] = intrabar_mode
     equity = compute_equity(trades)
 
-    # Artifacts
+    # Artifacts: si mode != sl_first, guarda en subdirectori per no sobreescriure baseline
     base_artifacts = artifacts_dir if artifacts_dir else ARTIFACTS_DIR
-    artifact_dir = base_artifacts / strategy / symbol / tf / f"{from_date}_{to_date}"
+    date_dir = f"{from_date}_{to_date}"
+    if intrabar_mode == "sl_first":
+        artifact_dir = base_artifacts / strategy / symbol / tf / date_dir
+    else:
+        artifact_dir = base_artifacts / strategy / symbol / tf / date_dir / intrabar_mode
     write_artifacts(artifact_dir, summary, trades, equity)
 
     print(f"artifacts → {artifact_dir}/")
@@ -850,6 +905,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--day-offset-h", type=int, default=0,
                         help="Hora UTC d'inici de barra diària (0=00:00 UTC, 5=05:00 UTC=MT4). "
                              "Default: 0 (o day_offset_h del config YAML)")
+    parser.add_argument("--intrabar-mode", default="sl_first",
+                        choices=list(INTRABAR_MODES),
+                        help="Mode resolució SL/TP quan ambdós toquen la mateixa barra. "
+                             "sl_first=conservador (default), tp_first=optimista, "
+                             "heuristic=distància a open")
     return parser.parse_args()
 
 
@@ -866,4 +926,5 @@ if __name__ == "__main__":
         artifacts_dir=Path(args.artifacts_dir) if args.artifacts_dir else None,
         warmup_bars=args.warmup_bars,
         day_offset_h=args.day_offset_h,
+        intrabar_mode=args.intrabar_mode,
     ))

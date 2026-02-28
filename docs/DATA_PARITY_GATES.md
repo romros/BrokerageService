@@ -150,6 +150,22 @@ Backtest `eurusd_ema200_rsi35_atr_d1` reexecutat amb dades estabilitzades (T8.16
 
 **Report:** `lab/runner/out_compare/report_after_gate_b.json`
 
+### Intrabar sensitivity analysis (T8.20)
+
+Implementats 3 modes `--intrabar-mode {sl_first,tp_first,heuristic}` a `run_backtest.py`.
+
+| Mode | n_trades | net_pnl | win_rate | max_dd | entry_match_rate vs MT4 |
+|------|----------|---------|---------|--------|------------------------|
+| sl_first | 18 | 1.96% | 44.44% | 4.39% | **50.0%** |
+| tp_first | 18 | 1.96% | 44.44% | 4.39% | **50.0%** |
+| heuristic | 18 | 1.96% | 44.44% | 4.39% | **50.0%** |
+
+**Conclusió T8.20:** Cap barra D1 tocava simultàniament SL i TP (`dual_hit_bars=0`). Els 3 modes produeixen trades **idèntics**. La divergència LAB↔MT4 (4 trades missing, 50% entry match) **no és per tick order intrabar**. Causa residual: diferència de model de senyals EMA/RSI/ATR entre LAB Python i MT4 MQL4.
+
+**Recomanació:** `no_ticks_needed_for_d1_parity` — no cal implementar tick replay per millorar la paritat D1.
+
+**Report:** `lab/runner/out_compare/intrabar_sensitivity_report.json`
+
 ---
 
 ## Política de qualitat de dades
@@ -187,6 +203,7 @@ L'única eliminació possible és via `repair_empty_parquets.py --fix` (explíci
 
 | Data | Tasca | Canvi |
 |------|-------|-------|
+| 2026-02-28 | T8.20 | Intrabar modes (sl_first/tp_first/heuristic) — 3 modes idèntics, no_ticks_needed |
 | 2026-02-28 | T8.19 | Fix expected_bar_count (<=100%), Gate D recheck PASS, compare_trades after_gate_b |
 | 2026-02-28 | T8.18 | Gate B PASS (aggregation M1→H1/H4/D1) + Gate C recheck PASS |
 | 2026-02-28 | T8.17 | Gate A PARTIAL: Dukascopy EURUSD M1 comença 2007-01 |
