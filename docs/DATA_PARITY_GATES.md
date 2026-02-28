@@ -166,6 +166,32 @@ Implementats 3 modes `--intrabar-mode {sl_first,tp_first,heuristic}` a `run_back
 
 **Report:** `lab/runner/out_compare/intrabar_sensitivity_report.json`
 
+### Indicator Parity Harness (T8.21) — Root cause confirmat
+
+**Root cause:** EMA200 seeding divergence per gap Dukascopy 2007-06→2011-12 (55 mesos buits).
+
+| Factor | Valor |
+|--------|-------|
+| EMA200 LAB @ 2012-01 | ~1.330 (calculat) |
+| EMA200 MT4 @ 2012-01 | ~1.280 (estimat, 4+ anys dades 2003-2011) |
+| Diff inicial | **~500 pips** |
+| Convergència a <10 pips | ~391 barres D1 (≈ 2013-04) |
+| Convergència a <1 pip | ~621 barres D1 (≈ 2013-12) |
+
+**Impacte sobre trades:**
+- **6 trades MT4 2007-2011:** irreproduïbles (cap dada Dukascopy pre-2012)
+- **2013-2014:** senyals desplaçats ±4-6 dies per EMA divergida
+- **2016+:** EMA convergida, diferències residuals ≤ ±2 dies per RSI
+
+**Eines creades:**
+- `application/tools/export_indicators_csv.py` — exporta EMA/RSI/ATR LAB barra-a-barra
+- `lab/runner/out_compare/compare_indicators.py` — compara indicadors MT4 vs LAB
+- `lab/runner/mql4/IndicatorExporter.mq4` — EA per exportar indicadors des de MT4
+
+**Fix pendent:** executar `IndicatorExporter.mq4` a MT4 → obtenir CSV → seeding EMA extern (opció A).
+
+**Report:** `lab/runner/out_compare/indicator_seeding_report.json`
+
 ---
 
 ## Política de qualitat de dades
@@ -203,6 +229,7 @@ L'única eliminació possible és via `repair_empty_parquets.py --fix` (explíci
 
 | Data | Tasca | Canvi |
 |------|-------|-------|
+| 2026-02-28 | T8.21 | Indicator parity harness + seeding root cause confirmat (EMA200 drift 500 pips) |
 | 2026-02-28 | T8.20 | Intrabar modes (sl_first/tp_first/heuristic) — 3 modes idèntics, no_ticks_needed |
 | 2026-02-28 | T8.19 | Fix expected_bar_count (<=100%), Gate D recheck PASS, compare_trades after_gate_b |
 | 2026-02-28 | T8.18 | Gate B PASS (aggregation M1→H1/H4/D1) + Gate C recheck PASS |

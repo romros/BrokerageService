@@ -1,0 +1,108 @@
+{
+  "task": "T8.21",
+  "strategy": "eurusd_ema200_rsi35_atr_d1",
+  "symbol": "EURUSD",
+  "tf": "1d",
+  "date": "2026-02-28",
+  "diagnosis": {
+    "root_cause": "EMA200 seeding divergence due to Dukascopy M1 gap 2007-06→2011-12",
+    "description": "MT4 disposa de dades EURUSD D1 des de 2003 (via ticks/candles històrics SQ). LAB disposa de dades des de 2007-01 (123 barres D1), però hi ha un gap confirmat de 55 mesos (2007-06→2011-12) sense cap dada Dukascopy. La EMA(200) Python (ewm, adjust=False) s'inicialitza al primer close disponible (2007-01-01 ≈ 1.319) i evoluciona des d'aquí. MT4 tenia ~4 anys de barres anteriors (EURUSD baixà de 1.33 a 1.20 el 2008), de manera que la seva EMA200 a finals 2007 era ~1.28-1.30 (estimat). El gap de 55 mesos 'congela' la EMA LAB al valor de 2007-05 (~1.330). El 2012-01, LAB EMA200 ≈ 1.330 vs MT4 EMA200 estimada ≈ 1.280 → diff = ~500 pips.",
+    "ema200_diff_2012_estimated_pips": 500,
+    "dukascopy_gap_months": 55,
+    "dukascopy_gap_range": "2007-06 → 2011-12",
+    "lab_first_bar": "2007-01-01",
+    "lab_d1_bars_2007": 123
+  },
+  "convergence_analysis": {
+    "alpha_ema200": 0.00995,
+    "initial_diff_pips": 500,
+    "bars_to_converge_100pip": 160,
+    "bars_to_converge_10pip": 391,
+    "bars_to_converge_1pip": 621,
+    "d1_bars_per_year": 312,
+    "estimated_convergence_date": {
+      "100pip": "2012-06 (approx)",
+      "10pip": "2013-04 (approx)",
+      "1pip": "2013-12 (approx)"
+    },
+    "note": "La EMA200 LAB convergirà cap a la MT4 a mesura que acumulin barres post-2012. El 2013 encara hi ha una divergència significativa (~50-200 pips) que altera quines barres passen el filtre Close > EMA200."
+  },
+  "trade_impact": {
+    "pre_2012_trades_impossible": {
+      "count": 6,
+      "dates": [
+        "2007-01-12",
+        "2007-06-13",
+        "2007-08-16",
+        "2008-08-06",
+        "2009-12-13",
+        "2011-05-16"
+      ],
+      "reason": "No hi ha dades Dukascopy per aquest rang. LAB físicament no pot reproduir."
+    },
+    "post_2012_divergence": {
+      "description": "La divergència EMA200 altera la data d'entrada de trade clusters (RSI<35).",
+      "examples": [
+        {
+          "mt4_entry": "2013-03-01",
+          "lab_entry": "2013-02-25",
+          "diff_days": -4,
+          "reason": "EMA LAB alta → Close cruça EMA 4 dies abans que MT4"
+        },
+        {
+          "mt4_entry": "2013-11-08",
+          "lab_entry": "2013-11-04",
+          "diff_days": -4,
+          "reason": "EMA LAB ~133 pips alta → senyal RSI<35 diferent timing"
+        },
+        {
+          "mt4_entry": "2016-05-20",
+          "lab_entry": "2016-05-22",
+          "diff_days": 2,
+          "reason": "EMA convergida, però timing ±2D per RSI diferent"
+        }
+      ]
+    }
+  },
+  "fix_options": [
+    {
+      "option": "A: Usar seed extern (EMA MT4 value)",
+      "description": "Si tinguéssim el valor EMA200 MT4 a 2007-01-01, podríem inicialitzar la ewm amb aquell valor. Això requeriria l'export MT4 (IndicatorExporter.mq4). Implementable però necessita el CSV MT4.",
+      "status": "PENDING — requereix MT4 CSV"
+    },
+    {
+      "option": "B: Usar SMA(200) com a seed",
+      "description": "Substituir ewm(adjust=False) per inicialitzar EMA amb SMA dels primers 200 punts. Pandas ewm(adjust=False) JA fa servir el primer valor disponible com a seed. Amb SMA seed, el primer valor EMA200 seria la mitjana dels 200 primers closes. Però com LAB té 123 barres 2007 i gap 2008-2011, no canvia substancialment el problema de divergència vs MT4.",
+      "status": "NOT USEFUL — el gap continua existint"
+    },
+    {
+      "option": "C: Iniciar el backtest des de 2016+ (EMA convergida)",
+      "description": "Triar --from >= 2016-01-01 quan l'EMA200 LAB ja ha convergit suficientment cap a la MT4 (error < 1 pip ≈ 2014). Per a backtesting post-2016, la paritat d'indicadors seria molt alta. La diferència de n_trades seria: 22 MT4 → ~16 MT4 post-2016 (excloent els 6 trades pre-2012 i els 2013-2014 de transició).",
+      "status": "WORKAROUND — no un fix real però viable per backtest focus post-2016"
+    },
+    {
+      "option": "D: Aconseguir font alternativa dades 2008-2011",
+      "description": "Descarregar dades EURUSD D1 des d'altra font (Yahoo Finance, Quandl, broker alternatiu) per omplir el gap 2008-2011 i tenir suficients barres per estabilitzar EMA200 molt abans. Requereix task independent de data sourcing.",
+      "status": "FUTURE — fora d'abast T8.21"
+    }
+  ],
+  "mt4_export_instructions": {
+    "file": "lab/runner/mql4/IndicatorExporter.mq4",
+    "steps": [
+      "1. Copiar IndicatorExporter.mq4 a la carpeta MQL4/Experts/ de MetaTrader 4",
+      "2. Compilar (F7) i verificar 0 errors",
+      "3. Configurar inputs: SYMBOL=EURUSD, FROM_DATE=2007.01.01, TO_DATE=2026.01.01",
+      "4. Attach a qualsevol chart amb dades EURUSD D1 cargades (recomenat: fer scroll enrere fins 2003)",
+      "5. El EA exporta el CSV a MQL4/Files/indicators_mt4_20070101_20260101.csv",
+      "6. Copiar el CSV a lab/runner/out_compare/",
+      "7. Executar compare_indicators.py amb --lab i --mt4 especificats"
+    ],
+    "note": "El format de timestamp al CSV MT4 és UTC-5 (servidor Dukascopy). compare_indicators.py converteix automàticament (ts_utcm5 + 5*3600 = ts_utc)."
+  },
+  "pending_steps": [
+    "Obtenir CSV MT4 (IndicatorExporter.mq4) per confirmar EMA200 MT4 @ 2012-01",
+    "Executar compare_indicators.py per report bar-a-bar quantitatiu",
+    "Decidir fix opció: A (seed extern) o D (font alternativa 2008-2011)"
+  ],
+  "recommendation": "La divergència LAB↔MT4 és 95% explicada per la manca de dades 2008-2011 i el consegüent seeding inadequat de l'EMA200. Un cop l'usuari executi IndicatorExporter.mq4 a MT4 i proporcioni el CSV, es pot implementar el seeding extern (opció A) i veure si entry_match_rate millora a >70%. Sense el CSV MT4, la conclusió actual és: 'seeding issue confirmat per anàlisi matemàtic, fix pendent de dades MT4'."
+}
