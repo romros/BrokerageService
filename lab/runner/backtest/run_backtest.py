@@ -468,18 +468,27 @@ def resolve_sl_tp_hit(
 # Simulació de trades (Execution Contract v2)
 # ---------------------------------------------------------------------------
 
+ENTRY_FILL_MODES = ("open_i", "open_i1")
+SIGNAL_CONTRACTS = ("mt4_baropen", "v2")
+
+
 def simulate_trades(
     df: pd.DataFrame,
     signals: pd.Series,
     atr: pd.Series,
     cfg: dict,
     intrabar_mode: str = "sl_first",
+    entry_fill: str = "open_i1",
+    signal_contract: str = "v2",
 ) -> list[dict[str, Any]]:
     """
-    Simula trades amb Execution Contract v2:
+    Simula trades amb contracte configurable (T8.30):
 
-    - Senyal calculat a barra i (usant dades fins i-1, sense lookahead)
-    - Entrada MARKET a open[i+1] (barra que obre just després)
+    entry_fill open_i:  senyal a barra i → entrada a open[i] (MT4 On Bar Open)
+    entry_fill open_i1: senyal a barra i-1 → entrada a open[i] (v2 original, 1 bar delay)
+
+    signal_contract mt4_baropen: senyal a i usa close/indicadors de i-1, entrada a open[i]
+    signal_contract v2: mateix senyal, entrada a open[i+1]
     - SL/TP comprovat intra-barra usant high/low via resolve_sl_tp_hit(mode=intrabar_mode):
         · sl_first  (default): si ambdós toquen → SL
         · tp_first:            si ambdós toquen → TP
@@ -555,10 +564,16 @@ def simulate_trades(
                 sl_price = None
                 tp_price = None
 
-        # Nova entrada: senyal a barra i-1 → entrem a open[i]
-        sig_prev = sig_values[i - 1]
-        if not in_trade and sig_prev == 1 and not is_weekend and not is_fri_exit:
-            atr_val = atr_values[i - 1]
+        # Nova entrada (T8.30: contracte configurable)
+        # open_i:  senyal a i → entrada a open[i]. open_i1: senyal a i-1 → entrada a open[i]
+        if entry_fill == "open_i":
+            sig_entry = sig_values[i]
+            atr_idx = i - 1
+        else:  # open_i1
+            sig_entry = sig_values[i - 1]
+            atr_idx = i - 1
+        if not in_trade and sig_entry == 1 and not is_weekend and not is_fri_exit:
+            atr_val = atr_values[atr_idx]
             # Si necessitem SL o TP i no hi ha ATR vàlid, skipem
             if (sl_coef > 0 or tp_coef > 0) and (atr_val is None or np.isnan(atr_val)):
                 continue
@@ -733,6 +748,8 @@ def run_backtest(
     intrabar_mode: str = "sl_first",
     indicator_mode: str = "default",
     ema_seed: str = "sma",
+    entry_fill: str = "open_i1",
+    signal_contract: str = "v2",
 ) -> int:
     """
     Executa el backtest complet.
@@ -795,6 +812,12 @@ def run_backtest(
     if intrabar_mode not in INTRABAR_MODES:
         print(f"ERROR intrabar_mode no vàlid: {intrabar_mode}. Valors vàlids: {INTRABAR_MODES}")
         return 2
+    if entry_fill not in ENTRY_FILL_MODES:
+        print(f"ERROR entry_fill no vàlid: {entry_fill}. Valors vàlids: {ENTRY_FILL_MODES}")
+        return 2
+    if signal_contract not in SIGNAL_CONTRACTS:
+        print(f"ERROR signal_contract no vàlid: {signal_contract}. Valors vàlids: {SIGNAL_CONTRACTS}")
+        return 2
 
     print(
         f"CONFIG strategy={strategy} symbol={symbol} tf={tf} "
@@ -802,6 +825,7 @@ def run_backtest(
         f"ttl_bars={ttl_bars} sl={sl_coef} tp={tp_coef} "
         f"warmup_bars={warmup_bars} warmup_days={warmup_days} "
         f"day_offset_h={day_offset_h} intrabar_mode={intrabar_mode} "
+        f"entry_fill={entry_fill} signal_contract={signal_contract} "
         f"ensure_sync={ensure_sync_flag} base_url={base_url}"
     )
     print(f"CONTRACT {_execution_contract(intrabar_mode)}")
@@ -864,8 +888,13 @@ def run_backtest(
         print(f"ERROR estratègia: {exc}")
         return 2
 
-    # Simulació (Execution Contract v2) — inclou warmup però filtrem trades posteriorment
-    trades_all = simulate_trades(df, signals, atr, cfg, intrabar_mode=intrabar_mode)
+    # Simulació (T8.30: contracte configurable)
+    trades_all = simulate_trades(
+        df, signals, atr, cfg,
+        intrabar_mode=intrabar_mode,
+        entry_fill=entry_fill,
+        signal_contract=signal_contract,
+    )
 
     # Filtra trades del warmup: només trades amb entry_ts >= from_ts
     trades = [t for t in trades_all if t["entry_ts"] >= from_ts]
@@ -877,6 +906,8 @@ def run_backtest(
     # KPIs i equity
     summary = compute_kpis(trades, symbol, tf, from_date, to_date, cfg, sync_info)
     summary["intrabar_mode"] = intrabar_mode
+    summary["entry_fill"] = entry_fill
+    summary["signal_contract"] = signal_contract
     equity = compute_equity(trades)
 
     # Artifacts: si mode != sl_first, guarda en subdirectori per no sobreescriure baseline
@@ -927,6 +958,10 @@ def _parse_args() -> argparse.Namespace:
                         help="T8.29A: default=pandas ewm, mt4_like=EMA/RSI/ATR MT4-exact")
     parser.add_argument("--ema-seed", default="sma", choices=("sma", "first"),
                         help="T8.29A: EMA seed quan indicator_mode=mt4_like. sma=SMA(period), first=close[0]")
+    parser.add_argument("--entry-fill", default="open_i1", choices=list(ENTRY_FILL_MODES),
+                        help="T8.30: open_i=entrada a open[i], open_i1=entrada a open[i+1] (delay 1 bar)")
+    parser.add_argument("--signal-contract", default="v2", choices=list(SIGNAL_CONTRACTS),
+                        help="T8.30: mt4_baropen=On Bar Open, v2=actual")
     return parser.parse_args()
 
 
@@ -946,4 +981,6 @@ if __name__ == "__main__":
         intrabar_mode=args.intrabar_mode,
         indicator_mode=args.indicator_mode,
         ema_seed=args.ema_seed,
+        entry_fill=args.entry_fill,
+        signal_contract=args.signal_contract,
     ))
