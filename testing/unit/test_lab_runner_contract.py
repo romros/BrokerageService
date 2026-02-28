@@ -310,8 +310,9 @@ def test_no_entry_weekend():
 def test_execution_contract_string():
     """EXECUTION_CONTRACT ha de contenir les claus auditables."""
     assert "v2" in EXECUTION_CONTRACT, "CONTRACT ha de indicar versió v2"
-    assert "SL-first" in EXECUTION_CONTRACT or "sl-first" in EXECUTION_CONTRACT.lower(), (
-        "CONTRACT ha de mencionar SL-first"
+    c_lower = EXECUTION_CONTRACT.lower()
+    assert "sl-first" in c_lower or "sl_first" in c_lower, (
+        "CONTRACT ha de mencionar SL-first (sl_first o sl-first)"
     )
     assert "open[i+1]" in EXECUTION_CONTRACT or "open" in EXECUTION_CONTRACT, (
         "CONTRACT ha de mencionar entry at open"

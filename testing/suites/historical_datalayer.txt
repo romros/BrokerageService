@@ -1,4 +1,7 @@
 # historical_datalayer — Parquet storage + backfill runner + DuckDB (Phase 15+)
+# Lab runner (T8) — backtest contract, intrabar, parity MT4
+testing/unit/test_lab_runner_contract.py
+testing/unit/test_intrabar_resolve.py
 testing/apps/historical_datalayer/test_compat_report_service.py
 testing/apps/historical_datalayer/test_dukascopy_provider.py
 testing/apps/historical_datalayer/test_historical_parquet.py
