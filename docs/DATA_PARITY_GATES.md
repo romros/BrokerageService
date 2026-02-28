@@ -192,6 +192,35 @@ Implementats 3 modes `--intrabar-mode {sl_first,tp_first,heuristic}` a `run_back
 
 **Report:** `lab/runner/out_compare/indicator_seeding_report.json`
 
+### Dukascopy M1 pre-2007 via bi5 (T8.23)
+
+**Descoberta:** SQ `DataSourceDukascopy` usa el feed binari natiu `.bi5`, no l'API JSON pública.
+
+| Factor | Detall |
+|--------|--------|
+| URL real (SQ intern) | `https://datafeed.dukascopy.com/datafeed/{SYM}/{Y}/{M_0idx}/{D}/BID_candles_min_1.bi5` |
+| Format .bi5 | LZMA standalone + 24B/record (ts_s BE uint32, o/h/l/c BE uint32 ×10⁻⁵, vol BE float32) |
+| Disponible des de | 2003-05-05 (EURUSD, GBPUSD, USDJPY, etc.) |
+| Raó de gap anterior | API JSON (`dukascopy_python`) crida endpoint diferent → [] pre-2007 |
+| Prova de descàrrega | EURUSD 2003-05-05→2003-05-07: **4,320 candles** OK (200 HTTP) |
+
+**Fitxers implementats (T8.23):**
+- `application/data/dukascopy_bi5.py` — parser + downloader bi5 (ús standalone o com a mòdul)
+- `infrastructure/venues/dukascopy/bi5_backfill_provider.py` — `Bi5BackfillProvider` (IBackfillProvider)
+- `DukascopyBackfillProvider.fetch_ohlcv()` — fallback automàtic bi5 si JSON retorna [] pre-2007
+
+**Prova CLI:**
+```bash
+python3 -m application.data.dukascopy_bi5 \
+    --symbol EURUSD --from 2003-05-05 --to 2003-05-08 \
+    --out /tmp/eurusd_2003_proof.csv
+# → 4320 candles, 2003-05-05 00:00 → 2003-05-07 23:59 UTC
+```
+
+**Pendent:** resync 2003-05-05→2006-12 via `sync_symbol.sh` per cobrir el gap pre-2007 (+~2.7M rows).
+
+**Tests:** `testing/unit/test_dukascopy_bi5.py` (15 tests 0-network)
+
 ---
 
 ## Política de qualitat de dades
@@ -229,6 +258,7 @@ L'única eliminació possible és via `repair_empty_parquets.py --fix` (explíci
 
 | Data | Tasca | Canvi |
 |------|-------|-------|
+| 2026-02-28 | T8.23 | Dukascopy M1 pre-2007 via bi5: endpoint identificat, downloader + Bi5BackfillProvider + 15 tests |
 | 2026-02-28 | T8.21 | Indicator parity harness + seeding root cause confirmat (EMA200 drift 500 pips) |
 | 2026-02-28 | T8.20 | Intrabar modes (sl_first/tp_first/heuristic) — 3 modes idèntics, no_ticks_needed |
 | 2026-02-28 | T8.19 | Fix expected_bar_count (<=100%), Gate D recheck PASS, compare_trades after_gate_b |

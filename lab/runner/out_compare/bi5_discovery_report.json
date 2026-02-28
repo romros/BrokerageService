@@ -1,0 +1,93 @@
+{
+  "task": "T8.23",
+  "title": "Dukascopy M1 pre-2007 via bi5 feed — Discovery Report",
+  "date": "2026-02-28",
+  "phases": {
+    "A_files_on_disk": {
+      "status": "DONE",
+      "sq_dataset_path": "/mnt/volume-SQ/user/data/History/EURUSD_M1_dukas_M1_UTCMinus05/",
+      "files": [
+        "EURUSD_M1_dukas_M1_UTCMinus05_M1.dat (143 MB)",
+        "EURUSD_M1_dukas_M1_UTCMinus05_H4.dat (808 KB)"
+      ],
+      "sq_records": 8528094,
+      "sq_start_date": "2003-05-05",
+      "sq_format": "SQ binary .dat (propietari — no parsejat directament)",
+      "dukascopy_csv_metadata": "dukascopy.csv indica EURUSD disponible des de 05.05.2003"
+    },
+    "B_endpoint_identification": {
+      "status": "DONE",
+      "source_jar": "SQTradingLib.jar",
+      "source_class": "com.strategyquant.tradinglib.dukascopy.DukascopyUtils",
+      "url_m1": "https://datafeed.dukascopy.com/datafeed/{SYMBOL}/{YEAR}/{MONTH_0IDX:02d}/{DAY:02d}/BID_candles_min_1.bi5",
+      "url_tick": "http://datafeed.dukascopy.com/datafeed/{SYMBOL}/{YEAR}/{MONTH_0IDX:02d}/{DAY:02d}/{HOUR:02d}h_ticks.bi5",
+      "month_indexing": "0-indexed (Jan=00, Dec=11)",
+      "compression": "LZMA standalone (SevenZip/LZMA, Python lzma.FORMAT_ALONE)",
+      "record_format_m1": {
+        "size_bytes": 24,
+        "fields": [
+          {"name": "ts_s", "type": "uint32 BE", "unit": "seconds from day start UTC"},
+          {"name": "open", "type": "uint32 BE", "unit": "price * 100000 (Forex 5-decimal)"},
+          {"name": "high", "type": "uint32 BE", "unit": "price * 100000"},
+          {"name": "low", "type": "uint32 BE", "unit": "price * 100000"},
+          {"name": "close", "type": "uint32 BE", "unit": "price * 100000"},
+          {"name": "vol", "type": "float32 BE", "unit": "volume (lots)"}
+        ],
+        "jpy_scale": "price * 1000 for JPY pairs (USDJPY, EURJPY, etc.)"
+      },
+      "http_verification": {
+        "url_tested": "https://datafeed.dukascopy.com/datafeed/EURUSD/2003/04/05/BID_candles_min_1.bi5",
+        "http_code": 200,
+        "compressed_size_bytes": 12285,
+        "decompressed_size_bytes": 34560,
+        "records_per_day": 1440,
+        "first_candle_open": 1.12161
+      }
+    },
+    "C_proof_of_download": {
+      "status": "DONE",
+      "symbol": "EURUSD",
+      "dates": "2003-05-05 to 2003-05-07",
+      "candles_downloaded": 4320,
+      "first_ts_utc": 1052092800,
+      "first_date_utc": "2003-05-05 00:00:00",
+      "last_date_utc": "2003-05-07 23:59:00",
+      "sample_candle": {
+        "ts_utc": 1052092800,
+        "open": 1.12161,
+        "high": 1.12209,
+        "low": 1.12161,
+        "close": 1.12209,
+        "vol": 258.1
+      },
+      "output_csv": "/tmp/eurusd_2003_proof.csv"
+    },
+    "D_integration": {
+      "status": "DONE",
+      "files_created": [
+        "application/data/dukascopy_bi5.py",
+        "infrastructure/venues/dukascopy/bi5_backfill_provider.py",
+        "testing/unit/test_dukascopy_bi5.py"
+      ],
+      "files_modified": [
+        "infrastructure/venues/dukascopy/dukascopy_backfill_provider.py (fallback bi5 pre-2007)"
+      ],
+      "tests_passed": 15,
+      "tests_total": 15,
+      "fallback_logic": "Si DukascopyBackfillProvider retorna [] i start.year <= 2006, usa Bi5BackfillProvider"
+    }
+  },
+  "gap_analysis": {
+    "our_coverage_before": "2007-01 to 2026-02 (175 months, 5,756,530 rows)",
+    "sq_coverage": "2003-05 to present (~8,528,094 rows)",
+    "gap_months_pre2007": 44,
+    "estimated_rows_to_recover": 2700000,
+    "recovery_method": "sync_symbol.sh EURUSD --from 2003-05-01 --to 2006-12-31",
+    "next_step": "PENDING: run resync pre-2007"
+  },
+  "root_cause_pre2007_gap": {
+    "cause": "dukascopy_python biblioteca usa API JSON endpoint que retorna [] pre-2007",
+    "real_endpoint": "bi5 binari (https://datafeed.dukascopy.com/datafeed/...)",
+    "fix": "Bi5BackfillProvider com a fallback automatico al DukascopyBackfillProvider"
+  }
+}
