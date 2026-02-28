@@ -1,0 +1,79 @@
+{
+  "report_type": "gate_b_aggregation",
+  "generated": "2026-02-28T20:32:15.413690+00:00",
+  "symbol": "EURUSD",
+  "from_date": "2004-01-01",
+  "to_date": "2005-01-01",
+  "m1_count": 527040,
+  "day_offset_h": 5.0,
+  "day_boundary_utc": "05:00 UTC",
+  "gate_status": "PASS",
+  "timeframes": {
+    "1h": {
+      "tf": "1h",
+      "bar_count": 8784,
+      "bar_count_expected": 6444,
+      "coverage_ratio": 1.3631,
+      "missing_ratio": -0.3631,
+      "earliest_bar": "2004-01-01T00:00:00+00:00",
+      "latest_bar": "2004-12-31T23:00:00+00:00",
+      "flat_bar_ratio": 0.284608,
+      "ohlc_invariants": {
+        "invariants_ok": true,
+        "broken_count": 0,
+        "broken_examples": []
+      },
+      "gaps": {
+        "gap_count": 0,
+        "max_gap_bars": 0,
+        "total_gap_bars": 0,
+        "gap_examples": []
+      },
+      "pass": true
+    },
+    "4h": {
+      "tf": "4h",
+      "bar_count": 2197,
+      "bar_count_expected": 1611,
+      "coverage_ratio": 1.3637,
+      "missing_ratio": -0.3637,
+      "earliest_bar": "2003-12-31T21:00:00+00:00",
+      "latest_bar": "2004-12-31T21:00:00+00:00",
+      "flat_bar_ratio": 0.260355,
+      "ohlc_invariants": {
+        "invariants_ok": true,
+        "broken_count": 0,
+        "broken_examples": []
+      },
+      "gaps": {
+        "gap_count": 0,
+        "max_gap_bars": 0,
+        "total_gap_bars": 0,
+        "gap_examples": []
+      },
+      "pass": true
+    },
+    "1d": {
+      "tf": "1d",
+      "bar_count": 367,
+      "bar_count_expected": 315,
+      "coverage_ratio": 1.1651,
+      "missing_ratio": -0.1651,
+      "earliest_bar": "2003-12-31T05:00:00+00:00",
+      "latest_bar": "2004-12-31T05:00:00+00:00",
+      "flat_bar_ratio": 0.141689,
+      "ohlc_invariants": {
+        "invariants_ok": true,
+        "broken_count": 0,
+        "broken_examples": []
+      },
+      "gaps": {
+        "gap_count": 0,
+        "max_gap_bars": 0,
+        "total_gap_bars": 0,
+        "gap_examples": []
+      },
+      "pass": true
+    }
+  }
+}

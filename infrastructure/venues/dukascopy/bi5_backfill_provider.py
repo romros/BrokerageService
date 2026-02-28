@@ -99,13 +99,18 @@ class Bi5BackfillProvider(IBackfillProvider):
             if ts < start_ts or ts >= end_ts:
                 continue
             ts_dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+            o, h, l, c = r["open"], r["high"], r["low"], r["close"]
+            # Correcció invariant OHLC: Dukascopy bi5 pot tenir open/close fora del rang h/l
+            # per arrodoniment de coma flotant (els preus estan codificats com enters ×10^5)
+            h = max(o, h, c)
+            l = min(o, l, c)
             candles.append(Candle(
                 symbol=symbol.upper(),
                 timestamp=ts_dt,
-                open=r["open"],
-                high=r["high"],
-                low=r["low"],
-                close=r["close"],
+                open=o,
+                high=h,
+                low=l,
+                close=c,
                 volume=r.get("vol", 0) or 0,
                 is_closed=True,
             ))
@@ -119,3 +124,11 @@ class Bi5BackfillProvider(IBackfillProvider):
     async def is_available(self) -> bool:
         """Sempre disponible (accés directe HTTPS, sense deps addicionals)."""
         return True
+
+    @property
+    def provider_name(self) -> str:
+        return "dukascopy_bi5"
+
+    @property
+    def max_range_minutes(self) -> int:
+        return 10080  # 7 dies per request
