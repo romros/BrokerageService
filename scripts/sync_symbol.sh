@@ -133,19 +133,31 @@ _poll_job() {
     local res
     res=$(_curl "${BASE_URL}/sync/${job_id}") || { sleep "$POLL_INTERVAL_S"; continue; }
 
-    local status done total skipped failed eta
+    local status done total skipped empty suspect failed eta
     status=$(echo "$res"   | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('status','?'))" 2>/dev/null || echo "?")
     done=$(echo "$res"     | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('done',0))" 2>/dev/null || echo "0")
     total=$(echo "$res"    | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('total_units',0))" 2>/dev/null || echo "0")
     skipped=$(echo "$res"  | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('skipped',0))" 2>/dev/null || echo "0")
+    empty=$(echo "$res"    | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('empty',0))" 2>/dev/null || echo "0")
+    suspect=$(echo "$res"  | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('suspect',0))" 2>/dev/null || echo "0")
     failed=$(echo "$res"   | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('failed',0))" 2>/dev/null || echo "0")
     eta=$(echo "$res"      | python3 -c "import sys,json;d=json.load(sys.stdin);v=d.get('eta_s');print(f'{v:.0f}s' if v else '-')" 2>/dev/null || echo "-")
 
-    _l "  [${job_id}] status=${status} done=${done}/${total} skipped=${skipped} failed=${failed} eta=${eta}"
+    _l "  [${job_id}] status=${status} done=${done}/${total} skipped=${skipped} empty=${empty} suspect=${suspect} failed=${failed} eta=${eta}"
 
     case "$status" in
       DONE)
-        _l "  Job ${job_id} DONE (done=${done} skipped=${skipped} failed=${failed})"
+        local suspect_months failed_months
+        suspect_months=$(echo "$res" | python3 -c "import sys,json;d=json.load(sys.stdin);ms=d.get('suspect_months',[]); print(' '.join(ms) if ms else '-')" 2>/dev/null || echo "-")
+        failed_months=$(echo "$res"  | python3 -c "import sys,json;d=json.load(sys.stdin);ms=d.get('failed_months',[]); print(' '.join(ms) if ms else '-')" 2>/dev/null || echo "-")
+        _l "  === RESUM JOB ${job_id} ==="
+        _l "    written:  ${done}"
+        _l "    skipped:  ${skipped}"
+        _l "    empty:    ${empty}  (Dukascopy no té dades — normal)"
+        _l "    suspect:  ${suspect}  (cobertura baixa — informatiu)"
+        _l "    failed:   ${failed}"
+        [[ "$suspect_months" != "-" ]] && _l "    suspect_months: ${suspect_months}"
+        [[ "$failed_months"  != "-" ]] && _l "    failed_months:  ${failed_months}"
         return 0
         ;;
       FAILED)

@@ -11,9 +11,9 @@ Cobertura:
   4. test_write_month_with_data_creates_file:
      write_month(candles) crea fitxer i retorna Path
   5. test_sync_manager_empty_api_marks_coverage_empty:
-     quan fetch retorna [], coverage es marca empty i job.skipped puja
+     quan fetch retorna [], coverage es marca empty i job.empty puja (T8.16)
   6. test_sync_manager_skips_coverage_empty_month:
-     mes amb coverage=empty → skip sense fetch
+     mes amb coverage=empty → skip sense fetch, job.empty puja (T8.16)
 """
 
 import asyncio
@@ -146,7 +146,7 @@ async def test_sync_manager_empty_api_marks_coverage_empty():
     Quan Dukascopy retorna [] per un mes:
     - NO es crea parquet
     - coverage es marca com 'empty' (persistit al JSON)
-    - job.skipped puja (no job.done ni job.failed)
+    - job.empty puja (T8.16: mesos buits van a job.empty, no job.skipped)
 
     Nota: el coverage=empty és escrit durant _process_month i PERSISTIT al JSON.
     El rebuild post-job no incluirà 2005-01 (no hi ha parquet), però la marca
@@ -158,8 +158,8 @@ async def test_sync_manager_empty_api_marks_coverage_empty():
         job, _ = await _run_job_and_wait(manager, "EURUSD", "1m", "2005-01-01", "2005-01-31")
 
         assert job.status == "DONE"
-        assert job.done == 0,     f"No s'han d'escriure parquets buits, done={job.done}"
-        assert job.skipped == 1,  f"El mes empty ha de comptar com skipped, skipped={job.skipped}"
+        assert job.done == 0,    f"No s'han d'escriure parquets buits, done={job.done}"
+        assert job.empty == 1,   f"El mes empty ha de comptar com empty (T8.16), empty={job.empty}"
         assert job.failed == 0
 
         # Verificar que NO s'ha creat cap fitxer parquet
@@ -233,8 +233,8 @@ async def test_sync_manager_skips_coverage_empty_month():
 
         assert job2.status == "DONE"
         assert job2.done == 0, f"No s'ha de crear parquet per mes API-buit, done={job2.done}"
-        # job.skipped=1 independentment de si salta per coverage=empty o per API=[]
-        assert job2.skipped == 1, f"Mes empty ha de ser skipped, skipped={job2.skipped}"
+        # job.empty=1 independentment de si salta per coverage=empty o per API=[] (T8.16)
+        assert job2.empty == 1, f"Mes empty ha de ser job.empty (T8.16), empty={job2.empty}"
 
         # Tampoc s'ha d'haver creat parquet en cap cas
         store = ParquetCandleStore(root_path=tmpdir)

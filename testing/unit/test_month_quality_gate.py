@@ -1,18 +1,22 @@
 """
-T8.14 — Tests unitaris per quality gate mensual (0-network).
+T8.14/T8.16 — Tests unitaris per quality gate mensual (0-network).
 
 Cobertura:
   1. test_acceptable_month:
-     parquet 15,000 rows, flat=0%, completeness≈0.8 → is_acceptable=True
-  2. test_too_few_rows:
-     parquet 500 rows → is_acceptable=False, reason conté "num_rows"
-  3. test_high_flat_ratio:
-     parquet amb flat_ratio=0.10 → is_acceptable=False, reason conté "flat_ratio"
-  4. test_low_completeness:
-     4,000 rows, expected≈40,000 → completeness≈0.10 → is_acceptable=False
+     parquet 15,000 rows, flat=0% → is_acceptable=True (mode ingest)
+  2. test_too_few_rows (integrity):
+     QUALITY_MODE=integrity + 500 rows → is_acceptable=False, reason conté "num_rows"
+  3. test_high_flat_ratio (integrity):
+     QUALITY_MODE=integrity + flat_ratio=0.10 → is_acceptable=False, reason conté "flat_ratio"
+  4. test_low_completeness (integrity):
+     QUALITY_MODE=integrity + 4,000 rows → is_acceptable=False, reason conté "completeness"
   5. test_sync_manager_quality_gate_retry:
-     SyncManager + fetch_fn que primer retorna 100 rows (falla gate),
-     segon intent retorna 15,000 rows (passa gate) → job.done=1, job.failed=0
+     Mode ingest (default) — fetch retorna pocs rows → is_acceptable=True (no retry)
+     → job.done=1, job.failed=0
+  6. test_ingest_mode_accepts_low_rows (T8.16):
+     QUALITY_MODE=ingest (default) + 500 rows → is_acceptable=True (no rebutja baixa cobertura)
+  7. test_integrity_mode_suspect (T8.16):
+     QUALITY_MODE=integrity + rows sota threshold → is_suspect=True, suspect_reason no buit
 """
 
 import tempfile
@@ -120,8 +124,9 @@ def test_acceptable_month(tmp_path, monkeypatch):
 
 def test_too_few_rows(tmp_path, monkeypatch):
     """
-    Parquet 500 rows → is_acceptable=False, reason conté 'num_rows'.
+    QUALITY_MODE=integrity + Parquet 500 rows → is_acceptable=False, reason conté 'num_rows'.
     """
+    monkeypatch.setenv("QUALITY_MODE", "integrity")
     monkeypatch.setenv("MIN_ROWS_MONTH_1M", "10000")
     monkeypatch.setenv("MAX_FLAT_RATIO_GATE", "0.05")
     monkeypatch.setenv("MIN_COMPLETENESS_1M", "0.50")
@@ -143,9 +148,10 @@ def test_too_few_rows(tmp_path, monkeypatch):
 
 def test_high_flat_ratio(tmp_path, monkeypatch):
     """
-    Parquet amb 10% flat bars → is_acceptable=False, reason conté 'flat_ratio'.
+    QUALITY_MODE=integrity + Parquet amb 10% flat bars → is_acceptable=False, reason conté 'flat_ratio'.
     12,000 rows: 1,200 flat (O=H=L=C), 10,800 normals.
     """
+    monkeypatch.setenv("QUALITY_MODE", "integrity")
     monkeypatch.setenv("MIN_ROWS_MONTH_1M", "10000")
     monkeypatch.setenv("MAX_FLAT_RATIO_GATE", "0.05")
     monkeypatch.setenv("MIN_COMPLETENESS_1M", "0.30")
@@ -175,8 +181,9 @@ def test_high_flat_ratio(tmp_path, monkeypatch):
 
 def test_low_completeness(tmp_path, monkeypatch):
     """
-    4,000 rows, expected≈33,120 (2020-01) → completeness≈0.12 → is_acceptable=False.
+    QUALITY_MODE=integrity + 4,000 rows, expected≈33,120 (2020-01) → completeness≈0.12 → is_acceptable=False.
     """
+    monkeypatch.setenv("QUALITY_MODE", "integrity")
     monkeypatch.setenv("MIN_ROWS_MONTH_1M", "1000")   # baixem min_rows per aïllar completeness
     monkeypatch.setenv("MAX_FLAT_RATIO_GATE", "0.05")
     monkeypatch.setenv("MIN_COMPLETENESS_1M", "0.50")
@@ -199,73 +206,92 @@ def test_low_completeness(tmp_path, monkeypatch):
     assert stats.completeness_ratio < 0.20
 
 
-def test_sync_manager_quality_gate_retry():
+def test_sync_manager_ingest_mode_no_retry():
     """
-    T8.14: SyncManager + fetch_fn que primer retorna 100 rows (falla gate MIN_ROWS=10,000),
-    segon intent retorna 15,000 rows (passa gate) → job.done=1, job.failed=0.
-
-    Verifica que el quality gate es integra correctament al loop de retry del sync_manager.
+    T8.16: Mode ingest (default) — fetch retorna 100 rows → gate accepta sense retry.
+    job.done=1, job.failed=0. Fetch cridat exactament 1 vegada.
     """
     import asyncio
     import os
     import tempfile
 
-    # Configurar thresholds via env vars (per a tots els processos)
-    os.environ["MIN_ROWS_MONTH_1M"] = "10000"
-    os.environ["MAX_FLAT_RATIO_GATE"] = "0.05"
-    os.environ["MIN_COMPLETENESS_1M"] = "0.30"
+    os.environ.pop("QUALITY_MODE", None)  # ingest és el default
 
-    try:
-        async def _run():
-            with tempfile.TemporaryDirectory() as tmpdir:
-                attempt_count = [0]
+    async def _run():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            attempt_count = [0]
 
-                def fetch_fn(symbol, year, month):
-                    attempt_count[0] += 1
-                    if attempt_count[0] == 1:
-                        # Primer intent: 100 rows → falla MIN_ROWS=10,000
-                        return [
-                            _make_fake_candle(year, month, i)
-                            for i in range(100)
-                        ]
-                    else:
-                        # Segon intent: 15,000 rows → passa gate (amb MIN_COMPLETENESS=0.30)
-                        return [
-                            _make_fake_candle(year, month, i)
-                            for i in range(15000)
-                        ]
+            def fetch_fn(symbol, year, month):
+                attempt_count[0] += 1
+                # 100 rows → en mode ingest s'accepta (rows > 0)
+                return [_make_fake_candle(year, month, i) for i in range(100)]
 
-                from application.data.sync_manager import SyncManager
-                manager = SyncManager(
-                    datafiles_root=tmpdir,
-                    workers=2,
-                    fetch_override=fetch_fn,
-                )
+            from application.data.sync_manager import SyncManager
+            manager = SyncManager(datafiles_root=tmpdir, workers=2, fetch_override=fetch_fn)
+            job, _ = await manager.start_job("EURUSD", "1m", "2020-01-01", "2020-01-31")
+            deadline = asyncio.get_event_loop().time() + 30.0
+            while asyncio.get_event_loop().time() < deadline:
+                await asyncio.sleep(0.1)
+                current = manager.get_job(job.job_id)
+                if current and current.status in ("DONE", "FAILED", "INTERRUPTED"):
+                    break
 
-                job, _ = await manager.start_job("EURUSD", "1m", "2020-01-01", "2020-01-31")
-                deadline = asyncio.get_event_loop().time() + 30.0
-                while asyncio.get_event_loop().time() < deadline:
-                    await asyncio.sleep(0.1)
-                    current = manager.get_job(job.job_id)
-                    if current and current.status in ("DONE", "FAILED", "INTERRUPTED"):
-                        break
+            final = manager.get_job(job.job_id)
+            assert final.status == "DONE", f"ingest: hauria de ser DONE, got {final.status}"
+            assert final.done == 1, f"ingest: done=1 esperat, got {final.done}"
+            assert final.failed == 0, f"ingest: failed=0 esperat, got {final.failed}"
+            assert attempt_count[0] == 1, f"ingest: fetch cridat 1 cop, got {attempt_count[0]}"
 
-                final = manager.get_job(job.job_id)
+            from infrastructure.storage.parquet_store import ParquetCandleStore
+            store = ParquetCandleStore(root_path=tmpdir)
+            assert store.has_month("EURUSD", 2020, 1), "parquet ha de tenir dades"
 
-                assert final is not None
-                assert final.status == "DONE", f"job status hauria de ser DONE, got {final.status}"
-                assert final.done == 1, f"job.done hauria de ser 1 (segon intent OK), got {final.done}"
-                assert final.failed == 0, f"job.failed hauria de ser 0, got {final.failed}"
-                assert attempt_count[0] >= 2, f"fetch_fn hauria d'haver estat cridada ≥2 vegades, got {attempt_count[0]}"
+    asyncio.run(_run())
 
-                # Verificar que el parquet final té dades
-                from infrastructure.storage.parquet_store import ParquetCandleStore
-                store = ParquetCandleStore(root_path=tmpdir)
-                assert store.has_month("EURUSD", 2020, 1), "El parquet final ha de tenir dades (ha_month=True)"
 
-        asyncio.run(_run())
+def test_ingest_mode_accepts_low_rows(tmp_path, monkeypatch):
+    """
+    T8.16: QUALITY_MODE=ingest (default) + 500 rows → is_acceptable=True.
+    Verifica que el mode ingest no rebutja baixa cobertura.
+    """
+    monkeypatch.delenv("QUALITY_MODE", raising=False)  # ingest és el default
+    monkeypatch.setenv("MIN_ROWS_MONTH_1M", "10000")
+    monkeypatch.setenv("MIN_COMPLETENESS_1M", "0.50")
 
-    finally:
-        # Netejar env vars per no afectar altres tests
-        for key in ("MIN_ROWS_MONTH_1M", "MAX_FLAT_RATIO_GATE", "MIN_COMPLETENESS_1M"):
-            os.environ.pop(key, None)
+    parquet_path = tmp_path / "data.parquet"
+    rows = [
+        {"ts": 1577836800 + i * 60, "open": 1.1, "high": 1.11, "low": 1.09, "close": 1.105, "volume": 100.0}
+        for i in range(500)
+    ]
+    _write_parquet_direct(parquet_path, rows)
+
+    stats = compute_month_stats(parquet_path, year=2020, month=1)
+
+    assert stats.is_acceptable, f"ingest: 500 rows ha de ser acceptable, reason={stats.reason}"
+    assert stats.reason == "", f"ingest: reason ha de ser buit, got {stats.reason!r}"
+
+
+def test_integrity_mode_suspect(tmp_path, monkeypatch):
+    """
+    T8.16: QUALITY_MODE=integrity + 5,000 rows (sota MIN_ROWS=10,000) →
+    is_acceptable=False, is_suspect=True, suspect_reason no buit.
+    """
+    monkeypatch.setenv("QUALITY_MODE", "integrity")
+    monkeypatch.setenv("MIN_ROWS_MONTH_1M", "10000")
+    monkeypatch.setenv("MAX_FLAT_RATIO_GATE", "0.05")
+    monkeypatch.setenv("MIN_COMPLETENESS_1M", "0.50")
+
+    parquet_path = tmp_path / "data.parquet"
+    rows = [
+        {"ts": 1577836800 + i * 60, "open": 1.1, "high": 1.11, "low": 1.09, "close": 1.105, "volume": 100.0}
+        for i in range(5000)
+    ]
+    _write_parquet_direct(parquet_path, rows)
+
+    stats = compute_month_stats(parquet_path, year=2020, month=1)
+
+    # En mode integrity: is_acceptable=False per sota dels thresholds
+    assert not stats.is_acceptable, f"integrity: 5000 rows hauria de fallar, stats={stats}"
+    # I is_suspect=True (el motiu és informatiu)
+    assert stats.is_suspect, f"integrity: hauria de ser suspect, stats={stats}"
+    assert stats.suspect_reason != "", f"integrity: suspect_reason ha de tenir contingut"

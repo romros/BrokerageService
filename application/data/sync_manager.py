@@ -59,10 +59,13 @@ class SyncJob:
     skipped: int = 0
     failed: int = 0
     retries: int = 0        # total retries acumulats
+    empty: int = 0          # mesos buits confirmats per API (0 candles)
+    suspect: int = 0        # mesos escrits però amb cobertura baixa (informatiu)
     started_at: str = ""
     updated_at: str = ""
     eta_s: Optional[float] = None
     failed_months: List[str] = field(default_factory=list)
+    suspect_months: List[str] = field(default_factory=list)
     coverage_from: Optional[str] = None
     coverage_to: Optional[str] = None
 
@@ -98,6 +101,8 @@ class SyncJob:
             "total_units": total,
             "done": self.done,
             "skipped": self.skipped,
+            "empty": self.empty,
+            "suspect": self.suspect,
             "failed": self.failed,
             "retries": self.retries,
             "eta_s": eta,
@@ -106,6 +111,7 @@ class SyncJob:
             "coverage_from": self.coverage_from,
             "coverage_to": self.coverage_to,
             "failed_months": self.failed_months,
+            "suspect_months": self.suspect_months,
         }
 
 
@@ -389,11 +395,11 @@ class SyncManager:
                     except Exception as e:
                         logger.warning("sync_manager coverage mark_empty error %d-%02d: %s", year, month, e)
                     async with self._global_lock:
-                        job.skipped += 1
+                        job.empty += 1
                         job.updated_at = _now_iso()
                     logger.info(
-                        "sync_manager EMPTY_MONTH %s %d-%02d (0 candles from API, no parquet written)",
-                        job.symbol, year, month,
+                        "sync_manager month=%04d-%02d action=empty rows=0 (API confirmed no data)",
+                        year, month,
                     )
                     self._persist_jobs()
                     return
@@ -411,19 +417,19 @@ class SyncManager:
                     self._persist_jobs()
                     return
 
-                # [4] Quality gate T8.14 (només tf=1m)
+                # [4] Quality gate T8.14/T8.16 (només tf=1m)
+                # Regla C T8.16: NO-DELETE — mai eliminar parquets amb dades (rows>0)
+                # Mode ingest (default): falla només per 0 rows o IO error
+                # Mode integrity: falla per thresholds, però tampoc elimina
                 if written_path is not None and job.tf == "1m":
                     from application.data.month_quality import compute_month_stats
                     stats = compute_month_stats(written_path, year, month)
                     if not stats.is_acceptable:
-                        try:
-                            written_path.unlink()
-                        except OSError:
-                            pass
-                        written_path = None
+                        # Error real (0 rows o IO) → retry, però NO unlink
+                        # has_month() ja filtra parquets de 0 rows en el proper job
                         quality_reason = stats.reason
                         logger.warning(
-                            "sync_manager QUALITY_FAIL %s %d-%02d attempt=%d reason=%s rows=%d",
+                            "sync_manager QUALITY_FAIL symbol=%s month=%04d-%02d attempt=%d reason=%s rows=%d",
                             job.symbol, year, month, attempt + 1, stats.reason, stats.num_rows,
                         )
                         if attempt < DEFAULT_RETRIES:
@@ -431,11 +437,21 @@ class SyncManager:
                             await asyncio.sleep(wait)
                         else:
                             logger.error(
-                                "sync_manager QUALITY_FAILED_ALL_RETRIES %s %d-%02d reason=%s",
+                                "sync_manager QUALITY_FAILED_ALL_RETRIES symbol=%s month=%04d-%02d reason=%s",
                                 job.symbol, year, month, quality_reason,
                             )
                         candles = None  # forçar path failed post-loop
                         continue
+                    # Acceptable — comprova si és suspect (informatiu, no bloqueja)
+                    if stats.is_suspect:
+                        async with self._global_lock:
+                            job.suspect += 1
+                            job.suspect_months.append(f"{year:04d}-{month:02d}")
+                        logger.info(
+                            "sync_manager SUSPECT symbol=%s month=%04d-%02d rows=%d completeness=%.3f suspect_reason=%s",
+                            job.symbol, year, month, stats.num_rows,
+                            stats.completeness_ratio, stats.suspect_reason,
+                        )
 
                 quality_ok = True
                 break  # èxit: fetch + write + gate OK
@@ -466,9 +482,11 @@ class SyncManager:
                 job.done += 1
                 job.updated_at = _now_iso()
 
+            # Log detallat per observabilitat (Regla D T8.16)
+            _suspect_flag = f"{year:04d}-{month:02d}" in job.suspect_months
             logger.info(
-                "sync_manager DONE_MONTH %s %d-%02d candles=%d retries=%d",
-                job.symbol, year, month, len(candles), retries_used,
+                "sync_manager month=%04d-%02d action=written rows=%d retries=%d suspect=%s",
+                year, month, len(candles), retries_used, _suspect_flag,
             )
             self._persist_jobs()
 
