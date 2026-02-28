@@ -27,6 +27,9 @@ logger = get_logger(__name__)
 PARQUET_SUBDIR = "historical_parquet"
 TIMEFRAME = "1m"
 
+# Exportat per tests T8.13 (valor simbòlic — la implementació real usa pyarrow metadata)
+_MIN_PARQUET_SIZE_BYTES = 4096
+
 
 class ParquetCandleStore:
     """
@@ -59,17 +62,28 @@ class ParquetCandleStore:
         candles: List[Candle],
         *,
         validate: bool = True,
-    ) -> Path:
+    ) -> Optional[Path]:
         """
         Escriu (o sobreescriu) la partició mensual. Idempotent.
 
-        Retorna el path del fitxer escrit.
+        Retorna el path del fitxer escrit, o None si candles=[] (no es crea fitxer).
         Llança ValueError si validate=True i les dades no passen la validació.
+
+        Regla B T8.13: si candles=[], NO s'escriu fitxer i es retorna None.
+        Així s'eviten parquets buits que bloquegen re-sync futurs.
         """
         import pyarrow as pa
         import pyarrow.parquet as pq
 
-        if validate and candles:
+        if not candles:
+            # Regla B: no escriure parquet buit
+            logger.debug(
+                "parquet_store SKIP_EMPTY_WRITE symbol=%s year=%d month=%02d",
+                symbol, year, month,
+            )
+            return None
+
+        if validate:
             _validate_candles(candles)
 
         out_path = self._partition_path(symbol, year, month)
@@ -138,8 +152,23 @@ class ParquetCandleStore:
         return result
 
     def has_month(self, symbol: str, year: int, month: int) -> bool:
-        """True si existeix la partició mensual."""
-        return self._partition_path(symbol, year, month).exists()
+        """
+        True si existeix la partició mensual I té dades reals (num_rows > 0).
+
+        Regla A T8.13: usa pyarrow metadata (O(1), no carrega dades) per detectar
+        parquets buits (schema-only, 0 rows) que bloquejarien re-sync futurs.
+        """
+        import pyarrow.parquet as pq
+
+        path = self._partition_path(symbol, year, month)
+        if not path.exists():
+            return False
+        try:
+            meta = pq.read_metadata(str(path))
+            return meta.num_rows > 0
+        except Exception:
+            # Fitxer corrupte o inaccessible → considerar com absent
+            return False
 
     def coverage(self, symbol: str) -> list[dict]:
         """

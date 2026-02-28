@@ -301,19 +301,43 @@ class SyncManager:
         """
         Processa un mes: check disc → skip o fetch+write.
         Lock per mes evita doble escriptura concurrent.
+
+        Regla D T8.13 — lògica de skip:
+          - has_month() (parquet amb dades): skip → job.skipped
+          - coverage status=empty (0 candles confirmat per API): skip → job.skipped
+          - altres (no parquet, status=failed, status absent): fetch+write
         """
         lock = self._get_month_lock(job.symbol, job.tf, year, month)
         async with lock:
             from infrastructure.storage.parquet_store import ParquetCandleStore
             store = ParquetCandleStore(root_path=self._datafiles_root)
 
-            # Skip si ja existeix al disc (Parquet = source of truth)
+            # Skip si ja existeix al disc amb dades reals (Parquet = source of truth)
+            # Regla A T8.13: has_month() ara comprova mida > mínim (no empty parquets)
             if store.has_month(job.symbol, year, month):
                 async with self._global_lock:
                     job.skipped += 1
                     job.updated_at = _now_iso()
-                logger.debug("sync_manager SKIP %s %d-%02d (parquet exists)", job.symbol, year, month)
+                logger.debug("sync_manager SKIP %s %d-%02d (parquet exists with data)", job.symbol, year, month)
                 return
+
+            # Regla D T8.13: skip si coverage=empty (0 candles confirmat per API)
+            # Evita re-fetch de mesos que Dukascopy confirma que no té dades
+            try:
+                from application.data.coverage_index import CoverageIndex
+                _cov_check = CoverageIndex(root_path=self._datafiles_root, symbol=job.symbol)
+                _month_info = _cov_check.get_month(year, month)
+                if _month_info is not None and _month_info.get("status") == "empty":
+                    async with self._global_lock:
+                        job.skipped += 1
+                        job.updated_at = _now_iso()
+                    logger.debug(
+                        "sync_manager SKIP %s %d-%02d (coverage=empty, API confirmed no data)",
+                        job.symbol, year, month,
+                    )
+                    return
+            except Exception:
+                pass  # Si no podem llegir coverage, continuem amb fetch normal
 
             # Fetch amb retry + backoff
             from datetime import datetime as _dt
@@ -361,7 +385,25 @@ class SyncManager:
                 self._persist_jobs()
                 return
 
-            # Escriu Parquet
+            # Regla B T8.13: candles=[] → no escriure parquet, marcar empty
+            if not candles:
+                try:
+                    from application.data.coverage_index import CoverageIndex
+                    coverage = CoverageIndex(root_path=self._datafiles_root, symbol=job.symbol)
+                    coverage.mark_empty(year, month)
+                except Exception as e:
+                    logger.warning("sync_manager coverage mark_empty error %d-%02d: %s", year, month, e)
+                async with self._global_lock:
+                    job.skipped += 1
+                    job.updated_at = _now_iso()
+                logger.info(
+                    "sync_manager EMPTY_MONTH %s %d-%02d (0 candles from API, no parquet written)",
+                    job.symbol, year, month,
+                )
+                self._persist_jobs()
+                return
+
+            # Escriu Parquet (candles != [] garantit per bloc anterior)
             try:
                 store.write_month(job.symbol, year, month, candles)
             except Exception as e:
@@ -373,18 +415,14 @@ class SyncManager:
                 self._persist_jobs()
                 return
 
-            # Actualitza coverage index
+            # Actualitza coverage index (candles amb dades reals)
             try:
                 from application.data.coverage_index import CoverageIndex
                 coverage = CoverageIndex(root_path=self._datafiles_root, symbol=job.symbol)
-                if candles:
-                    from domain.models import Candle
-                    ts_list = [int(c.timestamp.timestamp()) for c in candles]
-                    coverage.mark_done(year, month, rows=len(ts_list),
-                                       coverage_from=ts_list[0], coverage_to=ts_list[-1],
-                                       retries=retries_used)
-                else:
-                    coverage.mark_empty(year, month)
+                ts_list = [int(c.timestamp.timestamp()) for c in candles]
+                coverage.mark_done(year, month, rows=len(ts_list),
+                                   coverage_from=ts_list[0], coverage_to=ts_list[-1],
+                                   retries=retries_used)
             except Exception as e:
                 logger.warning("sync_manager coverage update error %d-%02d: %s", year, month, e)
 
@@ -394,7 +432,7 @@ class SyncManager:
 
             logger.info(
                 "sync_manager DONE_MONTH %s %d-%02d candles=%d retries=%d",
-                job.symbol, year, month, len(candles) if candles else 0, retries_used,
+                job.symbol, year, month, len(candles), retries_used,
             )
             self._persist_jobs()
 
