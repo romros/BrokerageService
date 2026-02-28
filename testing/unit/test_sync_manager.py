@@ -121,22 +121,30 @@ async def test_dedup_returns_same_job():
 @pytest.mark.asyncio
 async def test_progress_done_increments():
     """job.done puja per cada mes completat."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        months_done = []
+    import os
+    # Desactivem el quality gate per a aquest test (n=100 candles per mes és OK per al test)
+    os.environ["MIN_ROWS_MONTH_1M"] = "0"
+    os.environ["MIN_COMPLETENESS_1M"] = "0.0"
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            months_done = []
 
-        def fetch_fn(s, y, m):
-            months_done.append((y, m))
-            return _make_month_candles(y, m)
+            def fetch_fn(s, y, m):
+                months_done.append((y, m))
+                return _make_month_candles(y, m)
 
-        manager = _make_manager(tmpdir, fetch_fn=fetch_fn)
-        job, _ = await _run_job_and_wait(
-            manager, "XAUUSD", "1m", "2022-01-01", "2022-03-31"
-        )
+            manager = _make_manager(tmpdir, fetch_fn=fetch_fn)
+            job, _ = await _run_job_and_wait(
+                manager, "XAUUSD", "1m", "2022-01-01", "2022-03-31"
+            )
 
-        assert job is not None
-        assert job.status == "DONE"
-        assert job.done == 3   # 3 mesos: jan, feb, mar
-        assert job.failed == 0
+            assert job is not None
+            assert job.status == "DONE"
+            assert job.done == 3   # 3 mesos: jan, feb, mar
+            assert job.failed == 0
+    finally:
+        os.environ.pop("MIN_ROWS_MONTH_1M", None)
+        os.environ.pop("MIN_COMPLETENESS_1M", None)
 
 
 @pytest.mark.asyncio

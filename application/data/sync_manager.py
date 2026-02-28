@@ -339,7 +339,7 @@ class SyncManager:
             except Exception:
                 pass  # Si no podem llegir coverage, continuem amb fetch normal
 
-            # Fetch amb retry + backoff
+            # Fetch + write + quality gate amb retry + backoff (T8.14)
             from datetime import datetime as _dt
             month_start = _dt(year, month, 1, 0, 0, 0, tzinfo=timezone.utc)
             if month == 12:
@@ -349,7 +349,12 @@ class SyncManager:
 
             candles = None
             retries_used = 0
+            written_path = None
+            quality_ok = False
+            quality_reason = ""
+
             for attempt in range(DEFAULT_RETRIES + 1):
+                # [1] Fetch
                 try:
                     if self._fetch_override is not None:
                         raw = self._fetch_override(job.symbol, year, month)
@@ -358,9 +363,9 @@ class SyncManager:
                         from infrastructure.venues.dukascopy.dukascopy_backfill_provider import DukascopyBackfillProvider
                         provider = DukascopyBackfillProvider(cache_root=self._datafiles_root)
                         candles = await provider.fetch_ohlcv(job.symbol, month_start, month_end)
-                    break
                 except Exception as e:
                     retries_used = attempt + 1
+                    candles = None
                     if attempt < DEFAULT_RETRIES:
                         wait = min(DEFAULT_BACKOFF_BASE * (2 ** attempt), DEFAULT_BACKOFF_MAX)
                         logger.warning(
@@ -373,11 +378,72 @@ class SyncManager:
                             "sync_manager FETCH_FAILED %s %d-%02d all retries exhausted: %s",
                             job.symbol, year, month, e,
                         )
+                    continue
+
+                # [2] Regla B T8.13: candles=[] → no escriure parquet, marcar empty
+                if not candles:
+                    try:
+                        from application.data.coverage_index import CoverageIndex
+                        coverage = CoverageIndex(root_path=self._datafiles_root, symbol=job.symbol)
+                        coverage.mark_empty(year, month)
+                    except Exception as e:
+                        logger.warning("sync_manager coverage mark_empty error %d-%02d: %s", year, month, e)
+                    async with self._global_lock:
+                        job.skipped += 1
+                        job.updated_at = _now_iso()
+                    logger.info(
+                        "sync_manager EMPTY_MONTH %s %d-%02d (0 candles from API, no parquet written)",
+                        job.symbol, year, month,
+                    )
+                    self._persist_jobs()
+                    return
+
+                # [3] Escriu Parquet
+                written_path = None
+                try:
+                    written_path = store.write_month(job.symbol, year, month, candles)
+                except Exception as e:
+                    logger.error("sync_manager WRITE_ERROR %s %d-%02d: %s", job.symbol, year, month, e)
+                    async with self._global_lock:
+                        job.failed += 1
+                        job.failed_months.append(f"{year:04d}-{month:02d}")
+                        job.updated_at = _now_iso()
+                    self._persist_jobs()
+                    return
+
+                # [4] Quality gate T8.14 (només tf=1m)
+                if written_path is not None and job.tf == "1m":
+                    from application.data.month_quality import compute_month_stats
+                    stats = compute_month_stats(written_path, year, month)
+                    if not stats.is_acceptable:
+                        try:
+                            written_path.unlink()
+                        except OSError:
+                            pass
+                        written_path = None
+                        quality_reason = stats.reason
+                        logger.warning(
+                            "sync_manager QUALITY_FAIL %s %d-%02d attempt=%d reason=%s rows=%d",
+                            job.symbol, year, month, attempt + 1, stats.reason, stats.num_rows,
+                        )
+                        if attempt < DEFAULT_RETRIES:
+                            wait = min(DEFAULT_BACKOFF_BASE * (2 ** attempt), DEFAULT_BACKOFF_MAX)
+                            await asyncio.sleep(wait)
+                        else:
+                            logger.error(
+                                "sync_manager QUALITY_FAILED_ALL_RETRIES %s %d-%02d reason=%s",
+                                job.symbol, year, month, quality_reason,
+                            )
+                        candles = None  # forçar path failed post-loop
+                        continue
+
+                quality_ok = True
+                break  # èxit: fetch + write + gate OK
 
             async with self._global_lock:
                 job.retries += retries_used
 
-            if candles is None:
+            if candles is None or not quality_ok:
                 async with self._global_lock:
                     job.failed += 1
                     job.failed_months.append(f"{year:04d}-{month:02d}")
@@ -385,37 +451,7 @@ class SyncManager:
                 self._persist_jobs()
                 return
 
-            # Regla B T8.13: candles=[] → no escriure parquet, marcar empty
-            if not candles:
-                try:
-                    from application.data.coverage_index import CoverageIndex
-                    coverage = CoverageIndex(root_path=self._datafiles_root, symbol=job.symbol)
-                    coverage.mark_empty(year, month)
-                except Exception as e:
-                    logger.warning("sync_manager coverage mark_empty error %d-%02d: %s", year, month, e)
-                async with self._global_lock:
-                    job.skipped += 1
-                    job.updated_at = _now_iso()
-                logger.info(
-                    "sync_manager EMPTY_MONTH %s %d-%02d (0 candles from API, no parquet written)",
-                    job.symbol, year, month,
-                )
-                self._persist_jobs()
-                return
-
-            # Escriu Parquet (candles != [] garantit per bloc anterior)
-            try:
-                store.write_month(job.symbol, year, month, candles)
-            except Exception as e:
-                logger.error("sync_manager WRITE_ERROR %s %d-%02d: %s", job.symbol, year, month, e)
-                async with self._global_lock:
-                    job.failed += 1
-                    job.failed_months.append(f"{year:04d}-{month:02d}")
-                    job.updated_at = _now_iso()
-                self._persist_jobs()
-                return
-
-            # Actualitza coverage index (candles amb dades reals)
+            # Actualitza coverage index (candles amb dades reals, gate OK)
             try:
                 from application.data.coverage_index import CoverageIndex
                 coverage = CoverageIndex(root_path=self._datafiles_root, symbol=job.symbol)
