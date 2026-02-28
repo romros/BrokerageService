@@ -1,0 +1,15 @@
+name: eurusd_ema200_rsi35_atr_d1
+description: "SQ Strategy EMA200 + RSI<35 + ATR SL/TP — EURUSD D1, LONG-only. 2006-12 → 2026-01."
+symbol: EURUSD
+timeframe: 1d
+# SL/TP basats en ATR(14)
+sl_atr_coef: 2.0
+tp_atr_coef: 3.0
+atr_period: 14
+# Paràmetres estratègia
+ema_period: 200
+rsi_period: 14
+rsi_entry_level: 35    # RSI ha de ser < aquest valor per entrar
+# Filtres temporals (com SQ original: Don't trade weekends Fri 17:00 → Sun 17:00 NY)
+no_trade_weekend: true
+exit_on_friday: false   # EOD OFF: no tanca posicions obertes el divendres

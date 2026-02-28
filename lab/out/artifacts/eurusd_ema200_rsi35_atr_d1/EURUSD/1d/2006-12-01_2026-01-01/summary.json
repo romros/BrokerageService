@@ -1,0 +1,19 @@
+{
+  "strategy": "eurusd_ema200_rsi35_atr_d1",
+  "symbol": "EURUSD",
+  "tf": "1d",
+  "from": "2006-12-01",
+  "to": "2026-01-01",
+  "execution_contract": "v2: signals at bar i using data[0..i-1]; entry at open[i+1]; SL/TP intra-bar (high/low), SL-first if both hit; TTL exit at open[entry+ttl_bars]; friday exit at open of next available bar after Fri 17h NY",
+  "sync_job_id": "5bf92a92",
+  "coverage_from": "2006-12",
+  "coverage_to": "2026-02",
+  "months_missing_in_range": [],
+  "n_trades": 19,
+  "net_pnl_pct": 2.2226,
+  "win_rate_pct": 42.11,
+  "avg_trade_pct": 0.117,
+  "max_drawdown_pct": 3.6543,
+  "wins": 8,
+  "losses": 11
+}
