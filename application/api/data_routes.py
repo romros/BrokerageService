@@ -439,6 +439,89 @@ async def get_sync_job(job_id: str, request: Request):
 
 
 # ---------------------------------------------------------------------------
+# T8.12: Parity check M1
+# ---------------------------------------------------------------------------
+
+@router.get("/parity/{symbol}/m1")
+async def get_parity_m1(
+    symbol: str,
+    request: Request,
+    from_date: Optional[str] = Query(None, description="Data inici YYYY-MM-DD"),
+    to_date: Optional[str] = Query(None, description="Data fi YYYY-MM-DD"),
+    min_records_ratio: float = Query(0.90, description="Threshold completitud (0-1)"),
+    max_flat_ratio: float = Query(0.02, description="Threshold flat bars (0-1)"),
+):
+    """
+    Analitza completitud dels parquets M1 del símbol per mes (T8.12).
+
+    Retorna un ParityReport JSON amb:
+      - total_records / target_records / delta_vs_target_pct
+      - months_bad / months_missing
+      - per_month: llista de MonthParity per cada mes del rang
+    """
+    from application.data.parity_checker import ParityChecker
+
+    sym = symbol.strip().upper()
+    if not sym or not sym.isalnum() or len(sym) > 10:
+        raise HTTPException(status_code=422, detail={"detail": "symbol invàlid", "code": INVALID_PARAMS})
+
+    datafiles_root = os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT)
+    checker = ParityChecker(
+        datafiles_root=datafiles_root,
+        symbol=sym,
+        tf="1m",
+        min_records_ratio=min_records_ratio,
+        max_flat_ratio=max_flat_ratio,
+    )
+    report = checker.run(from_date, to_date)
+    return JSONResponse(content=report.to_dict())
+
+
+@router.post("/parity/{symbol}/m1/retry")
+async def post_parity_retry(
+    symbol: str,
+    request: Request,
+):
+    """
+    Llança un job de re-sync per als mesos "bad" indicats (T8.12).
+
+    Body: {"bad_months": ["2004-03", "2005-11", ...]}
+
+    Retorna llista de jobs iniciats: {"jobs": [{"month": ..., "job_id": ..., "is_new": ...}]}
+    """
+    sym = symbol.strip().upper()
+    if not sym or not sym.isalnum() or len(sym) > 10:
+        raise HTTPException(status_code=422, detail={"detail": "symbol invàlid", "code": INVALID_PARAMS})
+
+    # Llegir body
+    try:
+        body = await request.json()
+        months_list = body.get("bad_months", [])
+    except Exception:
+        months_list = []
+
+    if not months_list:
+        return JSONResponse(content={"jobs": [], "message": "no bad_months provided"})
+
+    manager = _get_sync_manager(request)
+    results = []
+    for month_str in months_list:
+        try:
+            year, month = int(month_str[:4]), int(month_str[5:7])
+            # Rang: primer dia del mes fins l'últim
+            import calendar as _cal
+            last_day = _cal.monthrange(year, month)[1]
+            from_d = f"{year}-{month:02d}-01"
+            to_d = f"{year}-{month:02d}-{last_day:02d}"
+            job, is_new = await manager.start_job(sym, "1m", from_d, to_d)
+            results.append({"month": month_str, "job_id": job.job_id, "is_new": is_new})
+        except Exception as exc:
+            results.append({"month": month_str, "error": str(exc)})
+
+    return JSONResponse(content={"jobs": results})
+
+
+# ---------------------------------------------------------------------------
 # Phase C: Historical DataLayer — router sense prefix /api/v1/data
 # Montat pel historical_datalayer (nginx fa strip de /data/, arriba com /)
 # Endpoints: /ohlcv/{symbol}  /coverage/{symbol}
@@ -487,5 +570,18 @@ def get_historical_router() -> APIRouter:
         get_sync_job,
         methods=["GET"],
         summary="Progrés d'un job sync",
+    )
+    # T8.12: Parity check M1
+    hist_router.add_api_route(
+        "/parity/{symbol}/m1",
+        get_parity_m1,
+        methods=["GET"],
+        summary="Parity check M1 per mes (T8.12)",
+    )
+    hist_router.add_api_route(
+        "/parity/{symbol}/m1/retry",
+        post_parity_retry,
+        methods=["POST"],
+        summary="Re-sync mesos 'bad' (T8.12)",
     )
     return hist_router
