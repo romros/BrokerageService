@@ -301,18 +301,31 @@ def fetch_candles_1m(base_url: str, symbol: str, from_ts: int, to_ts: int) -> li
 # Agregació 1m → tf
 # ---------------------------------------------------------------------------
 
-def aggregate_to_tf(candles_1m: list[list], tf_minutes: int) -> list[list]:
+def aggregate_to_tf(
+    candles_1m: list[list],
+    tf_minutes: int,
+    day_offset_seconds: int = 0,
+) -> list[list]:
     """
     Agrega candles 1m a timeframe superior.
     ts = start de la barra (UTC epoch).
+
+    day_offset_seconds: desplaçament en segons per l'inici de barra diària.
+      0     → barres D1 comencen a 00:00 UTC (default LAB)
+      18000 → barres D1 comencen a 05:00 UTC (=00:00 UTC-5, equivalent MT4 Dukascopy)
+
+    El ts resultant és l'inici real de la barra (incloent l'offset).
     """
     if tf_minutes == 1:
         return candles_1m
 
+    bar_seconds = tf_minutes * 60
     buckets: dict[int, list] = {}
     for c in candles_1m:
         ts, o, h, l, close_p, v = c[0], c[1], c[2], c[3], c[4], c[5]
-        bucket_ts = (ts // (tf_minutes * 60)) * (tf_minutes * 60)
+        # Aplica offset: desplaça el timestamp per calcular el bucket, luego afegeix l'offset al ts
+        ts_shifted = ts - day_offset_seconds
+        bucket_ts = (ts_shifted // bar_seconds) * bar_seconds + day_offset_seconds
         if bucket_ts not in buckets:
             buckets[bucket_ts] = [bucket_ts, o, h, l, close_p, v]
         else:
@@ -353,7 +366,12 @@ def candles_to_df(candles: list[list]) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def compute_atr(df: pd.DataFrame, period: int) -> pd.Series:
-    """ATR(period) sobre el DataFrame."""
+    """
+    ATR(period) — smoothing de Wilder (equivalent a MT4 iATR).
+
+    Wilder usa EMA amb alpha=1/period (no rolling mean simple).
+    La primera barra vàlida és la #period (les anteriors NaN).
+    """
     high = df["high"]
     low = df["low"]
     prev_close = df["close"].shift(1)
@@ -362,7 +380,8 @@ def compute_atr(df: pd.DataFrame, period: int) -> pd.Series:
         (high - prev_close).abs(),
         (low - prev_close).abs(),
     ], axis=1).max(axis=1)
-    return tr.rolling(window=period).mean()
+    # Wilder smoothing: EMA amb alpha=1/period, adjust=False (equivalent MT4 iATR)
+    return tr.ewm(alpha=1.0 / period, adjust=False).mean()
 
 
 # ---------------------------------------------------------------------------
@@ -669,9 +688,21 @@ def run_backtest(
     base_url: str,
     ensure_sync_flag: bool = False,
     artifacts_dir: Optional[Path] = None,
+    warmup_bars: int = 0,
+    day_offset_h: int = 0,
 ) -> int:
     """
     Executa el backtest complet.
+
+    warmup_bars: barres addicionals a carregar ABANS de from_date per "escalfar"
+      els indicadors (EMA200, RSI, ATR). Els trades generats durant el warmup
+      NO s'inclouen als artifacts. Default: 0 (sense warmup).
+      Recomanat per D1 + EMA200: warmup_bars=250.
+
+    day_offset_h: hora UTC d'inici de la barra diària (en hores).
+      0  → barres D1 comencen a 00:00 UTC (default LAB original)
+      5  → barres D1 comencen a 05:00 UTC (=00:00 UTC-5, equivalent MT4 Dukascopy)
+      Altres tf (H4, H1, etc.) NO s'veuen afectats per aquest paràmetre.
 
     Retorna 0=OK, 1=error dades, 2=error estratègia.
     """
@@ -689,19 +720,39 @@ def run_backtest(
     from_ts = int(from_dt.timestamp())
     to_ts = int(to_dt.timestamp())
 
+    # Warmup: llegeix del config YAML si no s'ha especificat per CLI (0=no override)
+    if warmup_bars == 0:
+        warmup_bars = int(cfg.get("warmup_bars", 0))
+
+    # Warmup: ampliar el fetch per tenir indicadors estabilitzats
+    warmup_days = 0
+    if warmup_bars > 0:
+        warmup_days = (warmup_bars * tf_minutes) // (24 * 60) + 1  # dies addicionals a buscar
+        warmup_days = max(warmup_days, 1)
+    warmup_from_dt = from_dt - timedelta(days=warmup_days)
+    warmup_from_ts = int(warmup_from_dt.timestamp())
+
     ttl_bars = int(cfg.get("ttl_bars", 0))
     sl_coef = float(cfg.get("sl_atr_coef", 0.0))
     tp_coef = float(cfg.get("tp_atr_coef", 0.0))
+
+    # day_offset_h del config YAML si no s'especifica explícitament per CLI
+    if day_offset_h == 0:
+        day_offset_h = int(cfg.get("day_offset_h", 0))
+
+    day_offset_s = day_offset_h * 3600
 
     print(
         f"CONFIG strategy={strategy} symbol={symbol} tf={tf} "
         f"from={from_date} to={to_date} "
         f"ttl_bars={ttl_bars} sl={sl_coef} tp={tp_coef} "
+        f"warmup_bars={warmup_bars} warmup_days={warmup_days} "
+        f"day_offset_h={day_offset_h} "
         f"ensure_sync={ensure_sync_flag} base_url={base_url}"
     )
     print(f"CONTRACT {EXECUTION_CONTRACT}")
 
-    # Ensure sync
+    # Ensure sync (usa rang original, no el warmup)
     sync_info: Optional[dict] = None
     if ensure_sync_flag:
         try:
@@ -711,10 +762,11 @@ def run_backtest(
             print(f"ERROR {exc}")
             return 1
 
-    # Fetch candles 1m
-    print(f"FETCH candles 1m [{from_date} → {to_date}] ...")
+    # Fetch candles 1m (inclou warmup si warmup_bars > 0)
+    fetch_from = warmup_from_dt.strftime("%Y-%m-%d") if warmup_bars > 0 else from_date
+    print(f"FETCH candles 1m [{fetch_from} → {to_date}] (warmup_days={warmup_days}) ...")
     try:
-        candles_1m = fetch_candles_1m(base_url, symbol, from_ts, to_ts)
+        candles_1m = fetch_candles_1m(base_url, symbol, warmup_from_ts, to_ts)
     except RuntimeError as exc:
         print(f"SKIP candles_loaded=0 ({exc})")
         return 1
@@ -725,9 +777,9 @@ def run_backtest(
 
     print(f"candles_loaded_1m={len(candles_1m)}")
 
-    # Agrega a tf
-    candles_tf = aggregate_to_tf(candles_1m, tf_minutes)
-    print(f"candles_loaded_{tf}={len(candles_tf)}")
+    # Agrega a tf (amb offset de barra diària si cal)
+    candles_tf = aggregate_to_tf(candles_1m, tf_minutes, day_offset_seconds=day_offset_s)
+    print(f"candles_loaded_{tf}={len(candles_tf)} (incl. warmup)")
 
     if len(candles_tf) < 20:
         print("SKIP candles insuficients per backtest (mínim 20)")
@@ -748,8 +800,14 @@ def run_backtest(
         print(f"ERROR estratègia: {exc}")
         return 2
 
-    # Simulació (Execution Contract v2)
-    trades = simulate_trades(df, signals, atr, cfg)
+    # Simulació (Execution Contract v2) — inclou warmup però filtrem trades posteriorment
+    trades_all = simulate_trades(df, signals, atr, cfg)
+
+    # Filtra trades del warmup: només trades amb entry_ts >= from_ts
+    trades = [t for t in trades_all if t["entry_ts"] >= from_ts]
+    n_warmup_trades = len(trades_all) - len(trades)
+    if n_warmup_trades > 0:
+        print(f"trades_warmup_filtered={n_warmup_trades} (entry_ts < {from_date})")
     print(f"trades={len(trades)}")
 
     # KPIs i equity
@@ -786,6 +844,12 @@ def _parse_args() -> argparse.Namespace:
                         help="Assegura sync Dukascopy→Parquet i coverage fail-fast abans del backtest")
     parser.add_argument("--artifacts-dir", default=None,
                         help="Directori base per artifacts (per defecte: lab/runner/artifacts/)")
+    parser.add_argument("--warmup-bars", type=int, default=0,
+                        help="Barres D1 addicionals ABANS de --from per escalfar EMA/RSI/ATR. "
+                             "Default: 0. Recomanat per D1+EMA200: 250")
+    parser.add_argument("--day-offset-h", type=int, default=0,
+                        help="Hora UTC d'inici de barra diària (0=00:00 UTC, 5=05:00 UTC=MT4). "
+                             "Default: 0 (o day_offset_h del config YAML)")
     return parser.parse_args()
 
 
@@ -800,4 +864,6 @@ if __name__ == "__main__":
         base_url=args.base_url,
         ensure_sync_flag=args.ensure_sync,
         artifacts_dir=Path(args.artifacts_dir) if args.artifacts_dir else None,
+        warmup_bars=args.warmup_bars,
+        day_offset_h=args.day_offset_h,
     ))

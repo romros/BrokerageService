@@ -13,3 +13,7 @@ rsi_entry_level: 35    # RSI ha de ser < aquest valor per entrar
 # Filtres temporals (com SQ original: Don't trade weekends Fri 17:00 → Sun 17:00 NY)
 no_trade_weekend: true
 exit_on_friday: false   # EOD OFF: no tanca posicions obertes el divendres
+# Alineament de barra D1 amb MT4 Dukascopy (UTCMinus05: barres comencen a 05:00 UTC)
+day_offset_h: 5         # 0=00:00 UTC (default LAB), 5=05:00 UTC (=MT4 Dukascopy)
+# Warmup recomanat: 250 barres D1 per estabilitzar EMA200
+warmup_bars: 250
