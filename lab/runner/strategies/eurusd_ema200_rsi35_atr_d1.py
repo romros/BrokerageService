@@ -70,12 +70,46 @@ def _rsi_wilder(series: pd.Series, period: int) -> pd.Series:
     return rsi
 
 
+def _price_typical(df: pd.DataFrame) -> pd.Series:
+    """Preu típic (H+L+C)/3 per RSI input (T8.36 best_signal_def)."""
+    return (df["high"] + df["low"] + df["close"]) / 3.0
+
+
+def _rsi_ema_gains(series: pd.Series, period: int) -> pd.Series:
+    """
+    RSI amb smoothing EMA (alpha=2/(period+1)) per gains/losses.
+    T8.36 best_signal_def: primer avg = SMA(gain[1:period+1]), després EMA recursiu.
+    """
+    arr = series.values
+    n = len(arr)
+    out = np.full(n, np.nan, dtype=np.float64)
+    if n < period + 1:
+        return pd.Series(out, index=series.index)
+
+    delta = np.diff(arr, prepend=arr[0])
+    delta[0] = 0.0
+    gain = np.where(delta > 0, delta, 0.0)
+    loss = np.where(delta < 0, -delta, 0.0)
+
+    alpha = 2.0 / (period + 1)
+    avg_g = np.mean(gain[1 : period + 1])
+    avg_l = np.mean(loss[1 : period + 1])
+    out[period] = 100.0 if avg_l == 0 else 100.0 - (100.0 / (1.0 + avg_g / avg_l))
+
+    for i in range(period + 1, n):
+        avg_g = alpha * gain[i] + (1 - alpha) * avg_g
+        avg_l = alpha * loss[i] + (1 - alpha) * avg_l
+        out[i] = 100.0 if avg_l == 0 else 100.0 - (100.0 / (1.0 + avg_g / avg_l))
+
+    return pd.Series(out, index=series.index)
+
+
 def generate_signals(df: pd.DataFrame, **kwargs) -> pd.Series:
     """
     Genera senyals de trading LONG only basats en EMA200 + RSI<35.
 
-    kwargs (CLI override): indicator_mode, ema_seed. Si indicator_mode=mt4_like,
-    usa application.data.indicators_mt4_like amb ema_seed sma|first.
+    kwargs (CLI override): indicator_mode, ema_seed, signal_def.
+    signal_def (T8.37): baseline=RSI Wilder sobre close; t836_best=RSI ema_gains sobre typical.
 
     Args:
         df: pd.DataFrame amb index DatetimeIndex UTC i columnes open/high/low/close/volume.
@@ -93,13 +127,27 @@ def generate_signals(df: pd.DataFrame, **kwargs) -> pd.Series:
     cfg = {**_cfg(), **kwargs}
     use_mt4 = cfg.get("mt4_like_indicators") or cfg.get("indicator_mode") == "mt4_like"
     ema_seed = cfg.get("ema_seed", "sma")
+    signal_def = cfg.get("signal_def", "baseline")
+
+    if signal_def not in ("baseline", "t836_best"):
+        import logging
+        logging.warning(f"signal_def={signal_def} desconegut; fallback baseline")
+        signal_def = "baseline"
+
+    # EMA200 sempre sobre close
     if use_mt4:
         from application.data.indicators_mt4_like import ema as ema_mt4like, rsi_wilder
         ema200 = ema_mt4like(close, 200, seed_mode=ema_seed)
-        rsi14 = rsi_wilder(close, 14)
+        if signal_def == "t836_best":
+            rsi14 = _rsi_ema_gains(_price_typical(df), 14)
+        else:
+            rsi14 = rsi_wilder(close, 14)
     else:
         ema200 = _ema(close, 200)
-        rsi14 = _rsi_wilder(close, 14)
+        if signal_def == "t836_best":
+            rsi14 = _rsi_ema_gains(_price_typical(df), 14)
+        else:
+            rsi14 = _rsi_wilder(close, 14)
 
     signals = pd.Series(0, index=df.index, dtype=int)
 

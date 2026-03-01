@@ -81,6 +81,33 @@ def _rsi_wilder(series: pd.Series, period: int) -> pd.Series:
     return 100.0 - (100.0 / (1.0 + rs))
 
 
+def _price_typical(df: pd.DataFrame) -> pd.Series:
+    """Preu típic (H+L+C)/3 per RSI input (T8.36 best_signal_def)."""
+    return (df["high"] + df["low"] + df["close"]) / 3.0
+
+
+def _rsi_ema_gains(series: pd.Series, period: int) -> pd.Series:
+    """RSI ema_gains (alpha=2/(period+1)), primer avg=SMA. T8.37."""
+    arr = series.values
+    n = len(arr)
+    out = np.full(n, np.nan, dtype=np.float64)
+    if n < period + 1:
+        return pd.Series(out, index=series.index)
+    delta = np.diff(arr, prepend=arr[0])
+    delta[0] = 0.0
+    gain = np.where(delta > 0, delta, 0.0)
+    loss = np.where(delta < 0, -delta, 0.0)
+    alpha = 2.0 / (period + 1)
+    avg_g = np.mean(gain[1 : period + 1])
+    avg_l = np.mean(loss[1 : period + 1])
+    out[period] = 100.0 if avg_l == 0 else 100.0 - (100.0 / (1.0 + avg_g / avg_l))
+    for i in range(period + 1, n):
+        avg_g = alpha * gain[i] + (1 - alpha) * avg_g
+        avg_l = alpha * loss[i] + (1 - alpha) * avg_l
+        out[i] = 100.0 if avg_l == 0 else 100.0 - (100.0 / (1.0 + avg_g / avg_l))
+    return pd.Series(out, index=series.index)
+
+
 # ---------------------------------------------------------------------------
 # Export
 # ---------------------------------------------------------------------------
@@ -94,6 +121,7 @@ def export_indicators(
     warmup_bars: int = WARMUP_BARS,
     day_offset_h: int = DAY_OFFSET_H,
     mt4_like: bool = False,
+    signal_def: str = "baseline",
 ) -> int:
     """
     Exporta indicadors barra-a-barra a CSV.
@@ -131,15 +159,22 @@ def export_indicators(
     # DataFrame
     df = candles_to_df(candles_d1)
 
-    # Indicadors (mt4_like = T8.29A: EMA/RSI/ATR MT4-exact, ema seed sma per defecte)
+    # Indicadors (mt4_like = T8.29A: EMA/RSI/ATR MT4-exact; signal_def = T8.37)
     if mt4_like:
         ema200 = ema(df["close"], 200, seed_mode="sma")
-        rsi14 = rsi_wilder(df["close"], 14)
         atr14 = atr_wilder(df["high"], df["low"], df["close"], 14)
     else:
         ema200 = _ema(df["close"], 200)
-        rsi14 = _rsi_wilder(df["close"], 14)
         atr14 = compute_atr(df, 14)
+
+    if signal_def == "t836_best":
+        rsi14 = _rsi_ema_gains(_price_typical(df), 14)
+        print(f"Export indicators: signal_def=t836_best rsi_method=ema_gains rsi_price=typical out={out_path}")
+    else:
+        if mt4_like:
+            rsi14 = rsi_wilder(df["close"], 14)
+        else:
+            rsi14 = _rsi_wilder(df["close"], 14)
 
     # Senyals (Close[i-1] > EMA200[i-1] AND RSI14[i-1] < 35)
     signals = pd.Series(0, index=df.index, dtype=int)
@@ -206,6 +241,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--day-offset-h", type=int, default=DAY_OFFSET_H)
     parser.add_argument("--mt4-like", action="store_true",
                         help="T8.27: usar indicadors MT4-exact (EMA seed SMA, RSI/ATR Wilder)")
+    parser.add_argument("--signal-def", default="baseline", choices=("baseline", "t836_best"),
+                        help="T8.37: baseline=RSI Wilder sobre close; t836_best=RSI ema_gains sobre typical")
     return parser.parse_args()
 
 
@@ -220,4 +257,5 @@ if __name__ == "__main__":
         warmup_bars=args.warmup_bars,
         day_offset_h=args.day_offset_h,
         mt4_like=args.mt4_like,
+        signal_def=args.signal_def,
     ))

@@ -68,3 +68,8 @@ package-lock.json
 
 # Lab archives (keep local only)
 lab/_archive/
+
+# Lab artifacts (paths + resums a compare_notes, no outputs)
+lab/runner/out_compare/artifacts/
+lab/runner/out_compare/contract_*/
+lab/runner/out_compare/mt4like_*/

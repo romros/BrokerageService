@@ -1,5 +1,9 @@
 # Compare notes — LAB vs SQ engines
 
+**Regla exploratoris:** Segueix [lab/ostium/README.md](../../ostium/README.md) § Runner exploration — no anar a producció fins que l'exemple funcioni bé.
+
+---
+
 ## T8.30 Contract grid (entry_fill × signal_contract)
 
 Exploració del contracte senyal/entrada per maximitzar entry_match_rate vs MT4 sense passes manuals.
@@ -205,3 +209,48 @@ Grid 16 variants: RSI method (wilder/ema_gains), indexing (bar_closed/bar_curren
 - **best_signal_def:** ema_gains_bar_closed_typical_none
 - **signal_true_at_t:** baseline=18, best=22
 - **NEXT_STEP:** APPLY_RSI_SOURCE_TO_RUNNER (ema_gains + typical price)
+
+---
+
+## T8.37 Apply t836_best signal_def al runner
+
+Aplica RSI ema_gains sobre typical a l'estratègia i export d'indicadors. Revalidació end-to-end (backtest + trade diff).
+
+### Modes
+
+| signal_def | RSI | Price source |
+|------------|-----|--------------|
+| baseline | Wilder | close |
+| t836_best | ema_gains | typical |
+
+### Execució
+
+```bash
+# Backtest amb t836_best
+python3 lab/runner/backtest/run_backtest.py --strategy eurusd_ema200_rsi35_atr_d1 \
+  --symbol EURUSD --tf 1d --from 2006-12-01 --to 2026-01-01 \
+  --signal-def t836_best --indicator-mode mt4_like --entry-fill open_i --signal-contract mt4_baropen
+
+# Export indicadors t836_best
+python3 -m application.tools.export_indicators_csv --symbol EURUSD --from 2003-05-05 --to 2026-01-01 \
+  --signal-def t836_best --mt4-like --out lab/runner/out_compare/indicators_LAB_full_t836_best.csv
+
+# Pipeline complet
+./scripts/run_t837_t836_best_e2e.sh [--force-export]
+```
+
+### Artifacts
+
+- `indicators_LAB_full_t836_best.csv` — indicadors coherents amb t836_best
+- `lab/runner/out_compare/artifacts/T8.37/` — backtest + trade_diff_report.json
+
+### Resultat (2026-03-01)
+
+| Mètrica | baseline | t836_best |
+|---------|----------|-----------|
+| n_lab_trades | 29 | 91 |
+| n_matched | 14 | 10 |
+| entry_match_rate_mt4 | 63.64% | 45.45% |
+| category_counts | SIGNAL_MISMATCH:2, EXIT_CASCADE:3, CONTRACT_SHIFT:3 | EXIT_CASCADE:12 |
+
+**Conclusió:** t836_best empitjora la paritat (matched 14→10). RSI ema_gains sobre typical genera molts més senyals (91 vs 29 trades) i crea cascades EXIT_CASCADE. **NO graduar a policy.** NEXT_STEP: continuar explorant (oracle indicadors MT4 o altres variants).

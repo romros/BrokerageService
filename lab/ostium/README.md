@@ -252,6 +252,23 @@ lab/ostium/
 
 **Connexió amb prod-ish registry:** Els resultats LAB (compat report) es graduen a prod-ish via `./scripts/run_compat.sh ostium EURUSD` o `./scripts/run_soak.sh 2 ostium post-compat`. El tool escriu `datafiles/compat_reports/ostium_compat_registry.json`; si PASS → `ostium_primary_allowed=true` per aquell símbol. Font de veritat: `get_ostium_primary_allowed(symbol)`.
 
+### Runner exploration (T8.* — paritat MT4/SQ)
+
+Els exploratoris de backtest i paritat amb StrategyQuant/MT4 viuen a `lab/runner/` i **segueixen les regles de lab/ostium**: no anar a producció fins que l'exemple funcioni bé.
+
+**Exploració actual (T8.37):** Apply t836_best signal_def (RSI ema_gains sobre typical) + revalidació end-to-end.
+
+```bash
+# Pipeline complet: export indicadors t836_best + backtest + trade diff
+./scripts/run_t837_t836_best_e2e.sh [--force-export]
+```
+
+**Docs:** [lab/runner/out_compare/compare_notes.md](../runner/out_compare/compare_notes.md), [docs/ESTAT.md](../../docs/ESTAT.md) § T8.37.
+
+**Regla:** Quan matched/category_counts millorin prou → graduar a policy; si no → documentar i seguir explorant.
+
+---
+
 ### Backtest (futur)
 - Real-time: Ostium REST polling
 - Històric: Dukascopy backfill (si compat PASS)

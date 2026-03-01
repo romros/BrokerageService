@@ -20,12 +20,15 @@ El directori `lab/` és un espai d'experimentació per **descobrir com funcionen
 lab/
   README.md              # Aquest fitxer
   NOTES.md               # Diari d'experimentació
-  ostium/                # Ostium LIVE (canònic)
+  ostium/                # Ostium LIVE (canònic) — inclou runner exploration
+  runner/                # Backtest + paritat MT4/SQ (exploratori ostium runner)
   extended/              # Extended (x10xchange) evaluation (🟡 in progress)
   out/                   # Artifacts
 
   _archive/2026-02-legacy-purge/  # lighter, gtrade, sepolia, node-gtrade (T5.32)
 ```
+
+**Regla exploratoris ostium runner:** Els exploratoris de backtest/paritat (lab/runner/) segueixen les mateixes regles que lab/ostium: **no anar a producció fins que l'exemple funcioni bé**. Veure [lab/ostium/README.md](ostium/README.md) § Runner exploration.
 
 ## 🚀 Com Executar
 

@@ -19,3 +19,5 @@ day_offset_h: 5         # 0=00:00 UTC (default LAB), 5=05:00 UTC (=MT4 Dukascopy
 warmup_bars: 250
 # T8.27: indicadors MT4-exact (EMA seed SMA, RSI/ATR Wilder) per parity
 mt4_like_indicators: false   # true per millorar entry_match_rate vs MT4
+# T8.37: signal_def baseline=RSI Wilder sobre close; t836_best=RSI ema_gains sobre typical
+signal_def: baseline

@@ -748,6 +748,7 @@ def run_backtest(
     intrabar_mode: str = "sl_first",
     indicator_mode: str = "default",
     ema_seed: str = "sma",
+    signal_def: str = "baseline",
     entry_fill: str = "open_i1",
     signal_contract: str = "v2",
 ) -> int:
@@ -776,6 +777,7 @@ def run_backtest(
     cfg["_tf"] = tf
     cfg["indicator_mode"] = indicator_mode
     cfg["ema_seed"] = ema_seed
+    cfg["signal_def"] = signal_def
 
     tf_minutes = TF_TO_MINUTES.get(tf)
     if tf_minutes is None:
@@ -825,7 +827,7 @@ def run_backtest(
         f"ttl_bars={ttl_bars} sl={sl_coef} tp={tp_coef} "
         f"warmup_bars={warmup_bars} warmup_days={warmup_days} "
         f"day_offset_h={day_offset_h} intrabar_mode={intrabar_mode} "
-        f"entry_fill={entry_fill} signal_contract={signal_contract} "
+        f"signal_def={signal_def} entry_fill={entry_fill} signal_contract={signal_contract} "
         f"ensure_sync={ensure_sync_flag} base_url={base_url}"
     )
     print(f"CONTRACT {_execution_contract(intrabar_mode)}")
@@ -881,7 +883,7 @@ def run_backtest(
         import inspect
         sig = inspect.signature(generate_signals)
         if "indicator_mode" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
-            signals = generate_signals(df, indicator_mode=indicator_mode, ema_seed=ema_seed)
+            signals = generate_signals(df, indicator_mode=indicator_mode, ema_seed=ema_seed, signal_def=signal_def)
         else:
             signals = generate_signals(df)
     except Exception as exc:
@@ -958,6 +960,8 @@ def _parse_args() -> argparse.Namespace:
                         help="T8.29A: default=pandas ewm, mt4_like=EMA/RSI/ATR MT4-exact")
     parser.add_argument("--ema-seed", default="sma", choices=("sma", "first"),
                         help="T8.29A: EMA seed quan indicator_mode=mt4_like. sma=SMA(period), first=close[0]")
+    parser.add_argument("--signal-def", default="baseline", choices=("baseline", "t836_best"),
+                        help="T8.37: baseline=RSI Wilder sobre close; t836_best=RSI ema_gains sobre typical")
     parser.add_argument("--entry-fill", default="open_i1", choices=list(ENTRY_FILL_MODES),
                         help="T8.30: open_i=entrada a open[i], open_i1=entrada a open[i+1] (delay 1 bar)")
     parser.add_argument("--signal-contract", default="v2", choices=list(SIGNAL_CONTRACTS),
@@ -981,6 +985,7 @@ if __name__ == "__main__":
         intrabar_mode=args.intrabar_mode,
         indicator_mode=args.indicator_mode,
         ema_seed=args.ema_seed,
+        signal_def=args.signal_def,
         entry_fill=args.entry_fill,
         signal_contract=args.signal_contract,
     ))
