@@ -25,3 +25,67 @@ Exploració del contracte senyal/entrada per maximitzar entry_match_rate vs MT4 
 - n_trades proper a 22 (MT4)
 
 Si cap combinació millora: STOP, report "oracle indicadors CSV necessari".
+
+---
+
+## T8.31 Trade Diff Analyzer
+
+Diagnòstic de causes per trades unmatched (MT4 vs LAB best contract).
+
+### Categories
+
+| Categoria | Descripció |
+|-----------|------------|
+| DATA_MISSING | No hi ha candles/indicadors LAB en aquella data |
+| SIGNAL_MISMATCH | Hi ha dades, signal LAB=false (MT4 sí ha entrat) |
+| CONTRACT_SHIFT | Signal a barra adjacent (±k dies) |
+| EXIT_CASCADE | LAB tenia signal però ja en trade (max 1 obert) |
+
+### Artifacts
+
+- `indicators_LAB_full.csv` — export via export_indicators_csv --mt4-like
+- `trade_diff_report.json` — detall per trade
+- `trade_diff_report.csv` — resum
+
+### Execució
+
+```bash
+./scripts/run_t831_trade_diff.sh
+```
+
+---
+
+## T8.32 Quick Parity Triage
+
+Triage automàtic <20s per decidir tipus de divergència sense recalcular indicadors.
+
+### Micro-checks
+
+| # | Check | Artifact | Flag |
+|---|-------|----------|------|
+| 1 | Timestamp sanity (primers N MT4 entries, distribució hores) | triage_time_sanity.json | TIME_ALIGNMENT_SUSPECT |
+| 2 | Local gap (finestra t±5 al divergence_bar) | triage_gap_check.json, window_around_divergence.csv | DATA_MISSING |
+| 3 | Contract shift (signal_lab a t±1..t±3) | triage_shift_check.json | CONTRACT_SHIFT_LIKELY |
+| 4 | RSI range plausibility (RSI/EMA/close a t i t±3) | triage_indicator_snapshot.json | INDICATOR_VARIANT_SUSPECT |
+
+### NEXT_STEP
+
+- `DATA_REPAIR` — gaps o fallback
+- `TIME_ALIGNMENT_SWEEP` — entries no al boundary esperat (05:00 UTC)
+- `RSI_VARIANT_SWEEP` — RSI lluny del llindar però crosses a prop
+- `CONTRACT_SHIFT` — signal adjacent però no a t
+
+### Execució
+
+```bash
+./scripts/run_t832_triage.sh
+```
+
+### Artifacts
+
+`lab/runner/out_compare/artifacts/T8.32/<strategy>/<symbol>/<tf>/<from_to>/`
+
+- triage_report.json (NEXT_STEP + flags)
+- triage_time_sanity.json, triage_gap_check.json, triage_shift_check.json, triage_indicator_snapshot.json
+- window_around_divergence.csv
+- run.log
