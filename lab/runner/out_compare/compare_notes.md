@@ -152,3 +152,29 @@ Auditoria de policies D1 per handling diumenge: baseline, drop_sunday, merge_sun
 
 - `RERUN_BACKTEST_WITH_POLICY=<policy>` si hi ha millora
 - `RSI_VARIANT_SWEEP` si no hi ha canvi rellevant
+
+---
+
+## T8.35 MT4 Boundary & Concurrency Sanity Check
+
+Validació en <2s: inferència best_day_offset_h i detecció de solapaments.
+
+### Execució
+
+```bash
+./scripts/run_t835_mt4_sanity_check.sh
+```
+
+### Artifacts
+
+`lab/runner/out_compare/artifacts/T8.35/<strategy>/<symbol>/<tf>/`
+
+- mt4_sanity_report.json (best_day_offset_h, offset_scores, max_concurrency, next_step)
+- mt4_overlap_examples.csv
+- run.log
+
+### NEXT_STEP
+
+- `DAY_OFFSET_SWEEP` si best_day_offset_h != expected
+- `CONCURRENCY_POLICY_FIX` si max_concurrency > 1
+- `RSI_VARIANT_SWEEP` si boundary i concurrency consistents
