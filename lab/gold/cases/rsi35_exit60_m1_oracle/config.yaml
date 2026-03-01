@@ -1,0 +1,22 @@
+# rsi35_exit60_m1_oracle — Gold case certificat
+symbol: EURUSD
+tf: 1m
+tz: UTCMinus05
+
+indicator_specs: rsi14_price_close_sq_exact
+execution_specs: exit_after_60_samebar_reentry
+
+# Rang eval (YYYY-MM-DD)
+eval_from: "2026-02-01"
+eval_to: "2026-02-03"
+# eval_to_ts override per cobrir trade 17 exit (03:31 UTC)
+eval_to_ts: 1770089460
+
+warmup_from: "2026-01-20"
+
+rsi_period: 14
+rsi_threshold: 35
+exit_bars: 60
+
+# Rounding: None per paritat MT4 (NormalizeDouble 6)
+round_decimals: null

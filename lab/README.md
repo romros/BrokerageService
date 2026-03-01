@@ -26,6 +26,7 @@ lab/
   out/                   # Artifacts
 
   _archive/2026-02-legacy-purge/  # lighter, gtrade, sepolia, node-gtrade (T5.32)
+  _archive/2026-03-01_lab_cleanup/  # T8.50: contract_*, artifacts, mt4like_*, ostium/out_ind
 ```
 
 **Regla exploratoris ostium runner:** Els exploratoris de backtest/paritat (lab/runner/) segueixen les mateixes regles que lab/ostium: **no anar a producció fins que l'exemple funcioni bé**. Veure [lab/ostium/README.md](ostium/README.md) § Runner exploration.
@@ -53,7 +54,7 @@ lab/
 2. **Documentació**: Escriure descobriments a `NOTES.md` amb evidència
 3. **Proposta**: Quan clar, escriure disseny de solució (sense codi)
 4. **Promoció**: PR petit al core amb tests, basat en evidència lab
-5. **Cleanup**: Mantenir lab net, archivar experiments antics
+5. **Cleanup**: Mantenir lab net, archivar experiments antics. T8.50: `./scripts/run_t850_lab_cleanup.sh --dry-run` → `--apply` (git mv cap a `_archive/2026-03-01_lab_cleanup/`).
 
 ---
 

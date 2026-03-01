@@ -1,0 +1,15 @@
+# Gold Parity Suite — Registre de casos certificats
+# T8.49
+
+version: "1.0"
+updated: "2026-03-01"
+
+cases:
+  rsi35_exit60_m1_oracle:
+    dataset: "oracle SQ export (fora git)"
+    tz: UTCMinus05
+    indicator_specs: rsi14_price_close_sq_exact
+    execution_specs: exit_after_60_samebar_reentry
+    config: cases/rsi35_exit60_m1_oracle/config.yaml
+    expected_trades: cases/rsi35_exit60_m1_oracle/expected_trades.csv
+    # last_run: timestamp + summary hash (escrit per runner)
