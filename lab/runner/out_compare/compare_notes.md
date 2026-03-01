@@ -89,3 +89,32 @@ Triage automàtic <20s per decidir tipus de divergència sense recalcular indica
 - triage_time_sanity.json, triage_gap_check.json, triage_shift_check.json, triage_indicator_snapshot.json
 - window_around_divergence.csv
 - run.log
+
+---
+
+## T8.33 Time Alignment Sweep
+
+Sweep d'offsets (hores) als timestamps MT4 per maximitzar matching MT4↔LAB i minimitzar CONTRACT_SHIFT/EXIT_CASCADE.
+
+### Criteri best_offset
+
+1. max matched
+2. min contract_shift + exit_cascade
+3. min signal_mismatch
+4. tie-break: min |offset|
+
+### Execució
+
+```bash
+./scripts/run_t833_time_alignment_sweep.sh
+```
+
+### Artifacts
+
+`lab/runner/out_compare/artifacts/T8.33/<strategy>/<symbol>/<tf>/<from_to>/`
+
+- time_alignment_sweep.csv
+- time_alignment_report.json
+- best_offset.txt
+- trade_diff_report_best_offset.json + .csv (opcional)
+- run.log

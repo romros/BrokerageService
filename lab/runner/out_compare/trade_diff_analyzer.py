@@ -164,14 +164,23 @@ def classify_unmatched(
     return "CONTRACT_SHIFT", details  # Signal aquí, LAB pot haver entrat a barra adjacent
 
 
+def _apply_offset(mt4_trades: list[dict], offset_hours: int) -> list[dict]:
+    """Còpia de mt4_trades amb entry_time/exit_time desplaçats."""
+    delta = timedelta(hours=offset_hours)
+    return [{**t, "entry_time": t["entry_time"] + delta, "exit_time": t["exit_time"] + delta} for t in mt4_trades]
+
+
 def run_analysis(
     mt4_csv: Path,
     lab_trades_csv: Path,
     indicators_csv: Path,
     out_dir: Path,
     tol: timedelta = TOL_1D,
+    offset_hours: int = 0,
 ) -> dict:
     mt4_trades = read_sq_export(mt4_csv, "MT4")
+    if offset_hours != 0:
+        mt4_trades = _apply_offset(mt4_trades, offset_hours)
     lab_trades = read_lab_trades(lab_trades_csv)
     indicators = load_indicators_csv(indicators_csv)
 
