@@ -118,3 +118,37 @@ Sweep d'offsets (hores) als timestamps MT4 per maximitzar matching MT4↔LAB i m
 - best_offset.txt
 - trade_diff_report_best_offset.json + .csv (opcional)
 - run.log
+
+---
+
+## T8.34 D1 Series Shape Audit (Sunday bar policy)
+
+Auditoria de policies D1 per handling diumenge: baseline, drop_sunday, merge_sunday_into_monday.
+
+### Policies
+
+| Policy | Descripció |
+|--------|------------|
+| baseline | Tal qual |
+| drop_sunday | Elimina barres diumenge NY |
+| merge_sunday_into_monday | Fusiona OHLC diumenge dins dilluns, elimina diumenge |
+
+### Execució
+
+```bash
+./scripts/run_t834_d1_policy_audit.sh
+```
+
+### Artifacts
+
+`lab/runner/out_compare/artifacts/T8.34/<strategy>/<symbol>/<tf>/<from_to>/`
+
+- d1_policy_audit.csv
+- d1_policy_audit.json (NEXT_STEP, best_policy)
+- first_divergence_window_<policy>.csv
+- run.log
+
+### NEXT_STEP
+
+- `RERUN_BACKTEST_WITH_POLICY=<policy>` si hi ha millora
+- `RSI_VARIANT_SWEEP` si no hi ha canvi rellevant
