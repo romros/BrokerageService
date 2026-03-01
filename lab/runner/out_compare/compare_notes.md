@@ -291,3 +291,48 @@ Inferència de cadència MT4 (bars_held, bars_between_exit_and_next_entry) + gri
 **t836_best + gating:** best profile confirm_bars=3, n_lab=54 (grid). E2e backtest en curs; validar trade_diff final.
 
 **NEXT_STEP:** Si t836_best+gating redueix EXIT_CASCADE → documentar; si no → oracle indicadors MT4.
+
+---
+
+## T8.39 Paritat M1 candles + 17 trades (MT4/SQ)
+
+Harness de paritat "de baix a dalt" per validar candles M1 i reproducció exacta dels 17 trades.
+
+### Estratègia
+
+- **Symbol:** EURUSD_M1_dukas_M1_UTCMinus05
+- **Rang:** 2026-02-01 → 2026-02-02
+- **Entry:** RSI(14, PRICE_CLOSE)[1] < 35 (On Bar Open)
+- **Exit:** After 60 bars
+- **Duplicate trades:** disabled
+- **Weekends:** Don't trade (Fri 17:00 → Sun 17:00 UTC-05)
+
+### Execució
+
+```bash
+# Amb Docker (BI5 + xarxa)
+./scripts/run_t839_mt4_m1_parity.sh --docker --no-api
+
+# Amb API (historical_datalayer)
+./scripts/run_t839_mt4_m1_parity.sh
+```
+
+### Artifacts
+
+`artifacts/T8.39/EURUSD/1m/2026-02-01_2026-02-02/`
+
+- `t839_report.json` — cause, candle/trade parity
+- `lab_candles_m1_utcminus05.csv`, `lab_rsi_m1.csv`, `lab_trades.csv`
+- `candle_mismatches.csv`, `trade_mismatches.csv` (si n'hi ha)
+
+### Inputs MT4 (mt4_oracle/, gitignored)
+
+- `trades_EURUSD_M1_UTCMinus05_20260201_20260202.csv` — fallback: `lab/ostium/out_ind/rsi/output.rsi1m.csv`
+- `candles_EURUSD_M1_UTCMinus05_20260201_20260202.csv` — opcional (export manual SQ/MT4)
+
+### Resultat inicial (2026-03-01)
+
+- LAB: 16 trades (BI5 candles)
+- MT4: 17 trades
+- matched: 1 (timestamps divergents ~6 min)
+- **NEXT_STEP:** Export MT4 candles per candle parity; si PASS → debug RSI/execució.

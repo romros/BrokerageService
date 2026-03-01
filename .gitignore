@@ -73,3 +73,4 @@ lab/_archive/
 lab/runner/out_compare/artifacts/
 lab/runner/out_compare/contract_*/
 lab/runner/out_compare/mt4like_*/
+lab/runner/out_compare/mt4_oracle/
