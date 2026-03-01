@@ -178,3 +178,30 @@ Validació en <2s: inferència best_day_offset_h i detecció de solapaments.
 - `DAY_OFFSET_SWEEP` si best_day_offset_h != expected
 - `CONCURRENCY_POLICY_FIX` si max_concurrency > 1
 - `RSI_VARIANT_SWEEP` si boundary i concurrency consistents
+
+---
+
+## T8.36 Signal Definition Sweep
+
+Grid 16 variants: RSI method (wilder/ema_gains), indexing (bar_closed/bar_current), price source (close/typical), rounding (none/digits5).
+
+### Execució
+
+```bash
+./scripts/run_t836_signal_def_sweep.sh
+```
+
+### Artifacts
+
+`lab/runner/out_compare/artifacts/T8.36/<strategy>/<symbol>/<tf>/<from_to>/`
+
+- signal_def_sweep.csv
+- best_signal_def.json, best_signal_def.txt
+- first_divergence_windows/ (baseline_window.csv, best_window.csv)
+- run.log
+
+### Resultat (2026-02-28)
+
+- **best_signal_def:** ema_gains_bar_closed_typical_none
+- **signal_true_at_t:** baseline=18, best=22
+- **NEXT_STEP:** APPLY_RSI_SOURCE_TO_RUNNER (ema_gains + typical price)
