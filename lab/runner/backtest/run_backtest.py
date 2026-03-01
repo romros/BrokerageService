@@ -480,6 +480,7 @@ def simulate_trades(
     intrabar_mode: str = "sl_first",
     entry_fill: str = "open_i1",
     signal_contract: str = "v2",
+    entry_gating: Optional[Any] = None,
 ) -> list[dict[str, Any]]:
     """
     Simula trades amb contracte configurable (T8.30):
@@ -497,7 +498,10 @@ def simulate_trades(
     - Filtre divendres: si la barra d'entrada seria en zona no-trade → no obrim
       Si posició oberta i barra actual és "friday exit" → tanquem a open[bar] (o close últim)
     - max_open_trades=1, LONG only
+    - T8.38: entry_gating opcional (GatingProfile) per filtrar entrades
     """
+    from lab.runner.backtest.entry_gating import is_entry_allowed
+
     ttl_bars = int(cfg.get("ttl_bars", 0))
     sl_coef = float(cfg.get("sl_atr_coef", 0.0))
     tp_coef = float(cfg.get("tp_atr_coef", 0.0))
@@ -521,6 +525,11 @@ def simulate_trades(
     entry_price: Optional[float] = None
     sl_price: Optional[float] = None
     tp_price: Optional[float] = None
+
+    # T8.38 entry gating state
+    last_exit_bar: Optional[int] = None
+    entry_bars_with_ts: list[tuple[int, int]] = []  # (bar_idx, ts) per max_entries_per_week
+    signals_filtered = 0
 
     for i in range(1, n):  # i = barra actual (s'executa quan la barra i-1 ha tancat)
         dt_utc = index_list[i]
@@ -558,6 +567,7 @@ def simulate_trades(
                     "pnl_pct": round(pnl_pct, 6),
                     "reason": reason,
                 })
+                last_exit_bar = i
                 in_trade = False
                 entry_bar = None
                 entry_price = None
@@ -573,10 +583,26 @@ def simulate_trades(
             sig_entry = sig_values[i - 1]
             atr_idx = i - 1
         if not in_trade and sig_entry == 1 and not is_weekend and not is_fri_exit:
+            # T8.38: entry gating (opcional)
+            if entry_gating is not None:
+                ts_i = timestamps[i] if i < len(timestamps) else 0
+                cutoff = ts_i - 7 * 86400
+                entry_bars_with_ts = [(b, t) for b, t in entry_bars_with_ts if t >= cutoff]
+                n_this_week = len(entry_bars_with_ts)
+                signal_bar = i if entry_fill == "open_i" else i - 1
+                if not is_entry_allowed(
+                    i, signal_bar, sig_values, last_exit_bar, n_this_week, entry_gating
+                ):
+                    signals_filtered += 1
+                    continue
+
             atr_val = atr_values[atr_idx]
             # Si necessitem SL o TP i no hi ha ATR vàlid, skipem
             if (sl_coef > 0 or tp_coef > 0) and (atr_val is None or np.isnan(atr_val)):
                 continue
+
+            if entry_gating is not None:
+                entry_bars_with_ts.append((i, timestamps[i] if i < len(timestamps) else 0))
 
             entry_price = opens[i]    # ENTRADA A OPEN DE LA BARRA ACTUAL
             entry_bar = i
@@ -596,6 +622,9 @@ def simulate_trades(
             "pnl_pct": round(pnl_pct, 6),
             "reason": "end_of_range",
         })
+
+    if entry_gating is not None and signals_filtered > 0:
+        print(f"ENTRY_GATING: filtered={signals_filtered} (cooldown/confirm/max_week)")
 
     return trades
 
@@ -751,6 +780,7 @@ def run_backtest(
     signal_def: str = "baseline",
     entry_fill: str = "open_i1",
     signal_contract: str = "v2",
+    entry_gating_profile: Optional[Path] = None,
 ) -> int:
     """
     Executa el backtest complet.
@@ -821,6 +851,21 @@ def run_backtest(
         print(f"ERROR signal_contract no vàlid: {signal_contract}. Valors vàlids: {SIGNAL_CONTRACTS}")
         return 2
 
+    entry_gating: Optional[Any] = None
+    if entry_gating_profile is not None:
+        from lab.runner.backtest.entry_gating import GatingProfile
+        with open(entry_gating_profile, encoding="utf-8") as f:
+            data = json.load(f)
+        p = data.get("profile", data)
+        entry_gating = GatingProfile(
+            min_bars_after_exit=int(p.get("min_bars_after_exit", 0)),
+            min_bars_between_entries=int(p.get("min_bars_between_entries", 0)),
+            max_entries_per_week=p.get("max_entries_per_week"),
+            confirm_bars=int(p.get("confirm_bars", 1)),
+        )
+        print(f"ENTRY_GATING: profile={entry_gating_profile} cooldown={entry_gating.min_bars_after_exit} "
+              f"confirm_bars={entry_gating.confirm_bars} max_entries_per_week={entry_gating.max_entries_per_week}")
+
     print(
         f"CONFIG strategy={strategy} symbol={symbol} tf={tf} "
         f"from={from_date} to={to_date} "
@@ -890,12 +935,13 @@ def run_backtest(
         print(f"ERROR estratègia: {exc}")
         return 2
 
-    # Simulació (T8.30: contracte configurable)
+    # Simulació (T8.30: contracte configurable; T8.38: entry gating opcional)
     trades_all = simulate_trades(
         df, signals, atr, cfg,
         intrabar_mode=intrabar_mode,
         entry_fill=entry_fill,
         signal_contract=signal_contract,
+        entry_gating=entry_gating,
     )
 
     # Filtra trades del warmup: només trades amb entry_ts >= from_ts
@@ -966,6 +1012,8 @@ def _parse_args() -> argparse.Namespace:
                         help="T8.30: open_i=entrada a open[i], open_i1=entrada a open[i+1] (delay 1 bar)")
     parser.add_argument("--signal-contract", default="v2", choices=list(SIGNAL_CONTRACTS),
                         help="T8.30: mt4_baropen=On Bar Open, v2=actual")
+    parser.add_argument("--entry-gating-profile", default=None, type=Path,
+                        help="T8.38: path a best_gating_profile.json per filtrar entrades")
     return parser.parse_args()
 
 
@@ -988,4 +1036,5 @@ if __name__ == "__main__":
         signal_def=args.signal_def,
         entry_fill=args.entry_fill,
         signal_contract=args.signal_contract,
+        entry_gating_profile=args.entry_gating_profile,
     ))

@@ -254,3 +254,40 @@ python3 -m application.tools.export_indicators_csv --symbol EURUSD --from 2003-0
 | category_counts | SIGNAL_MISMATCH:2, EXIT_CASCADE:3, CONTRACT_SHIFT:3 | EXIT_CASCADE:12 |
 
 **Conclusió:** t836_best empitjora la paritat (matched 14→10). RSI ema_gains sobre typical genera molts més senyals (91 vs 29 trades) i crea cascades EXIT_CASCADE. **NO graduar a policy.** NEXT_STEP: continuar explorant (oracle indicadors MT4 o altres variants).
+
+---
+
+## T8.38 MT4 Entry Gating Inference + Apply
+
+Inferència de cadència MT4 (bars_held, bars_between_exit_and_next_entry) + grid de gating params per reduir EXIT_CASCADE.
+
+### Execució
+
+```bash
+# baseline (default)
+./scripts/run_t838_entry_gating_e2e.sh
+
+# t836_best (objectiu: reduir 91→22 trades, EXIT_CASCADE 12→menys)
+./scripts/run_t838_entry_gating_e2e.sh --signal-def t836_best
+```
+
+### Artifacts
+
+- `artifacts/T8.38/mt4_cadence_report.json` — median_bars_held, median_bars_after_exit
+- `artifacts/T8.38/entry_gating_grid.csv` — grid de combinacions
+- `artifacts/T8.38/best_gating_profile.json` — profile triat (max matched, min extra)
+- `artifacts/T8.38/trade_diff_report.json` — mètriques e2e
+
+### Resultat (2026-03-01)
+
+| Variant | n_lab | matched | EXIT_CASCADE |
+|---------|-------|---------|--------------|
+| baseline | 29 | 14 | 3 |
+| t836_best | 91 | 10 | 12 |
+| baseline + gating | 29 | 14 | 3 |
+
+**baseline + gating:** best profile = no gating (min_bars_after_exit=0); mateix resultat que baseline. El grid amb model cadence-only (hold fix) no troba millora per baseline.
+
+**t836_best + gating:** best profile confirm_bars=3, n_lab=54 (grid). E2e backtest en curs; validar trade_diff final.
+
+**NEXT_STEP:** Si t836_best+gating redueix EXIT_CASCADE → documentar; si no → oracle indicadors MT4.
