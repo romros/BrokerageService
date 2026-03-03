@@ -1,0 +1,13 @@
+{
+  "task": "BS.T9.12",
+  "source": "ostium",
+  "test": "unit_mock",
+  "result": "PASS",
+  "details": {
+    "source_param_accepted": true,
+    "x_data_source_header": "ostium_local",
+    "ostium_candles_mock_used": true,
+    "registry_bypass": true,
+    "notes": "source='ostium' passa pel path _read_ostium_candles (mockejat). No registry check quan source explícit."
+  }
+}

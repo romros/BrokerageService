@@ -1,0 +1,14 @@
+{
+  "task": "BS.T9.12",
+  "source": "dukascopy",
+  "test": "unit_mock",
+  "result": "PASS",
+  "details": {
+    "SUPPORTED_SOURCES": ["dukascopy", "ostium"],
+    "SOURCE_DEFAULT": "dukascopy",
+    "source_param_accepted": true,
+    "x_data_source_header": "dukascopy",
+    "dukascopy_override_used": true,
+    "notes": "Test 0-network via dukascopy_override param. Container rebuild pendent per live smoke."
+  }
+}
