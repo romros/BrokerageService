@@ -90,7 +90,11 @@
 ## 1) Decisions tancades (invariants)
 
 1. **Timeframe únic:** `1m`
-2. **Candles sense venue:** `GET /candles` i `GET /ohlcv/{symbol}` venen del `candle_store`
+2. **Candles sense venue d'execució:** `GET /candles` i `GET /ohlcv/{symbol}` no accepten venue d'execució.
+   La **font de dades** es tria amb `?source=dukascopy|ostium` (default: `dukascopy`).
+   - `dukascopy`: Parquet históric (DuckDB) + ticks bi5 → M1 (paritat SQ). Cobertura 2003-present.
+   - `ostium`: Ostium realtime local (CSVCandleStore). Cobertura: últims mesos.
+   - `ostium_compat_registry` passa de ser selector automàtic a **validació de qualitat** (graduation gate).
 3. **TZ canònica:** `America/New_York` (partició/queries/display; *no* re-etiqueta `ts`)
 4. **`ts` canònic:** epoch UTC (start-of-minute); interval `[ts, ts+60)`
 5. **API Broker:** prefix `/api/v1/broker`; POST body only per ordres
@@ -131,10 +135,24 @@ Responsable de:
 
 ### 3.1 Fonts
 
-- **Primary (authoritative):** dades gravades pel servei (recorder).  
+- **Primary (authoritative):** dades gravades pel servei (recorder).
   Exemple actual: **Ostium ingest** (realtime) + **Dukascopy** backfill històric. Lighter/gTrade arxivats (T5.32).
-- **Fallback (read-only):** vendor extern per prehistòria o gaps.  
+- **Fallback (read-only):** vendor extern per prehistòria o gaps.
   Exemple: **Dukascopy 1m**
+
+**Algorisme Dukascopy M1 (validat LAB paritat_SQ_dukascopy, 2026-03):**
+
+La reconstrucció M1 **canònica** usa ticks hora a hora (`{HOUR}h_ticks.bi5`), NO les barres precalculades (`BID_candles_min_1.bi5`).
+
+- URL: `https://datafeed.dukascopy.com/datafeed/{SYMBOL}/{YEAR}/{MONTH_0IDX}/{DAY}/{HOUR:02d}h_ticks.bi5`
+- Format tick: 20 bytes big-endian LZMA — `ts_ms uint32 | ask uint32 | bid uint32 | ask_vol f32 | bid_vol f32`
+- Escala preu: `×10^5` (excepció JPY: `×10^3`)
+- OHLC per minut: `open=primer BID, high=màx BID, low=mín BID, close=darrer BID`
+- Invariant OHLC: `h=max(o,h,c)`, `l=min(o,l,c)` (arrodoniment float)
+- Paritat SQ: < 0.003% de diferències (feed privat SQ irresolubles)
+- Cache local: `{datafiles_root}/dukascopy_ticks_cache/{SYMBOL}/{Y}/{M_0idx}/{D}/{HH:02d}h_ticks.bi5`
+- Implementació: `infrastructure/venues/dukascopy/bi5_ticks_backfill_provider.py`
+- Env var: `DUKASCOPY_BACKFILL_MODE=ticks` (default) | `m1` (llegat, close[t]≈open[t+1])
 
 ### 3.2 Stitching policy (primary/fallback/mixed)
 
@@ -188,9 +206,13 @@ A totes les respostes OHLCV:
 ### 5.1 Market data (sense venue per candles)
 
 - `GET /candles?symbol=...&timeframe=1m&limit=...&since?&to?`
-- `GET /ohlcv/{symbol}?tf=1m&limit=...&since?&to?`
+- `GET /ohlcv/{symbol}?tf=1m&from_ts=...&to_ts=...&limit=...&source=dukascopy|ostium`
+  - `?source=dukascopy` (default): Parquet DuckDB si existeix, altrament Dukascopy ticks bi5. Cobertura 2003-present.
+  - `?source=ostium`: Ostium realtime local. Cobertura: últims mesos.
+- `GET /sources` → Llista fonts disponibles i símbols coberts per font
+- `GET /coverage/{symbol}?source=dukascopy|ostium` → Coverage per font (Parquet index o rang Ostium)
 
-**Nota:** no accepten `venue`. La font real és Data Layer (primary/fallback/mixed) i queda reflectida als headers.
+**Nota:** no accepten `venue` d'execució. La font de dades (Dukascopy vs Ostium) és separada del venue d'execució.
 
 ### 5.2 Trading / account (amb venue)
 
@@ -498,6 +520,7 @@ Decisió de "venue principal" sempre és en 2 eixos:
 
 ## 15) Changelog
 
+- **2026-03-03** — LAB paritat_SQ_dukascopy: algorisme M1 Dukascopy via ticks bruts `{HOUR}h_ticks.bi5` (paritat SQ <0.003%). `Bi5TicksBackfillProvider` + `DUKASCOPY_BACKFILL_MODE=ticks|m1`. `?source=dukascopy|ostium` a `GET /ohlcv/{symbol}`. Nous endpoints: `GET /sources`, `GET /coverage/{symbol}?source=`.
 - **2026-02-27** — T8.0 LAB Runner MVP: `lab/runner/` (SmokeStrategy + sq_0423850 Bollinger+ATR); `run_lab_backtest.sh`. T8.1 `POST /data/sync` idempotent Dukascopy→Parquet. Sync XAUUSD 2003→avui en curs.
 - **2026-02-26** — T7.1–T7.3.1: SL/TP client-side, LIVE smoke/TTL tools, live_on/live_off scripts.
 - **2026-02-24** — Docs coherents: ESTAT + AGENTS §14 actualitzats (Ostium exec Phase G/H implementat; Lighter/gTrade arxivats; Backtest API completa); Phase E = TradingCore completada. DIAGNOSI_PROJECTE_2026-02.md.

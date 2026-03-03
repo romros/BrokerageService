@@ -147,18 +147,23 @@ async def get_ohlcv_backtest(
     datafiles_root: str,
     registry_path: str | Path | None = None,
     dukascopy_override: Optional[List[Candle]] = None,
+    source: Optional[str] = None,
 ) -> tuple[dict[str, Any], dict[str, str]]:
     """
-    Retorna (body_dict, headers_dict) per backtest, resolent la font via registry.
+    Retorna (body_dict, headers_dict) per backtest, resolent la font via registry o paràmetre.
 
-    - Si allowed_for_backtest=true → Ostium local (0-network)
-    - Altrament → Dukascopy (pot requerir xarxa o cache)
+    - source="ostium" → Ostium local (0-network)
+    - source="dukascopy" → Dukascopy (pot requerir xarxa o cache)
+    - source=None → comportament llegat: registry-aware (allowed_for_backtest → ostium, altrament dukascopy)
 
     dukascopy_override: per testing 0-network, substitueix fetch real Dukascopy.
 
     NEVER throws: si hi ha error de lectura, retorna candles buides + headers coherents.
     """
-    source_name = resolve_backtest_data_source(symbol, registry_path=registry_path)
+    if source is not None:
+        source_name = source.lower().strip()
+    else:
+        source_name = resolve_backtest_data_source(symbol, registry_path=registry_path)
 
     if source_name == "ostium":
         candles = _read_ostium_candles(symbol, start, end, datafiles_root)

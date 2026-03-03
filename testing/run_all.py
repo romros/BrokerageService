@@ -282,6 +282,7 @@ def main():
         testing_dir / "unit" / "test_repair_missing_months_bi5.py",  # T8.26 repair mesos buits via BI5 (0-network)
         testing_dir / "unit" / "test_mt4_like_indicators.py",  # T8.27 indicadors MT4-exact EMA/RSI/ATR
         testing_dir / "unit" / "test_indicators_mt4_like.py",  # T8.29A dual EMA seed sma|first
+        testing_dir / "unit" / "test_bi5_ticks_backfill_provider.py",  # Bi5TicksBackfillProvider (paritat SQ)
         testing_dir / "apps" / "historical_datalayer" / "test_compat_report_service.py",  # P8 Compat report (0 network)
         testing_dir / "apps" / "historical_datalayer" / "test_historical_parquet.py",  # Phase 15 Parquet storage + backfill
         testing_dir / "apps" / "historical_datalayer" / "test_duckdb_query.py",       # Phase 16 DuckDB query + routing

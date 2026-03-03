@@ -6,7 +6,10 @@ Prefix: /api/v1/data
 GET  /ohlcv/{symbol}           → candles OHLCV registry-aware (Ostium local o Dukascopy fallback)
                                   Si existeix Parquet históric → DuckDB (Phase 16)
                                   Mixed stitching parquet+realtime (Phase 20)
+                                  ?source=dukascopy|ostium per forçar font (default: dukascopy)
+GET  /sources                  → Llista les fonts de dades disponibles i símbols coberts
 GET  /coverage/{symbol}        → Coverage index per símbol (Phase 19)
+                                  ?source=dukascopy|ostium per veure cobertura de la font
 POST /coverage/{symbol}/rebuild → Rebuild coverage index des del disc (T8.2)
 POST /sync                     → Inicia sync async (T8.6) — retorna job_id immediatament
 GET  /sync                     → Llista jobs recents
@@ -17,6 +20,7 @@ Dissenyat per ser consumit per un adaptador Freqtrade backtest.
 
 import asyncio
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -38,6 +42,10 @@ SUPPORTED_TIMEFRAMES = frozenset({"1m"})
 DEFAULT_LIMIT = 1000
 MAX_LIMIT = 5000
 
+# Fonts de dades disponibles per a OHLCV
+SUPPORTED_SOURCES = frozenset({"dukascopy", "ostium"})
+SOURCE_DEFAULT    = "dukascopy"
+
 
 @router.get("/ohlcv/{symbol}")
 async def get_ohlcv(
@@ -48,13 +56,15 @@ async def get_ohlcv(
     limit: int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="Màxim candles retornades"),
     offset: int = Query(default=0, ge=0, description="Offset per paginació (legacy; usa next_ts per rangs llargs)"),
     next_ts: Optional[int] = Query(default=None, description="Cursor paginació DuckDB (timestamp exclusiu inici)"),
+    source: Optional[str] = Query(default=None, description="Font de dades: dukascopy (default) | ostium"),
 ):
     """
-    Retorna candles OHLCV registry-aware.
+    Retorna candles OHLCV.
 
-    - Si existeix Parquet históric (Phase 16) → DuckDB amb cursor next_ts
-    - symbol graduat (allowed_for_backtest=true) → ostium_local
-    - altrament → dukascopy fallback
+    - ?source=dukascopy (default): Dukascopy ticks bi5 → M1 (paritat SQ). Cobertura 2003-present.
+    - ?source=ostium: Ostium realtime local (CSVCandleStore). Cobertura: últims mesos.
+    - Si existeix Parquet históric (Phase 16) i source=dukascopy → DuckDB amb cursor next_ts
+    - Mixed stitching parquet+realtime (Phase 20) si source=dukascopy i hi ha Parquet
 
     Format candles: [[ts_epoch, open, high, low, close, volume], ...]
     X-Data-* headers inclosos per qualitat de dades.
@@ -74,51 +84,63 @@ async def get_ohlcv(
             detail={"detail": f"timeframe '{tf}' no suportat; suportats: {sorted(SUPPORTED_TIMEFRAMES)}", "code": INVALID_PARAMS},
         )
 
+    # Validar i resoldre source
+    if source is not None:
+        resolved_source = source.strip().lower()
+        if resolved_source not in SUPPORTED_SOURCES:
+            raise HTTPException(
+                status_code=422,
+                detail={"detail": f"source '{source}' no suportat; suportats: {sorted(SUPPORTED_SOURCES)}", "code": INVALID_PARAMS},
+            )
+    else:
+        resolved_source = SOURCE_DEFAULT
+
     datafiles_root = os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT)
 
-    # Phase 16: routing DuckDB si existeix Parquet históric
-    from infrastructure.query.duckdb_query_service import DuckDBQueryService
-    duckdb_svc = DuckDBQueryService(root_path=datafiles_root)
+    # Phase 16: routing DuckDB si existeix Parquet históric i source=dukascopy
+    if resolved_source == "dukascopy":
+        from infrastructure.query.duckdb_query_service import DuckDBQueryService
+        duckdb_svc = DuckDBQueryService(root_path=datafiles_root)
 
-    if duckdb_svc.has_data(sym):
-        parquet_result = duckdb_svc.query_ohlcv(
-            symbol=sym,
-            from_ts=from_ts,
-            to_ts=to_ts,
-            limit=limit,
-            next_ts=next_ts,
-        )
+        if duckdb_svc.has_data(sym):
+            parquet_result = duckdb_svc.query_ohlcv(
+                symbol=sym,
+                from_ts=from_ts,
+                to_ts=to_ts,
+                limit=limit,
+                next_ts=next_ts,
+            )
 
-        # Phase 20: mixed stitching parquet + realtime
-        from application.data.mixed_ohlcv_stitcher import stitch_ohlcv_mixed, compute_xdata_headers_mixed
-        stitched = stitch_ohlcv_mixed(
-            parquet_candles=parquet_result["candles"],
-            symbol=sym,
-            datafiles_root=datafiles_root,
-            from_ts=from_ts,
-            to_ts=to_ts,
-            limit=limit,
-            next_ts_cursor=next_ts,
-        )
+            # Phase 20: mixed stitching parquet + realtime
+            from application.data.mixed_ohlcv_stitcher import stitch_ohlcv_mixed, compute_xdata_headers_mixed
+            stitched = stitch_ohlcv_mixed(
+                parquet_candles=parquet_result["candles"],
+                symbol=sym,
+                datafiles_root=datafiles_root,
+                from_ts=from_ts,
+                to_ts=to_ts,
+                limit=limit,
+                next_ts_cursor=next_ts,
+            )
 
-        xdata_headers = compute_xdata_headers_mixed(
-            candles=stitched["candles"],
-            source=stitched["source"],
-            from_ts=from_ts,
-            to_ts=to_ts,
-        )
-        response_body = {
-            "symbol": sym,
-            "timeframe": tf,
-            "source": stitched["source"],
-            "candles": stitched["candles"],
-            "total": parquet_result["total_in_range"],
-            "limit": limit,
-            "next_ts": stitched["next_ts"],
-        }
-        return JSONResponse(content=response_body, headers=xdata_headers)
+            xdata_headers = compute_xdata_headers_mixed(
+                candles=stitched["candles"],
+                source=stitched["source"],
+                from_ts=from_ts,
+                to_ts=to_ts,
+            )
+            response_body = {
+                "symbol": sym,
+                "timeframe": tf,
+                "source": stitched["source"],
+                "candles": stitched["candles"],
+                "total": parquet_result["total_in_range"],
+                "limit": limit,
+                "next_ts": stitched["next_ts"],
+            }
+            return JSONResponse(content=response_body, headers=xdata_headers)
 
-    # Camí legacy (Phase 14): Ostium local o Dukascopy
+    # Camí legacy (Phase 14): Ostium local o Dukascopy via backtest_market_data
     now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
     if to_ts is not None:
         end = datetime.fromtimestamp(to_ts, tz=timezone.utc)
@@ -140,6 +162,7 @@ async def get_ohlcv(
         start=start,
         end=end,
         datafiles_root=datafiles_root,
+        source=resolved_source,
     )
 
     all_candles = body.get("candles", [])
@@ -168,6 +191,77 @@ async def get_ohlcv(
 
 
 # ---------------------------------------------------------------------------
+# GET /sources — Fonts de dades disponibles
+# ---------------------------------------------------------------------------
+
+@router.get("/sources")
+async def get_sources():
+    """
+    Llista les fonts de dades OHLCV disponibles i símbols coberts.
+
+    Response:
+    {
+      "sources": [
+        {
+          "name": "dukascopy",
+          "description": "Dukascopy ticks bi5 → M1 (paritat SQ). Cobertura 2003-present.",
+          "default": true,
+          "symbols": ["EURUSD", "XAUUSD", ...]   // símbols amb Parquet local
+        },
+        {
+          "name": "ostium",
+          "description": "Ostium realtime local (CSVCandleStore). Cobertura: últims mesos.",
+          "default": false,
+          "symbols": [...]
+        }
+      ]
+    }
+    """
+    datafiles_root = os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT)
+
+    # Símbols amb Parquet (dukascopy)
+    dukascopy_symbols: list[str] = []
+    try:
+        from infrastructure.query.duckdb_query_service import DuckDBQueryService
+        duckdb_svc = DuckDBQueryService(root_path=datafiles_root)
+        parquet_root = Path(datafiles_root) / "historical_parquet"
+        if parquet_root.exists():
+            for sym_dir in sorted(parquet_root.iterdir()):
+                if sym_dir.is_dir() and sym_dir.name.isalnum() and not sym_dir.name.startswith("_"):
+                    if duckdb_svc.has_data(sym_dir.name.upper()):
+                        dukascopy_symbols.append(sym_dir.name.upper())
+    except Exception:
+        pass
+
+    # Símbols amb dades Ostium (CSVCandleStore)
+    ostium_symbols: list[str] = []
+    try:
+        from infrastructure.storage.csv_store import CSVCandleStore
+        ostium_root = str(Path(datafiles_root) / "realtime_datalayer")
+        store = CSVCandleStore(root_path=ostium_root, broker="candles", canonical_tz="America/New_York")
+        ostium_symbols = sorted(store.list_symbols()) if hasattr(store, "list_symbols") else []
+    except Exception:
+        pass
+
+    return JSONResponse(content={
+        "sources": [
+            {
+                "name": "dukascopy",
+                "description": "Dukascopy ticks bi5 → M1 (paritat SQ). Cobertura 2003-present.",
+                "default": True,
+                "symbols": dukascopy_symbols,
+            },
+            {
+                "name": "ostium",
+                "description": "Ostium realtime local (CSVCandleStore). Cobertura: últims mesos.",
+                "default": False,
+                "symbols": ostium_symbols,
+            },
+        ]
+    })
+
+
+# ---------------------------------------------------------------------------
 # Phase 19: Coverage API
 # ---------------------------------------------------------------------------
 
@@ -175,14 +269,19 @@ async def get_ohlcv(
 async def get_coverage(
     symbol: str,
     tf: str = Query(default="1m", description="Timeframe (només 1m)"),
+    source: Optional[str] = Query(default=None, description="Font: dukascopy (default) | ostium"),
 ):
     """
-    Retorna el coverage index del Parquet históric per un símbol.
+    Retorna la cobertura de dades per un símbol.
+
+    - ?source=dukascopy (default): coverage Parquet históric (CoverageIndex). Cobertura 2003-present.
+    - ?source=ostium: rang de dades Ostium local (CSVCandleStore). Cobertura: últims mesos.
 
     Response:
     {
       "symbol": "EURUSD",
       "timeframe": "1m",
+      "source": "dukascopy",
       "summary": {months_total, months_done, months_failed, months_empty, total_rows},
       "months": {"2020-01": {"status": "done", "rows": 31653, ...}, ...}
     }
@@ -202,8 +301,46 @@ async def get_coverage(
             detail={"detail": f"timeframe '{tf}' no suportat", "code": INVALID_PARAMS},
         )
 
+    resolved_source = (source or SOURCE_DEFAULT).strip().lower()
+    if resolved_source not in SUPPORTED_SOURCES:
+        raise HTTPException(
+            status_code=422,
+            detail={"detail": f"source '{source}' no suportat; suportats: {sorted(SUPPORTED_SOURCES)}", "code": INVALID_PARAMS},
+        )
+
     datafiles_root = os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT)
 
+    if resolved_source == "ostium":
+        # Coverage Ostium: rang primer/últim registre al CSVCandleStore
+        from infrastructure.storage.csv_store import CSVCandleStore
+        ostium_root = str(Path(datafiles_root) / "realtime_datalayer")
+        try:
+            store = CSVCandleStore(root_path=ostium_root, broker="candles", canonical_tz="America/New_York")
+            result = store.read_range(sym, None, None, validate_gaps=False)
+            candles = result.candles
+        except Exception:
+            candles = []
+
+        if candles:
+            from_ts = int(candles[0].timestamp.timestamp())
+            to_ts_val = int(candles[-1].timestamp.timestamp()) + 60
+        else:
+            from_ts = None
+            to_ts_val = None
+
+        return JSONResponse(content={
+            "symbol": sym,
+            "timeframe": tf,
+            "source": "ostium",
+            "has_data": len(candles) > 0,
+            "total_candles": len(candles),
+            "coverage_from_ts": from_ts,
+            "coverage_to_ts": to_ts_val,
+            "summary": {},
+            "months": {},
+        })
+
+    # Dukascopy: coverage index Parquet
     from application.data.coverage_index import CoverageIndex
     idx = CoverageIndex(root_path=datafiles_root, symbol=sym)
     has_index = idx._path.exists()
@@ -212,6 +349,7 @@ async def get_coverage(
     return JSONResponse(content={
         "symbol": sym,
         "timeframe": tf,
+        "source": "dukascopy",
         "has_index": has_index,
         "summary": summary,
         "months": idx._data.get("months", {}),
@@ -286,7 +424,8 @@ async def post_rebuild_coverage(
 # T8.6: Sync async amb SyncManager — job tracking + N workers
 # ---------------------------------------------------------------------------
 
-DUKASCOPY_EARLIEST = date(2003, 1, 1)  # primera data disponible a Dukascopy
+DUKASCOPY_EARLIEST = date(2003, 1, 1)   # primera data disponible a Dukascopy
+MAX_SYNC_YEARS     = 10                 # guardrail màxim anys per sync request
 
 
 class SyncRequest(BaseModel):
@@ -539,6 +678,12 @@ def get_historical_router() -> APIRouter:
         get_ohlcv,
         methods=["GET"],
         summary="OHLCV (historical)",
+    )
+    hist_router.add_api_route(
+        "/sources",
+        get_sources,
+        methods=["GET"],
+        summary="Fonts de dades disponibles (historical)",
     )
     hist_router.add_api_route(
         "/coverage/{symbol}",

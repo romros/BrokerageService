@@ -9,6 +9,12 @@ El feed JSON públic (dukascopy_python) retorna [] per EURUSD pre-2007.
 Si el provider JSON retorna [] i el rang és pre-2007, s'activa el fallback bi5:
   https://datafeed.dukascopy.com/datafeed/{SYMBOL}/{Y}/{M_0idx}/{D}/BID_candles_min_1.bi5
 Disponible des de 2003-05-05.
+
+DUKASCOPY_BACKFILL_MODE (env var):
+  - "ticks" (default): usa Bi5TicksBackfillProvider — reconstrueix M1 des de ticks bruts.
+    Paritat exacta amb SQ. Recomanat per tot el rang de dades.
+  - "m1": camí llegat (dukascopy_python + Bi5BackfillProvider pre-2007).
+    close[t] ≈ open[t+1] (desfasat ~0.5pip). Per compatibilitat / migració.
 """
 
 import asyncio
@@ -27,15 +33,34 @@ logger = get_logger(__name__)
 # Any fins al qual el feed JSON Dukascopy NO té dades M1 (límit confirmat T8.17)
 _BI5_FALLBACK_MAX_YEAR = 2006
 
+# Env var per seleccionar el mode de backfill
+_BACKFILL_MODE_ENV     = "DUKASCOPY_BACKFILL_MODE"
+_BACKFILL_MODE_TICKS   = "ticks"
+_BACKFILL_MODE_M1      = "m1"
+_BACKFILL_MODE_DEFAULT = _BACKFILL_MODE_TICKS
+
+
+def _get_backfill_mode() -> str:
+    mode = os.environ.get(_BACKFILL_MODE_ENV, _BACKFILL_MODE_DEFAULT).lower().strip()
+    if mode not in (_BACKFILL_MODE_TICKS, _BACKFILL_MODE_M1):
+        logger.warning(
+            "DUKASCOPY_BACKFILL_MODE='%s' invàlid — usant default '%s'",
+            mode, _BACKFILL_MODE_DEFAULT,
+        )
+        return _BACKFILL_MODE_DEFAULT
+    return mode
+
 
 class DukascopyBackfillProvider(IBackfillProvider):
     """
     Backfill provider via Dukascopy (fetch + cache).
 
-    T8.23: si el feed JSON retorna [] per rang pre-2007, usa el fallback bi5.
+    Mode ticks (default): delega a Bi5TicksBackfillProvider.
+    Mode m1 (llegat): dukascopy_python + fallback bi5 M1 pre-2007.
     """
 
     def __init__(self, cache_root: str | None = None):
+        self._cache_root = cache_root
         self._client = DukascopyClient(cache_root=cache_root)
 
     async def fetch_ohlcv(
@@ -46,7 +71,36 @@ class DukascopyBackfillProvider(IBackfillProvider):
     ) -> List[Candle]:
         """
         Fetch historical OHLCV [start, end).
-        Returns Candle objects with is_closed=True, ts UTC start-of-minute.
+
+        Mode ticks: delega a Bi5TicksBackfillProvider (paritat SQ).
+        Mode m1: camí llegat (dukascopy_python + bi5 pre-2007).
+        """
+        mode = _get_backfill_mode()
+
+        if mode == _BACKFILL_MODE_TICKS:
+            return await self._fetch_ohlcv_ticks(symbol, start, end)
+        else:
+            return await self._fetch_ohlcv_m1_legacy(symbol, start, end)
+
+    async def _fetch_ohlcv_ticks(
+        self,
+        symbol: str,
+        start: datetime,
+        end: datetime,
+    ) -> List[Candle]:
+        """Mode ticks: delega a Bi5TicksBackfillProvider."""
+        from .bi5_ticks_backfill_provider import Bi5TicksBackfillProvider
+        provider = Bi5TicksBackfillProvider(datafiles_root=self._cache_root)
+        return await provider.fetch_ohlcv(symbol, start, end)
+
+    async def _fetch_ohlcv_m1_legacy(
+        self,
+        symbol: str,
+        start: datetime,
+        end: datetime,
+    ) -> List[Candle]:
+        """
+        Mode m1 llegat: dukascopy_python + fallback bi5 pre-2007.
 
         T8.23: si start.year <= 2006 i el feed JSON retorna [], usa bi5 fallback.
         """
@@ -114,6 +168,9 @@ class DukascopyBackfillProvider(IBackfillProvider):
 
     @property
     def provider_name(self) -> str:
+        mode = _get_backfill_mode()
+        if mode == _BACKFILL_MODE_TICKS:
+            return "dukascopy_bi5_ticks"
         return "dukascopy"
 
     @property
