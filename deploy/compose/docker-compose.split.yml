@@ -107,6 +107,11 @@ services:
       - BROKER_URL=http://historical_datalayer:8002
       - SERVICE_ROLE=historical_datalayer
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # RAW Dukascopy: cron incremental — baixa cada hora els últims 7 dies si falten
+      - RAW_SYNC_ENABLED=1
+      - RAW_SYNC_INTERVAL_MIN=60
+      - RAW_SYNC_TAIL_DAYS=7
+      - DUKASCOPY_BACKFILL_MODE=ticks
     volumes:
       - ./datafiles:/datafiles
       - ./logs:/app/logs

@@ -445,98 +445,6 @@ class SyncRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-# BS.T9.07 — RAW Dukascopy BI5 sync
-class RawSyncRequest(BaseModel):
-    symbols: List[str] = Field(..., description="Símbols (ex: ['EURUSD', 'XAUUSD'])")
-    from_date: str = Field(..., description="Data inici YYYY-MM-DD")
-    to_date: str = Field(..., description="Data fi YYYY-MM-DD")
-    force: bool = Field(False, description="Reescriure dies ja presents")
-
-
-def _get_raw_sync_worker(request: Request):
-    """Obté RawSyncWorker des del app.state o crea fallback."""
-    w = getattr(request.app.state, "raw_sync_worker", None)
-    if w is None:
-        from infrastructure.venues.dukascopy.raw_sync_worker import RawSyncWorker  # lazy import to reduce startup cost (raw sync optional)
-        datafiles_root = os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT)
-        w = RawSyncWorker(datafiles_root=datafiles_root)
-        request.app.state.raw_sync_worker = w
-        logger.warning("RawSyncWorker creat inline (no inicialitzat al lifespan)")
-    return w
-
-
-@router.post("/raw/dukascopy/sync")
-async def post_raw_dukascopy_sync(req: RawSyncRequest, request: Request):
-    """
-    Inicia sync RAW BI5 M1 BID (T9.07). Retorna job_id; el job corre en background.
-    """
-    try:
-        from_d = date.fromisoformat(req.from_date)
-        to_d = date.fromisoformat(req.to_date)
-    except ValueError:
-        raise HTTPException(
-            status_code=422,
-            detail={"detail": "from_date/to_date han de ser YYYY-MM-DD", "code": INVALID_PARAMS},
-        )
-    if from_d > to_d:
-        raise HTTPException(
-            status_code=422,
-            detail={"detail": "from_date ha de ser <= to_date", "code": INVALID_PARAMS},
-        )
-    symbols = [s.strip().upper() for s in req.symbols if s.strip()]
-    if not symbols:
-        raise HTTPException(
-            status_code=422,
-            detail={"detail": "symbols no pot ser buit", "code": INVALID_PARAMS},
-        )
-    worker = _get_raw_sync_worker(request)
-    job = worker.create_job(symbols, req.from_date, req.to_date, force=req.force)
-    asyncio.create_task(worker.run_job(job.job_id))
-    return JSONResponse(content={
-        "job_id": job.job_id,
-        "status": job.status,
-        "symbols": job.symbols,
-        "from_date": job.from_date,
-        "to_date": job.to_date,
-        "days_total": job.days_total,
-        "message": "Job enqueued; consulta GET /data/raw/dukascopy/jobs/{job_id}",
-    })
-
-
-@router.get("/raw/dukascopy/status")
-async def get_raw_dukascopy_status(request: Request):
-    """
-    Status RAW BI5: watermark per símbol, job en curs (si n'hi ha), last_error.
-    """
-    from infrastructure.venues.dukascopy.raw_bi5_store import RawBi5M1Store  # lazy import to reduce startup cost (raw sync optional)
-    from infrastructure.venues.dukascopy.raw_sync_worker import JOB_STATUS_RUNNING, get_supported_symbols  # lazy import to reduce startup cost (raw sync optional)
-
-    datafiles_root = os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT)
-    store = RawBi5M1Store(datafiles_root)
-    worker = _get_raw_sync_worker(request)
-    symbols = get_supported_symbols()
-    watermarks = {}
-    for sym in symbols:
-        watermarks[sym] = store.read_watermark(sym)
-    jobs = worker.list_jobs(limit=5)
-    running = next((j for j in jobs if j.status == JOB_STATUS_RUNNING), None)
-    return JSONResponse(content={
-        "symbols": symbols,
-        "watermarks": watermarks,
-        "running_job_id": running.job_id if running else None,
-        "recent_jobs": [j.snapshot() for j in jobs[:5]],
-    })
-
-
-@router.get("/raw/dukascopy/jobs/{job_id}")
-async def get_raw_dukascopy_job(job_id: str, request: Request):
-    """Retorna el progrés d'un job RAW sync."""
-    worker = _get_raw_sync_worker(request)
-    job = worker.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail={"detail": "job not found", "job_id": job_id})
-    return JSONResponse(content=job.snapshot())
-
 
 def _get_sync_manager(request: Request):
     """Obté el SyncManager des del app.state o crea un de fallback (test/dev)."""
@@ -808,25 +716,6 @@ def get_historical_router() -> APIRouter:
         get_sync_job,
         methods=["GET"],
         summary="Progrés d'un job sync",
-    )
-    # T9.07: RAW Dukascopy BI5
-    hist_router.add_api_route(
-        "/raw/dukascopy/sync",
-        post_raw_dukascopy_sync,
-        methods=["POST"],
-        summary="Inicia sync RAW BI5 M1 BID (T9.07)",
-    )
-    hist_router.add_api_route(
-        "/raw/dukascopy/status",
-        get_raw_dukascopy_status,
-        methods=["GET"],
-        summary="Status RAW BI5 (watermarks, job en curs)",
-    )
-    hist_router.add_api_route(
-        "/raw/dukascopy/jobs/{job_id}",
-        get_raw_dukascopy_job,
-        methods=["GET"],
-        summary="Progrés job RAW sync",
     )
     # T8.12: Parity check M1
     hist_router.add_api_route(

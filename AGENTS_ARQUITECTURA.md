@@ -140,19 +140,34 @@ Responsable de:
 - **Fallback (read-only):** vendor extern per prehistòria o gaps.
   Exemple: **Dukascopy 1m**
 
-**Algorisme Dukascopy M1 (validat LAB paritat_SQ_dukascopy, 2026-03):**
+**Pipeline Dukascopy (arquitectura en 3 capes):**
+
+```
+1. RAW store (intern)   → disc local, immutable, atòmic
+2. Parquet (query layer) → construït llegint el RAW
+3. DuckDB               → query sobre Parquet
+```
+
+**Capa 1 — RAW store** (`infrastructure/venues/dukascopy/raw_bi5_store.py`):
+- Fitxers `BID_candles_min_1.bi5` per dia, 1 per dia per símbol
+- Layout: `{DATAFILES_ROOT}/dukascopy_raw/m1_bi5_bid/{SYMBOL}/year=YYYY/month=MM/day=DD/`
+- Escriptura atòmica (`.tmp` → rename), no-delete, immutable
+- Cron intern (`RawSyncWorker`): `RAW_SYNC_ENABLED=1`, `RAW_SYNC_INTERVAL_MIN=60`, `RAW_SYNC_TAIL_DAYS=7`
+- **No té endpoints públics** — és capa interna, no s'exposa per API
+- Cobertura: EURUSD ✅ (2003→present), XAUUSD 🔄 (en curs)
+
+**Capa 2 — Algorisme M1 des de ticks** (`infrastructure/venues/dukascopy/bi5_ticks_backfill_provider.py`):
 
 La reconstrucció M1 **canònica** usa ticks hora a hora (`{HOUR}h_ticks.bi5`), NO les barres precalculades (`BID_candles_min_1.bi5`).
 
-- URL: `https://datafeed.dukascopy.com/datafeed/{SYMBOL}/{YEAR}/{MONTH_0IDX}/{DAY}/{HOUR:02d}h_ticks.bi5`
+- URL ticks: `https://datafeed.dukascopy.com/datafeed/{SYMBOL}/{YEAR}/{MONTH_0IDX}/{DAY}/{HOUR:02d}h_ticks.bi5`
 - Format tick: 20 bytes big-endian LZMA — `ts_ms uint32 | ask uint32 | bid uint32 | ask_vol f32 | bid_vol f32`
 - Escala preu: `×10^5` (excepció JPY: `×10^3`)
 - OHLC per minut: `open=primer BID, high=màx BID, low=mín BID, close=darrer BID`
 - Invariant OHLC: `h=max(o,h,c)`, `l=min(o,l,c)` (arrodoniment float)
 - Paritat SQ: < 0.003% de diferències (feed privat SQ irresolubles)
 - Cache local: `{datafiles_root}/dukascopy_ticks_cache/{SYMBOL}/{Y}/{M_0idx}/{D}/{HH:02d}h_ticks.bi5`
-- Implementació: `infrastructure/venues/dukascopy/bi5_ticks_backfill_provider.py`
-- Env var: `DUKASCOPY_BACKFILL_MODE=ticks` (default) | `m1` (llegat, close[t]≈open[t+1])
+- Env var: `DUKASCOPY_BACKFILL_MODE=ticks` (default) | `m1` (llegat)
 
 ### 3.2 Stitching policy (primary/fallback/mixed)
 
@@ -520,6 +535,7 @@ Decisió de "venue principal" sempre és en 2 eixos:
 
 ## 15) Changelog
 
+- **2026-03-03** — RAW Dukascopy simplificat: eliminats endpoints públics `/raw/dukascopy/*` (capa interna). Cron activat `RAW_SYNC_ENABLED=1` al docker-compose. EURUSD RAW ✅ complet (8339 dies). XAUUSD RAW en curs. Arquitectura 3 capes documentada: RAW → Parquet → DuckDB.
 - **2026-03-03** — LAB paritat_SQ_dukascopy: algorisme M1 Dukascopy via ticks bruts `{HOUR}h_ticks.bi5` (paritat SQ <0.003%). `Bi5TicksBackfillProvider` + `DUKASCOPY_BACKFILL_MODE=ticks|m1`. `?source=dukascopy|ostium` a `GET /ohlcv/{symbol}`. Nous endpoints: `GET /sources`, `GET /coverage/{symbol}?source=`.
 - **2026-02-27** — T8.0 LAB Runner MVP: `lab/runner/` (SmokeStrategy + sq_0423850 Bollinger+ATR); `run_lab_backtest.sh`. T8.1 `POST /data/sync` idempotent Dukascopy→Parquet. Sync XAUUSD 2003→avui en curs.
 - **2026-02-26** — T7.1–T7.3.1: SL/TP client-side, LIVE smoke/TTL tools, live_on/live_off scripts.
