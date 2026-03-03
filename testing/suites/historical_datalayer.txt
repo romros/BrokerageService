@@ -12,5 +12,7 @@ testing/apps/historical_datalayer/test_historical_health_status.py
 testing/unit/test_sync_endpoint_logic.py
 testing/unit/test_rebuild_coverage.py
 testing/unit/test_repair_missing_months_bi5.py
+testing/unit/test_raw_bi5_store.py
+testing/unit/test_raw_sync_worker.py
 testing/unit/test_mt4_like_indicators.py
 testing/unit/test_indicators_mt4_like.py

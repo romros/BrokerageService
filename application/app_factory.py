@@ -12,7 +12,7 @@ import subprocess
 import threading
 import time
 import zoneinfo
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException
@@ -25,10 +25,15 @@ from foundation.config.constants import (
     BROKER_DIAG_ENV,
     DATA_LAYER_ENABLED_ENV,
     DATA_LAYER_STARTUP_GATE_ENV,
+    DEFAULT_RAW_SYNC_INTERVAL_MIN,
+    DEFAULT_RAW_SYNC_TAIL_DAYS,
     ENABLE_LEGACY_VENUES_ENV,
     HEARTBEAT_INTERVAL_S,
     LEGACY_VENUES,
     OSTIUM_ENABLED_ENV,
+    RAW_SYNC_ENABLED_ENV,
+    RAW_SYNC_INTERVAL_MIN_ENV,
+    RAW_SYNC_TAIL_DAYS_ENV,
     REALTIME_DATALAYER_BASE_URL_ENV,
     REALTIME_DATALAYER_ROOT_ENV,
     TESTING_ENV,
@@ -421,6 +426,41 @@ def create_app(role: str | None = None) -> FastAPI:
             except Exception as e:
                 logger.warning("SyncManager not started: %s", e)
 
+        # T9.07: RawSyncWorker (RAW BI5 M1 BID) — historical_datalayer (o monolithic)
+        raw_sync_task = None
+        if role in ("historical_datalayer", None):
+            try:
+                from infrastructure.venues.dukascopy.raw_sync_worker import RawSyncWorker, get_supported_symbols  # lazy import to reduce startup cost (raw sync only when role historical/monolithic)
+                app.state.raw_sync_worker = RawSyncWorker(datafiles_root=config["datafiles_root"])
+                logger.info("RawSyncWorker init (root=%s)", config["datafiles_root"])
+                # Scheduler incremental: tail N dies cada RAW_SYNC_INTERVAL_MIN
+                if os.getenv(RAW_SYNC_ENABLED_ENV, "").strip().lower() in ("1", "true", "yes"):
+                    interval_min = float(os.getenv(RAW_SYNC_INTERVAL_MIN_ENV, str(DEFAULT_RAW_SYNC_INTERVAL_MIN)))
+                    tail_days = int(os.getenv(RAW_SYNC_TAIL_DAYS_ENV, str(DEFAULT_RAW_SYNC_TAIL_DAYS)))
+                    async def _raw_sync_loop():
+                        while True:
+                            await asyncio.sleep(interval_min * 60)
+                            try:
+                                w = getattr(app.state, "raw_sync_worker", None)
+                                if not w:
+                                    continue
+                                to_d = date.today()
+                                from_d = to_d - timedelta(days=tail_days)
+                                symbols = get_supported_symbols()
+                                if not symbols:
+                                    continue
+                                job = w.create_job(symbols, from_d.isoformat(), to_d.isoformat(), force=False)
+                                asyncio.create_task(w.run_job(job.job_id))
+                                logger.info("RAW_SYNC: scheduler job_id=%s symbols=%s tail=%d days", job.job_id, symbols, tail_days)
+                            except asyncio.CancelledError:
+                                break
+                            except Exception as e:
+                                logger.warning("RAW_SYNC scheduler error: %s", e)
+                    raw_sync_task = asyncio.create_task(_raw_sync_loop())
+                    logger.info("RAW_SYNC scheduler started (interval_min=%.0f tail_days=%d)", interval_min, tail_days)
+            except Exception as e:
+                logger.warning("RawSyncWorker not started: %s", e)
+
         heartbeat_task = None
         if os.getenv(TESTING_ENV, "").strip() == "1" or os.getenv(BROKER_DIAG_ENV, "").strip() == "1":
             async def _heartbeat_loop():
@@ -431,6 +471,12 @@ def create_app(role: str | None = None) -> FastAPI:
 
         yield
 
+        if raw_sync_task:
+            raw_sync_task.cancel()
+            try:
+                await raw_sync_task
+            except asyncio.CancelledError:
+                pass
         if heartbeat_task:
             heartbeat_task.cancel()
             try:
