@@ -51,9 +51,10 @@ def _now_iso() -> str:
 
 
 def _days_in_range(from_d: date, to_d: date) -> List[date]:
+    """Rang [from_d, to_d) (to_d exclusiu), un dia = from_date, to_date = day+1."""
     out = []
     cur = from_d
-    while cur <= to_d:
+    while cur < to_d:
         out.append(cur)
         cur += timedelta(days=1)
     return out
@@ -72,6 +73,7 @@ class RawSyncJob:
     days_skipped: int = 0
     days_failed: int = 0
     last_error: Optional[str] = None
+    failed_day_last: Optional[str] = None  # últim dia fallit (YYYY-MM-DD) per retry sense last_error
     started_at: str = ""
     updated_at: str = ""
     # Per resume: últim dia completat per símbol (opcional, es pot inferir de watermark)
@@ -100,6 +102,7 @@ class RawSyncJob:
             "days_failed": self.days_failed,
             "progress_pct": pct,
             "last_error": self.last_error,
+            "failed_day_last": self.failed_day_last,
             "started_at": self.started_at,
             "updated_at": self.updated_at,
         }
@@ -269,6 +272,7 @@ class RawSyncWorker:
                         if raw is None:
                             failed += 1
                             job.last_error = f"Download failed: {sym} {d.isoformat()}"
+                            job.failed_day_last = d.isoformat()
                             job.days_failed = failed
                             job.updated_at = _now_iso()
                             self._persist_job(job)

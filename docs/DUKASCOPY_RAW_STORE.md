@@ -2,10 +2,16 @@
 
 Capa **RAW** canònica i immutable per Dukascopy M1 BID (fitxers `.bi5`), per símbol i dia.
 
+És una **capa interna** — no té endpoints públics. Forma part del pipeline:
+
+```
+RAW store (.bi5/dia)  →  Parquet (mes)  →  DuckDB query
+```
+
 ## Objectiu
 
-- No dependre del Parquet derivat (que pot canviar d’algorisme).
-- Poder re-derivar Parquet quan calgui.
+- Tenir les dades brutes al disc, immutables i independents de qualsevol algorisme de processament.
+- Poder re-derivar el Parquet amb un algorisme diferent sense re-baixar res.
 - Sync **incremental** en background, **resumible** i **no-corruptible**.
 
 ## Layout (disc)
@@ -49,57 +55,62 @@ Arrel configurable via `DATAFILES_ROOT` (default `/datafiles`):
 
 ## Guardrails
 
-- **No-delete:** res d’esborrar raw; només afegir.
-- **Immutable:** un cop escrit un dia, no es reescriu (només amb `force: true` a la API).
-- **Atòmic:** descàrrega a `.tmp` → validar (size>0) → `rename` a `.bi5`; `manifest.json.tmp` → `manifest.json`.
+- **No-delete:** res d'esborrar raw; només afegir.
+- **Immutable:** un cop escrit un dia, no es reescriu (llevat de `force=True` explícit).
+- **Atòmic:** descàrrega a `.tmp` → validar (size>0) → `rename`; `manifest.json.tmp` → `manifest.json`.
 
-## API
+## Scheduler incremental (docker-compose.split.yml)
 
-| Mètode | Path | Descripció |
-|--------|------|------------|
-| POST | `/api/v1/data/raw/dukascopy/sync` | Inicia sync; body: `{"symbols":["EURUSD"],"from_date":"2024-01-01","to_date":"2024-01-07","force":false}`. Retorna `job_id`. |
-| GET | `/api/v1/data/raw/dukascopy/status` | Watermarks per símbol, job en curs, últims jobs. |
-| GET | `/api/v1/data/raw/dukascopy/jobs/{job_id}` | Progrés del job (days_done, days_total, status, last_error). |
+Configurat a `historical_datalayer`:
 
-(En historical_datalayer sense prefix: `/raw/dukascopy/sync`, etc.)
+| Variable | Valor | Significat |
+|----------|-------|-----------|
+| `RAW_SYNC_ENABLED` | `1` | Activa el cron |
+| `RAW_SYNC_INTERVAL_MIN` | `60` | Cada 60 minuts |
+| `RAW_SYNC_TAIL_DAYS` | `7` | Últims 7 dies per símbol |
+| `SYMBOLS` | `XAUUSD,EURUSD` | Símbols a mantenir al dia |
 
-## Símbols
+El cron usa `RawSyncWorker` (intern, sense lock extern) i escriu als mateixos paths del layout.
 
-Font única: variable d’entorn **`SYMBOLS`** (ex: `EURUSD,XAUUSD`). Default: `EURUSD,XAUUSD`. Documentat a `raw_sync_worker.get_supported_symbols()`.
+## Cobertura actual
 
-## Scheduler incremental
-
-- `RAW_SYNC_ENABLED=1` (o `true`/`yes`) activa el loop.
-- `RAW_SYNC_INTERVAL_MIN=60`: cada 60 minuts.
-- `RAW_SYNC_TAIL_DAYS=7`: sincronitza els últims 7 dies per cada símbol (sense `force`).
+| Símbol | Estat | Rang |
+|--------|-------|------|
+| EURUSD | ✅ Complet | 2003-05-04 → present |
+| XAUUSD | ✅ Complet | 2003-01-01 → present |
 
 ## Jobs i lock
 
 - Jobs persistits a `{DATAFILES_ROOT}/jobs/raw_sync/{job_id}.json`.
-- Lock: `{DATAFILES_ROOT}/jobs/raw_sync.lock`. Només un job en execució alhora; el segon retorna error.
+- Lock: `{DATAFILES_ROOT}/jobs/raw_sync.lock`. Només un job en execució alhora.
 
-## Comandes de verificació
+## Verificació des del host
 
 ```bash
-# Status (watermarks, job en curs)
-curl -s http://localhost:8081/api/v1/data/raw/dukascopy/status
+# Comptar fitxers RAW per símbol
+find datafiles/dukascopy_raw/m1_bi5_bid/EURUSD -name "BID_candles_min_1.bi5" | wc -l
 
-# Iniciar sync (1 setmana, 1 símbol)
-curl -s -X POST http://localhost:8081/api/v1/data/raw/dukascopy/sync \
-  -H "Content-Type: application/json" \
-  -d '{"symbols":["EURUSD"],"from_date":"2024-01-01","to_date":"2024-01-07"}'
-
-# Progrés d’un job
-curl -s http://localhost:8081/api/v1/data/raw/dukascopy/jobs/<job_id>
+# Verificar zero buits (ha de retornar "Dies sense fitxer: 0")
+python3 -c "
+from datetime import date, timedelta
+from pathlib import Path
+base = Path('datafiles/dukascopy_raw/m1_bi5_bid/EURUSD')
+existing = {
+    date(int(f.parts[-4].split('=')[1]), int(f.parts[-3].split('=')[1]), int(f.parts[-2].split('=')[1]))
+    for f in base.rglob('BID_candles_min_1.bi5')
+}
+first = min(existing); last = max(existing)
+missing = [d for d in (first + timedelta(i) for i in range((last-first).days+1)) if d not in existing]
+print(f'Dies sense fitxer: {len(missing)}')
+"
 ```
 
 ## Codi
 
-- `infrastructure/venues/dukascopy/raw_bi5_store.py` — RawBi5M1Store (path_for_day, exists_day, write_day_atomic, watermark).
-- `infrastructure/venues/dukascopy/raw_sync_worker.py` — RawSyncWorker, get_supported_symbols(), jobs, lock.
-- Routes: `application/api/data_routes.py` (POST/GET raw/dukascopy/*).
-- Inicialització i scheduler: `application/app_factory.py` (lifespan).
+- `infrastructure/venues/dukascopy/raw_bi5_store.py` — `RawBi5M1Store` (path_for_day, exists_day, write_day_atomic, watermark).
+- `infrastructure/venues/dukascopy/raw_sync_worker.py` — `RawSyncWorker`, `get_supported_symbols()`, jobs, lock.
+- Inicialització i scheduler: `application/app_factory.py` (lifespan, `RAW_SYNC_ENABLED`).
 
 ## Rollback
 
-Desactivar `RAW_SYNC_ENABLED`. No cal desfer res (raw és additiu).
+Desactivar `RAW_SYNC_ENABLED=0` al docker-compose. No cal desfer res (raw és additiu, no-delete).

@@ -44,13 +44,14 @@ def test_get_supported_symbols_env():
 
 def test_create_job_get_job_list_jobs(tmp_path):
     worker = RawSyncWorker(str(tmp_path))
-    job = worker.create_job(["EURUSD"], "2024-01-01", "2024-01-05", force=False)
+    # Rang [from, to) exclusiu: to_date=2024-01-06 → dies 01..05 (5 dies)
+    job = worker.create_job(["EURUSD"], "2024-01-01", "2024-01-06", force=False)
     assert job.job_id
     assert job.status == JOB_STATUS_QUEUED
     assert job.symbols == ["EURUSD"]
     assert job.from_date == "2024-01-01"
-    assert job.to_date == "2024-01-05"
-    assert job.days_total == 5  # 5 days
+    assert job.to_date == "2024-01-06"
+    assert job.days_total == 5  # 5 days [01, 02, 03, 04, 05]
     loaded = worker.get_job(job.job_id)
     assert loaded is not None
     assert loaded.job_id == job.job_id
@@ -66,10 +67,10 @@ def test_create_job_get_job_list_jobs(tmp_path):
 
 def test_job_snapshot_has_required_fields(tmp_path):
     worker = RawSyncWorker(str(tmp_path))
-    job = worker.create_job(["XAUUSD"], "2024-01-01", "2024-01-02", force=False)
+    job = worker.create_job(["XAUUSD"], "2024-01-01", "2024-01-02", force=False)  # [01, 02) = 1 dia
     snap = job.snapshot()
     for key in ("job_id", "status", "symbols", "from_date", "to_date", "days_total", "days_done",
-                "days_skipped", "days_failed", "progress_pct", "last_error", "started_at", "updated_at"):
+                "days_skipped", "days_failed", "progress_pct", "last_error", "failed_day_last", "started_at", "updated_at"):
         assert key in snap, f"missing {key}"
 
 
