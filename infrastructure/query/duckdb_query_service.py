@@ -24,6 +24,7 @@ Layout esperat (Phase 15):
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -32,7 +33,32 @@ from foundation.logging import get_logger
 logger = get_logger(__name__)
 
 PARQUET_SUBDIR = "historical_parquet"
+PARQUET_TICKS_SUBDIR = "historical_parquet_ticks_v1"
 TIMEFRAME = "1m"
+
+# Env var per seleccionar root Parquet (BS.T9.13)
+# "ticks"  → historical_parquet_ticks_v1 (v2, paritat SQ)
+# "legacy" → historical_parquet (v1, default)
+ENV_PARQUET_ACTIVE = "DUKASCOPY_PARQUET_ACTIVE"
+ENV_PARQUET_TICKS_ROOT = "DUKASCOPY_PARQUET_TICKS_ROOT"
+
+
+def _resolve_parquet_root(base_root: Path) -> tuple[Path, str]:
+    """
+    Retorna (parquet_root, source_label) segons DUKASCOPY_PARQUET_ACTIVE.
+
+    - "ticks"  → historical_parquet_ticks_v1 / source=dukascopy_ticks_v1
+    - "legacy" (default) → historical_parquet / source=historical_parquet
+    """
+    mode = os.getenv(ENV_PARQUET_ACTIVE, "legacy").strip().lower()
+    if mode == "ticks":
+        custom = os.getenv(ENV_PARQUET_TICKS_ROOT)
+        if custom:
+            root = Path(custom)
+        else:
+            root = base_root.parent / PARQUET_TICKS_SUBDIR
+        return root, "dukascopy_ticks_v1"
+    return base_root, "historical_parquet"
 
 
 class DuckDBQueryService:
@@ -44,7 +70,8 @@ class DuckDBQueryService:
     """
 
     def __init__(self, root_path: str):
-        self._root = Path(root_path) / PARQUET_SUBDIR
+        self._base_root = Path(root_path) / PARQUET_SUBDIR
+        self._root, self._source_label = _resolve_parquet_root(self._base_root)
 
     def _glob_pattern(self, symbol: str) -> str:
         """Retorna el glob pattern per llegir totes les particions d'un símbol."""
@@ -136,7 +163,7 @@ class DuckDBQueryService:
             "candles": candles,
             "next_ts": new_next_ts,
             "total_in_range": total_in_range,
-            "source": "historical_parquet",
+            "source": self._source_label,
         }
 
     def compute_xdata_headers(
@@ -153,11 +180,11 @@ class DuckDBQueryService:
         """
         if not candles:
             return {
-                "X-Data-Source": "historical_parquet",
-                "X-Data-Coverage-From": str(from_ts or 0),
-                "X-Data-Coverage-To": str(to_ts or 0),
+                "X-Data-Source":          self._source_label,
+                "X-Data-Coverage-From":   str(from_ts or 0),
+                "X-Data-Coverage-To":     str(to_ts or 0),
                 "X-Data-Missing-Minutes": "0",
-                "X-Data-Max-Gap-S": "0",
+                "X-Data-Max-Gap-S":       "0",
             }
 
         ts_list = [c[0] for c in candles]
@@ -176,7 +203,7 @@ class DuckDBQueryService:
                     max_gap_s = gap
 
         return {
-            "X-Data-Source": "historical_parquet",
+            "X-Data-Source": self._source_label,
             "X-Data-Coverage-From": str(coverage_from),
             "X-Data-Coverage-To": str(coverage_to),
             "X-Data-Missing-Minutes": str(missing),

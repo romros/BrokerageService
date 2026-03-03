@@ -284,6 +284,7 @@ def main():
         testing_dir / "unit" / "test_indicators_mt4_like.py",  # T8.29A dual EMA seed sma|first
         testing_dir / "unit" / "test_bi5_ticks_backfill_provider.py",  # Bi5TicksBackfillProvider (paritat SQ)
         testing_dir / "unit" / "test_source_routing.py",               # T9.12 source= routing dukascopy|ostium
+        testing_dir / "unit" / "test_parquet_ticks_builder.py",         # T9.13 ParquetTicksStore + builder helpers
         testing_dir / "unit" / "test_raw_bi5_store.py",  # T9.07 RAW BI5 M1 store (0-network)
         testing_dir / "unit" / "test_raw_sync_worker.py",  # T9.07 RawSyncWorker jobs + symbols (0-network)
         testing_dir / "apps" / "historical_datalayer" / "test_compat_report_service.py",  # P8 Compat report (0 network)

@@ -1,0 +1,13 @@
+{
+  "symbol": "EURUSD",
+  "out_root": "/datafiles/historical_parquet_ticks_v1",
+  "total_partitions": 1,
+  "total_candles": 30347,
+  "partitions": [
+    {
+      "year": 2025,
+      "month": 3,
+      "candles_count": 30347
+    }
+  ]
+}

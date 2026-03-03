@@ -1,0 +1,136 @@
+[
+  {
+    "symbol": "EURUSD",
+    "year": 2025,
+    "month": 3,
+    "candles": 30347,
+    "first_ts": 1740952800,
+    "last_ts": 1743465540,
+    "gap_count": 52,
+    "gap_total_min": 11585,
+    "gaps": [
+      {
+        "from_ts": 1741040880,
+        "to_ts": 1741041000,
+        "gap_s": 120,
+        "gap_min": 2
+      },
+      {
+        "from_ts": 1741125720,
+        "to_ts": 1741125840,
+        "gap_s": 120,
+        "gap_min": 2
+      },
+      {
+        "from_ts": 1741213380,
+        "to_ts": 1741213500,
+        "gap_s": 120,
+        "gap_min": 2
+      },
+      {
+        "from_ts": 1741298400,
+        "to_ts": 1741298640,
+        "gap_s": 240,
+        "gap_min": 4
+      },
+      {
+        "from_ts": 1741311900,
+        "to_ts": 1741312260,
+        "gap_s": 360,
+        "gap_min": 6
+      },
+      {
+        "from_ts": 1741312260,
+        "to_ts": 1741312380,
+        "gap_s": 120,
+        "gap_min": 2
+      },
+      {
+        "from_ts": 1741384740,
+        "to_ts": 1741554000,
+        "gap_s": 169260,
+        "gap_min": 2821
+      },
+      {
+        "from_ts": 1741554000,
+        "to_ts": 1741554120,
+        "gap_s": 120,
+        "gap_min": 2
+      },
+      {
+        "from_ts": 1741813260,
+        "to_ts": 1741813440,
+        "gap_s": 180,
+        "gap_min": 3
+      },
+      {
+        "from_ts": 1741814640,
+        "to_ts": 1741814760,
+        "gap_s": 120,
+        "gap_min": 2
+      },
+      {
+        "from_ts": 1741899600,
+        "to_ts": 1741899840,
+        "gap_s": 240,
+        "gap_min": 4
+      },
+      {
+        "from_ts": 1741902840,
+        "to_ts": 1741903020,
+        "gap_s": 180,
+        "gap_min": 3
+      },
+      {
+        "from_ts": 1741985940,
+        "to_ts": 1742158860,
+        "gap_s": 172920,
+        "gap_min": 2882
+      },
+      {
+        "from_ts": 1742159880,
+        "to_ts": 1742160000,
+        "gap_s": 120,
+        "gap_min": 2
+      },
+      {
+        "from_ts": 1742160180,
+        "to_ts": 1742160300,
+        "gap_s": 120,
+        "gap_min": 2
+      },
+      {
+        "from_ts": 1742160780,
+        "to_ts": 1742160900,
+        "gap_s": 120,
+        "gap_min": 2
+      },
+      {
+        "from_ts": 1742334300,
+        "to_ts": 1742334420,
+        "gap_s": 120,
+        "gap_min": 2
+      },
+      {
+        "from_ts": 1742341140,
+        "to_ts": 1742341260,
+        "gap_s": 120,
+        "gap_min": 2
+      },
+      {
+        "from_ts": 1742341800,
+        "to_ts": 1742341920,
+        "gap_s": 120,
+        "gap_min": 2
+      },
+      {
+        "from_ts": 1742419200,
+        "to_ts": 1742419320,
+        "gap_s": 120,
+        "gap_min": 2
+      }
+    ],
+    "written": "/datafiles/historical_parquet_ticks_v1/EURUSD/tf=1m/year=2025/month=03/data.parquet",
+    "status": "written"
+  }
+]

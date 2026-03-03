@@ -156,6 +156,15 @@ Responsable de:
 - **No té endpoints públics** — és capa interna, no s'exposa per API
 - Cobertura: EURUSD ✅ (2003→present), XAUUSD 🔄 (en curs)
 
+**Capa 2 — Parquet v2 ticks (T9.13)** (`application/tools/build_dukascopy_parquet_ticks.py`, `ParquetTicksStore`):
+
+- Root v2: `{DATAFILES_ROOT}/historical_parquet_ticks_v1/{SYMBOL}/tf=1m/year=YYYY/month=MM/data.parquet`
+- Legacy (v1) intacte: `{DATAFILES_ROOT}/historical_parquet/...` — **mai s'esborra**
+- Switch: `DUKASCOPY_PARQUET_ACTIVE=legacy` (default) | `ticks` → activa v2 a `DuckDBQueryService`
+- Builder CLI: `python3 application/tools/build_dukascopy_parquet_ticks.py --symbol EURUSD --from YYYY-MM-DD --to YYYY-MM-DD`
+- Atomic write: `.tmp.parquet` → rename per mes
+- Cutover plan: T9.14 (default=ticks quan tots els mesos construïts), T9.15 (gate paritat SQ)
+
 **Capa 2 — Algorisme M1 des de ticks** (`infrastructure/venues/dukascopy/bi5_ticks_backfill_provider.py`):
 
 La reconstrucció M1 **canònica** usa ticks hora a hora (`{HOUR}h_ticks.bi5`), NO les barres precalculades (`BID_candles_min_1.bi5`).
@@ -536,6 +545,7 @@ Decisió de "venue principal" sempre és en 2 eixos:
 ## 15) Changelog
 
 - **2026-03-03** — RAW Dukascopy simplificat: eliminats endpoints públics `/raw/dukascopy/*` (capa interna). Cron activat `RAW_SYNC_ENABLED=1` al docker-compose. EURUSD RAW ✅ complet (8339 dies). XAUUSD RAW en curs. Arquitectura 3 capes documentada: RAW → Parquet → DuckDB.
+- **2026-03-03** — T9.13 Parquet v2 ticks→M1: `ParquetTicksStore` (root separat `historical_parquet_ticks_v1`), builder CLI `build_dukascopy_parquet_ticks.py`, switch `DUKASCOPY_PARQUET_ACTIVE`. Pilot EURUSD 2025-03: 30.347 candles, smoke read OK (`source=dukascopy_ticks_v1`). Legacy intacte. T9.14 (cutover) + T9.15 (gate SQ) pendents.
 - **2026-03-03** — LAB paritat_SQ_dukascopy: algorisme M1 Dukascopy via ticks bruts `{HOUR}h_ticks.bi5` (paritat SQ <0.003%). `Bi5TicksBackfillProvider` + `DUKASCOPY_BACKFILL_MODE=ticks|m1`. `?source=dukascopy|ostium` a `GET /ohlcv/{symbol}`. Nous endpoints: `GET /sources`, `GET /coverage/{symbol}?source=`.
 - **2026-02-27** — T8.0 LAB Runner MVP: `lab/runner/` (SmokeStrategy + sq_0423850 Bollinger+ATR); `run_lab_backtest.sh`. T8.1 `POST /data/sync` idempotent Dukascopy→Parquet. Sync XAUUSD 2003→avui en curs.
 - **2026-02-26** — T7.1–T7.3.1: SL/TP client-side, LIVE smoke/TTL tools, live_on/live_off scripts.

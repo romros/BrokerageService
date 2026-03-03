@@ -1,0 +1,17 @@
+{
+  "task": "BS.T9.13",
+  "test": "smoke_read_duckdb_ticks_v1",
+  "result": "PASS",
+  "date": "2026-03-03",
+  "details": {
+    "env": "DUKASCOPY_PARQUET_ACTIVE=ticks",
+    "out_root": "/datafiles/historical_parquet_ticks_v1",
+    "symbol": "EURUSD",
+    "window": "2025-03-09T22:15:00Z → 2025-03-09T22:35:00Z (reopen diumenge)",
+    "candles_returned": 20,
+    "source_label": "dukascopy_ticks_v1",
+    "sample_first": {"ts_iso": "2025-03-09T22:15:00+00:00", "open": 1.08559, "close": 1.08555},
+    "legacy_untouched": true,
+    "notes": "DUKASCOPY_PARQUET_ACTIVE=legacy (default) segueix llegint historical_parquet sense canvis"
+  }
+}
