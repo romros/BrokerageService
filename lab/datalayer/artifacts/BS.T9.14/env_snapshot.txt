@@ -1,0 +1,14 @@
+{
+  "date": "2026-03-03T17:16:41.557094Z",
+  "DATAFILES_ROOT": "/datafiles",
+  "DUKASCOPY_PARQUET_ACTIVE": "legacy (default)",
+  "DUKASCOPY_PARQUET_TICKS_ROOT": "(not set)",
+  "root_v2": "/datafiles/historical_parquet_ticks_v1",
+  "root_legacy": "/datafiles/historical_parquet",
+  "root_v2_exists": true,
+  "root_legacy_exists": true,
+  "v2_partitions_existing": 1,
+  "ticks_cache_files": 507,
+  "months_total_planned": 279,
+  "months_pending": 278
+}
