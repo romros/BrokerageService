@@ -317,7 +317,69 @@ Compara candles M1 SQ (CSV export) vs BS (GET /data/ohlcv). **No mira parquet** 
 ./scripts/run_t915_sq_bs_m1_parity_gate.sh --symbol EURUSD --from 2003-01-01 --to 2026-03-04 --policy exact --resume
 ```
 
-**Artifacts:** `lab/out/BS.T9.15_sq_bs_m1/{SYMBOL}/1m/{range}/` (gate_summary.json, months/YYYY-MM/, run.log)
+**Artifacts:** `lab/out/BS.T9.15_sq_bs_m1/{SYMBOL}/1m/{range}/` (gate_summary.json, sq_export_manifest.json, months/YYYY-MM/, run.log)
+
+**T9.15.2 Certificació exact:** Script export: `./scripts/run_t9152_export_sq_complete.sh`. El gate parseja SQ **DST-aware** (UTC-5 EDT/EST, igual que lab/paritat_SQ_dukascopy). Amb això, paritat de preus 1:1 (0 mismatches); Febrer 2025 28.732 = 28.732 PASS.
+
+**Per què fallen les 7 barres (extra_in_bs) al canvi DST (març):**
+
+En el mes del **canvi d’horari d’estiu** (EUA: segon diumenge de març, p.ex. 2025-03-09), la API/datalayer pot retornar **7 minuts consecutius en UTC** que el CSV SQ no inclou. Timestamps observats: 2025-03-09 02:00–02:06 UTC (1741311960 … 1741312320).  
+**Causa:** En hora local Eastern, a les 02:00 es salta a 03:00 (DST “spring forward”); el feed en UTC té aquests minuts; SQ (export UTC-5) omet o no exporta aquesta finestra. La BS genera barres per tots els minuts UTC; SQ no en té 7 d’aquesta hora.  
+**Impacte:** policy `exact` falla només per `extra_in_bs=7`. Paritat de contingut: 0 missing, 0 mismatches. Per certificar rang amb policy exact cal que el datalayer **ometi** aquests 7 minuts (filtrar barres DST “spring forward” com fa el lab) o usar policy `intersection` (extra_in_bs ignorat).
+
+**Quan `exact` falla per `missing_in_bs`:** Executar **T9.16** abans de rebuildar "a lo bèstia". L'audit determina si el gap és per raw inexistents o per builder (raw present però Parquet no incorporat).
+
+---
+
+## Audit T9.16: Dukascopy gap (RAW vs Parquet vs API)
+
+**Propòsit:** Diagnòstic precís quan T9.15 `--policy exact` falla per `missing_in_bs>0`. Respon:
+- Quins minuts exactes falten (llista + finestres contigües)
+- L'API retorna 0 per aquell rang?
+- Existeixen els raw ticks BI5 (`{HOUR}h_ticks.bi5`) per les hores implicades?
+- `root_cause`: `raw_missing` | `raw_empty` | `raw_present_builder_gap` | `unknown`
+- Pla de rebuild mínim (`suggested_rebuild.sh`)
+
+### Comandes
+
+```bash
+# 1) Executar gate (si no tens artifacts)
+./scripts/run_t915_sq_bs_m1_parity_gate.sh \
+  --symbol EURUSD --from 2026-02-01 --to 2026-03-01 \
+  --policy exact --sq-input /mnt/volume-SQ/user/t915_export/ --export-method sqcli
+
+# 2) Executar audit sobre la finestra sospitosa
+./scripts/run_t916_gap_audit.sh \
+  --symbol EURUSD \
+  --from 2026-02-27T19:00:00Z --to 2026-02-27T23:00:00Z \
+  --base-url http://localhost:8081 \
+  --gate-outdir lab/out/BS.T9.15_sq_bs_m1/EURUSD/1m/20260201_20260301 \
+  --raw-root /mnt/volume-SQ/dev/BrokerageService/datafiles \
+  --emit-rebuild-plan
+```
+
+**Artifacts:** `lab/out/BS.T9.16_gap_audit/{SYMBOL}/1m/{range}/`
+- `audit_summary.json` (root_cause, comptatges)
+- `missing_minutes.csv`, `missing_windows.csv`, `missing_hours.csv`
+- `api_probe.json`
+- `suggested_rebuild.sh` (si `--emit-rebuild-plan`)
+
+**Verificació post-fix:** Executar `suggested_rebuild.sh` dins el container; repetir gate `--policy exact` del mes.
+
+---
+
+## T9.18: Rang certificat SQ (contracte runner)
+
+**Propòsit:** Certificar un únic rang “real” de SQ (inici SQ → 2026-01-28) com a 1:1 amb BS API (source=dukascopy) i declarar-lo **rang suportat pel runner**. Fora d’aquest rang no es certifica paritat.
+
+**Passos:**
+1. Export SQCLI del rang real: `./scripts/run_t9152_export_sq_complete.sh --from <SQ_FROM> --to 2026-01-28`
+2. Gate exact en el mateix rang: `./scripts/run_t915_sq_bs_m1_parity_gate.sh --symbol EURUSD --from <SQ_FROM> --to 2026-01-28 --policy exact --sq-input /mnt/volume-SQ/user/t915_export --export-method sqcli --resume`
+3. Si PASS: documentar a ESTAT el rang certificat; runner només ha de demanar dades dins `[DUKASCOPY_CERTIFIED_FROM, DUKASCOPY_CERTIFIED_TO)`.
+
+**Una comanda:** `./scripts/run_t918_certify_sq_range.sh [--from 2023-06-15] [--to 2026-01-28]`
+
+**Config (opcional):** `DUKASCOPY_CERTIFIED_FROM`, `DUKASCOPY_CERTIFIED_TO` (constants.py; env al runner per limitar queries al rang certificat).
 
 ---
 
@@ -339,4 +401,6 @@ Compara candles M1 SQ (CSV export) vs BS (GET /data/ohlcv). **No mira parquet** 
 | 2026-02-28 | T8.13 | Fix parquets buits perpetus |
 | 2026-02-28 | T8.12 | Parity checker + report EURUSD M1 |
 | 2026-03-04 | T9.15 | Gate SQ↔BS M1 parity: sq_bs_m1_parity_gate.py, run_t915_sq_bs_m1_parity_gate.sh |
-| 2026-03-04 | T9.15.1 | Policy intersection|exact: --policy per exports parcials vs complets |
+| 2026-03-04 | T9.15.1 | Policy intersection o exact: --policy per exports parcials vs complets |
+| 2026-03-04 | T9.16 | Dukascopy gap audit: dukascopy_gap_audit.py, run_t916_gap_audit.sh — RAW vs Parquet vs API, root_cause, suggested_rebuild |
+| 2026-03-04 | T9.18 | Certificar rang real SQ: run_t918_certify_sq_range.sh (export + gate exact); DUKASCOPY_CERTIFIED_FROM/TO (constants + runner) |

@@ -2,9 +2,9 @@
 BS.T9.15 — Gate SQ↔BS M1 parity (candles 1:1 a nivell d'API).
 
 Compara candles M1 SQ (CSV export) vs BS (GET /data/ohlcv) per certificar paritat 1:1.
-No mira parquet directament — només el que retorna el servei.
+SQ es parseja DST-aware (UTC-5 EDT/EST) igual que lab/paritat_SQ_dukascopy/validate_parity.py.
 
-PASS: missing_in_bs=0, mismatches=0, extra_in_bs=0 (No Session estricta).
+PASS: missing_in_bs=0, mismatches=0, extra_in_bs=0 (policy exact).
 """
 
 from __future__ import annotations
@@ -22,8 +22,46 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 OHLC_TOLERANCE = 1e-5
-UTC_MINUS_05 = timedelta(hours=5)
 API_LIMIT = 5000
+
+# DST USA (igual que lab/paritat_SQ_dukascopy): segon diumenge març, primer diumenge novembre
+# SQ exporta en UTC-5; dins DST (EDT) offset +4h, fora (EST) +5h
+DST_RANGES = {
+    2024: (datetime(2024, 3, 10, 2, 0), datetime(2024, 11, 3, 2, 0)),
+    2025: (datetime(2025, 3, 9, 2, 0), datetime(2025, 11, 2, 2, 0)),
+}
+
+
+def _dst_range(year: int) -> tuple[datetime, datetime]:
+    """(inici_dst, fi_dst) per any. In-place sense tz."""
+    if year in DST_RANGES:
+        return DST_RANGES[year]
+    import calendar
+    # Segon diumenge de març
+    mar = datetime(year, 3, 1)
+    sundays = [d for d in range(1, 32) if calendar.weekday(year, 3, d) == 6]
+    dst_start = datetime(year, 3, sundays[1], 2, 0) if len(sundays) >= 2 else datetime(year, 3, 10, 2, 0)
+    # Primer diumenge de novembre
+    nov = datetime(year, 11, 1)
+    sundays_n = [d for d in range(1, 31) if calendar.weekday(year, 11, d) == 6]
+    dst_end = datetime(year, 11, sundays_n[0], 2, 0) if sundays_n else datetime(year, 11, 3, 2, 0)
+    return (dst_start, dst_end)
+
+
+def sq_to_utc(date_str: str, time_str: str, year: int) -> int:
+    """Converteix timestamp SQ (UTCMinus05, DST-aware) a epoch UTC. Idèntic a lab validate_parity."""
+    s = f"{date_str.strip()} {time_str.strip()}"
+    for fmt in ("%Y.%m.%d %H:%M", "%Y.%m.%d %H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+        try:
+            dt = datetime.strptime(s, fmt)
+            break
+        except ValueError:
+            continue
+    else:
+        raise ValueError(f"No parse: {s}")
+    dst_start, dst_end = _dst_range(year)
+    offset = timedelta(hours=4) if dst_start <= dt < dst_end else timedelta(hours=5)
+    return int((dt + offset).timestamp())
 PIPS_EURUSD = 1e-4
 TOP_N = 100
 FIRST_MISMATCH_WINDOW_MINUTES = 10
@@ -58,7 +96,7 @@ def load_sq_csv(path: Path) -> Optional[list[dict]]:
         df["ts"] = df["ts"].astype(int)
         return df[["ts", "open", "high", "low", "close"]].to_dict("records")
 
-    # Format B: Date,Time,Open,High,Low,Close (amb capçalera)
+    # Format B: Date,Time,Open,High,Low,Close (amb capçalera). DST-aware com lab validate_parity.
     for date_col in ["Date", "date", "Open time"]:
         if date_col not in df.columns:
             continue
@@ -72,24 +110,19 @@ def load_sq_csv(path: Path) -> Optional[list[dict]]:
         l_col = "Low" if "Low" in df.columns else "low"
         c_col = "Close" if "Close" in df.columns else "close"
 
-        def _parse(s: str) -> int:
-            s = str(s).strip().strip('"')
-            for fmt in ("%Y.%m.%d %H:%M:%S", "%Y.%m.%d %H:%M", "%Y-%m-%d %H:%M:%S"):
-                try:
-                    return int((datetime.strptime(s, fmt) + UTC_MINUS_05).timestamp())
-                except ValueError:
-                    continue
-            raise ValueError(f"No parse: {s}")
+        def _ts_from_row(r) -> int:
+            date_s, time_s = str(r[date_col]).strip().strip('"'), str(r[time_col]).strip().strip('"')
+            year = int(date_s[:4])
+            return sq_to_utc(date_s, time_s, year)
 
-        df["dt_str"] = df[date_col].astype(str) + " " + df[time_col].astype(str)
-        df["ts"] = df["dt_str"].apply(_parse)
+        df["ts"] = df.apply(_ts_from_row, axis=1)
         df["open"] = df[o_col].astype(float)
         df["high"] = df[h_col].astype(float)
         df["low"] = df[l_col].astype(float)
         df["close"] = df[c_col].astype(float)
         return df[["ts", "open", "high", "low", "close"]].to_dict("records")
 
-    # Format C: sense header (Date,Time,O,H,L,C)
+    # Format C: sense header (Date,Time,O,H,L,C). DST-aware com lab validate_parity.
     try:
         df_raw = pd.read_csv(path, header=None)
         if len(df_raw.columns) >= 6:
@@ -97,18 +130,13 @@ def load_sq_csv(path: Path) -> Optional[list[dict]]:
             if len(first_val) >= 10 and first_val[4] == "." and first_val[7] == ".":
                 names = ["date", "time", "open", "high", "low", "close", "volume"][: len(df_raw.columns)]
                 df_raw.columns = names[: len(df_raw.columns)]
-                df_raw["dt_str"] = df_raw["date"].astype(str) + " " + df_raw["time"].astype(str)
 
-                def _parse_sq(s: str) -> int:
-                    s = str(s).strip()
-                    for fmt in ("%Y.%m.%d %H:%M", "%Y.%m.%d %H:%M:%S"):
-                        try:
-                            return int((datetime.strptime(s, fmt) + UTC_MINUS_05).timestamp())
-                        except ValueError:
-                            continue
-                    raise ValueError(f"No parse: {s}")
+                def _ts_sq_row(r) -> int:
+                    date_s, time_s = str(r["date"]).strip(), str(r["time"]).strip()
+                    year = int(date_s[:4])
+                    return sq_to_utc(date_s, time_s, year)
 
-                df_raw["ts"] = df_raw["dt_str"].apply(_parse_sq)
+                df_raw["ts"] = df_raw.apply(_ts_sq_row, axis=1)
                 for col in ["open", "high", "low", "close"]:
                     df_raw[col] = df_raw[col].astype(float)
                 return df_raw[["ts", "open", "high", "low", "close"]].to_dict("records")
@@ -118,7 +146,7 @@ def load_sq_csv(path: Path) -> Optional[list[dict]]:
 
 
 def _load_sq_csv_stdlib(path: Path) -> Optional[list[dict]]:
-    """Fallback sense pandas: format ts,open,high,low,close o Date,Time,O,H,L,C (UTC-05)."""
+    """Fallback sense pandas: format ts,open,high,low,close o Date,Time,O,H,L,C. DST-aware com lab."""
     rows = []
     with open(path, encoding="utf-8") as f:
         reader = csv.reader(f)
@@ -140,22 +168,16 @@ def _load_sq_csv_stdlib(path: Path) -> Optional[list[dict]]:
                     except (ValueError, IndexError):
                         continue
             return rows if rows else None
-        # Format C: sense header, Date,Time,O,H,L,C
+        # Format C: sense header, Date,Time,O,H,L,C. DST-aware: any per fila
         if len(first) >= 6 and "." in str(first[0]) and ":" in str(first[1]):
             rows = []
             for r in [first] + list(reader):
                 if len(r) < 6:
                     continue
                 try:
-                    dt_str = str(r[0]).strip() + " " + str(r[1]).strip()
-                    for fmt in ("%Y.%m.%d %H:%M", "%Y.%m.%d %H:%M:%S"):
-                        try:
-                            ts = int((datetime.strptime(dt_str, fmt) + UTC_MINUS_05).timestamp())
-                            break
-                        except ValueError:
-                            continue
-                    else:
-                        continue
+                    date_s, time_s = str(r[0]).strip(), str(r[1]).strip()
+                    year = int(date_s[:4])
+                    ts = sq_to_utc(date_s, time_s, year)
                     rows.append({
                         "ts": ts,
                         "open": float(r[2]),
@@ -263,6 +285,7 @@ def compare_month(
         "first_mismatch_ts": first_mismatch_ts,
         "mismatches_sample": mismatches[:max_sample],
         "missing_in_bs_list": missing_in_bs[:max_sample],
+        "missing_in_bs_full": missing_in_bs,  # T9.16: llista completa per audit
         "extra_in_bs_list": extra_in_bs[:max_sample],
         "pass_preu": len(mismatches) == 0,
         "pass_missing": len(missing_in_bs) == 0,
@@ -272,6 +295,14 @@ def compare_month(
 
 POLICY_INTERSECTION = "intersection"
 POLICY_EXACT = "exact"
+
+
+def _mtime_iso(path: Path) -> Optional[str]:
+    """Retorna mtime del path en ISO format."""
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except OSError:
+        return None
 
 
 def run_gate(
@@ -286,6 +317,7 @@ def run_gate(
     months_limit: Optional[int] = None,
     tol: float = OHLC_TOLERANCE,
     policy: str = POLICY_EXACT,
+    export_method: str = "unknown",
 ) -> dict[str, Any]:
     """
     Gate SQ↔BS M1 parity. Chunk per mes. Resume si --resume.
@@ -447,15 +479,18 @@ def run_gate(
         month_dir = months_dir / month_key
         month_dir.mkdir(parents=True, exist_ok=True)
         report["policy"] = policy
+        report_for_json = {k: v for k, v in report.items() if k != "missing_in_bs_full"}
         with open(month_dir / "month_summary.json", "w", encoding="utf-8") as f:
-            json.dump(report, f, indent=2)
+            json.dump(report_for_json, f, indent=2)
 
-        if report.get("missing_in_bs_list"):
-            with open(month_dir / "missing_in_bs.csv", "w", encoding="utf-8", newline="") as f:
-                w = csv.writer(f)
-                w.writerow(["ts"])
-                for t in report["missing_in_bs_list"]:
-                    w.writerow([t])
+        if report.get("missing_in_bs"):
+            to_write = report.get("missing_in_bs_full") or report.get("missing_in_bs_list") or []
+            if to_write:
+                with open(month_dir / "missing_in_bs.csv", "w", encoding="utf-8", newline="") as f:
+                    w = csv.writer(f)
+                    w.writerow(["ts"])
+                    for t in to_write:
+                        w.writerow([t])
         if report.get("extra_in_bs_list"):
             with open(month_dir / "extra_in_bs.csv", "w", encoding="utf-8", newline="") as f:
                 w = csv.writer(f)
@@ -524,7 +559,27 @@ def run_gate(
             w.writeheader()
             w.writerows(first_mismatch_window_rows)
 
-    print(f"WRITE: gate_summary.json gate_summary.csv -> {out_dir}")
+    # sq_export_manifest.json (T9.15.2)
+    files_count = 0
+    if sq_input.is_dir():
+        files_count = len(list(sq_input.glob("*.csv")))
+    else:
+        files_count = 1 if sq_input.exists() else 0
+    manifest = {
+        "symbol": symbol,
+        "from": from_date,
+        "to": to_date,
+        "sq_input_path": str(sq_input),
+        "export_generated_at": _mtime_iso(sq_input) if sq_input.exists() else None,
+        "export_method": export_method,
+        "files_count": files_count,
+        "total_sq_rows": len(all_sq),
+        "notes": "Format: Date,Time,O,H,L,C (UTC-05) o ts,open,high,low,close",
+    }
+    with open(out_dir / "sq_export_manifest.json", "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2)
+
+    print(f"WRITE: gate_summary.json gate_summary.csv sq_export_manifest.json -> {out_dir}")
     return gate_summary
 
 
@@ -545,6 +600,7 @@ def main() -> int:
     parser.add_argument("--tol", type=float, default=OHLC_TOLERANCE, help="Tolerància OHLC")
     parser.add_argument("--policy", choices=[POLICY_INTERSECTION, POLICY_EXACT], default=POLICY_EXACT,
                         help="intersection: extra_in_bs ignored; exact: extra_in_bs must be 0")
+    parser.add_argument("--export-method", default="unknown", help="Com s'ha generat l'export (sqcli/manual/...)")
     args = parser.parse_args()
 
     result = run_gate(
@@ -559,6 +615,7 @@ def main() -> int:
         months_limit=args.months,
         tol=args.tol,
         policy=args.policy,
+        export_method=args.export_method,
     )
     status = result.get("status", "FAIL")
     if status == "FAIL" and result.get("error"):
