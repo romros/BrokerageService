@@ -294,6 +294,33 @@ L'única eliminació possible és via `repair_empty_parquets.py --fix` (explíci
 
 ---
 
+## Gate T9.15: SQ↔BS M1 parity (candles 1:1 a nivell d'API)
+
+**Estat:** En curs (T9.15, T9.15.1)
+
+Compara candles M1 SQ (CSV export) vs BS (GET /data/ohlcv). **No mira parquet** — només el que retorna el servei.
+
+### Polítiques de PASS (`--policy`)
+
+| Policy | PASS si | Ús |
+|--------|---------|-----|
+| **intersection** | `missing_in_bs=0`, `mismatches=0` | Exports SQ parcials: valida paritat sobre la intersecció; `extra_in_bs` només informatiu |
+| **exact** (default) | `missing_in_bs=0`, `mismatches=0`, `extra_in_bs=0` | Exports SQ complets: validació 1:1 total |
+
+### Comandes
+
+```bash
+# Smoke 1 mes (export parcial → intersection PASS)
+./scripts/run_t915_sq_bs_m1_parity_gate.sh --symbol EURUSD --from 2026-01-01 --to 2026-02-01 --policy intersection
+
+# Full range amb exact (export complet)
+./scripts/run_t915_sq_bs_m1_parity_gate.sh --symbol EURUSD --from 2003-01-01 --to 2026-03-04 --policy exact --resume
+```
+
+**Artifacts:** `lab/out/BS.T9.15_sq_bs_m1/{SYMBOL}/1m/{range}/` (gate_summary.json, months/YYYY-MM/, run.log)
+
+---
+
 ## Historial de canvis
 
 | Data | Tasca | Canvi |
@@ -311,3 +338,5 @@ L'única eliminació possible és via `repair_empty_parquets.py --fix` (explíci
 | 2026-02-28 | T8.14 | Quality gate mensual al sync |
 | 2026-02-28 | T8.13 | Fix parquets buits perpetus |
 | 2026-02-28 | T8.12 | Parity checker + report EURUSD M1 |
+| 2026-03-04 | T9.15 | Gate SQ↔BS M1 parity: sq_bs_m1_parity_gate.py, run_t915_sq_bs_m1_parity_gate.sh |
+| 2026-03-04 | T9.15.1 | Policy intersection|exact: --policy per exports parcials vs complets |
