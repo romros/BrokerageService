@@ -1,0 +1,17 @@
+{
+  "job_id": "9c9f42f95fa3",
+  "status": "done",
+  "days_done": 6513,
+  "days_skipped": 1,
+  "days_failed": 123,
+  "retries": 0,
+  "retry_job_id": null,
+  "failed_day_retried": null,
+  "fs_check": {
+    "tmp_count": 0,
+    "bi5_eurusd": 6,
+    "watermark_eurusd": "2021-03-02"
+  },
+  "raw_root": "/mnt/volume-SQ/dev/BrokerageService/datafiles/dukascopy_raw/m1_bi5_bid",
+  "datafiles_root": "/mnt/volume-SQ/dev/BrokerageService/datafiles"
+}

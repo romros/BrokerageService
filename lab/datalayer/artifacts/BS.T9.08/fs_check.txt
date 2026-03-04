@@ -1,0 +1,16 @@
+=== FS check 2026-03-03T09:25:35+00:00 ===
+RAW_ROOT=/mnt/volume-SQ/dev/BrokerageService/datafiles/dukascopy_raw/m1_bi5_bid
+
+--- .tmp penjats (esperat: buit) ---
+
+--- bi5 count per símbol ---
+EURUSD: 6 fitxers .bi5
+
+--- watermark.json ---
+EURUSD: {
+  "last_complete_day": "2025-03-03",
+  "last_attempt_day": "2025-03-03",
+  "last_success_at": "2026-03-03T09:25:34.754495Z",
+  "last_error": null
+}
+XAUUSD: (no existeix)

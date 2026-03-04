@@ -1,0 +1,10 @@
+{
+  "gap_date": "2026-02-27",
+  "job_id": "9c9f42f95fa3",
+  "job_from": "2003-01-01",
+  "job_to": "2021-03-03",
+  "in_job_range": false,
+  "in_failed_days": false,
+  "conclusion": "gap_outside_job_range",
+  "hour_level_signals": null
+}
