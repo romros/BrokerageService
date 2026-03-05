@@ -287,6 +287,7 @@ def compare_month(
         "missing_in_bs_list": missing_in_bs[:max_sample],
         "missing_in_bs_full": missing_in_bs,  # T9.16: llista completa per audit
         "extra_in_bs_list": extra_in_bs[:max_sample],
+        "extra_in_bs_full": extra_in_bs,  # per audit: ts + market_open
         "pass_preu": len(mismatches) == 0,
         "pass_missing": len(missing_in_bs) == 0,
         "pass_extra": len(extra_in_bs) == 0,
@@ -491,12 +492,15 @@ def run_gate(
                     w.writerow(["ts"])
                     for t in to_write:
                         w.writerow([t])
-        if report.get("extra_in_bs_list"):
-            with open(month_dir / "extra_in_bs.csv", "w", encoding="utf-8", newline="") as f:
-                w = csv.writer(f)
-                w.writerow(["ts"])
-                for t in report["extra_in_bs_list"]:
-                    w.writerow([t])
+        if report.get("extra_in_bs"):
+            extra_full = report.get("extra_in_bs_full") or report.get("extra_in_bs_list") or []
+            if extra_full:
+                from application.market_hours.fx_24_5 import is_market_open
+                with open(month_dir / "extra_in_bs.csv", "w", encoding="utf-8", newline="") as f:
+                    w = csv.writer(f)
+                    w.writerow(["ts", "market_open"])
+                    for t in extra_full:
+                        w.writerow([t, is_market_open(symbol, t)])
         if report.get("mismatches_sample"):
             with open(month_dir / "mismatches_top.csv", "w", encoding="utf-8", newline="") as f:
                 w = csv.DictWriter(f, fieldnames=["ts", "col", "sq", "bs", "delta_pips"])

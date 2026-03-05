@@ -28,6 +28,7 @@ SYMBOL="${SYMBOL:-EURUSD}"
 FROM="${FROM:-2025-03-01}"
 TO="${TO:-2025-04-01}"
 POLICY="${POLICY:-exact}"
+EXPORT_METHOD="${EXPORT_METHOD:-unknown}"
 RESUME=""
 MONTHS=""
 
@@ -40,6 +41,7 @@ for arg in "$@"; do
       --symbol) SYMBOL="$arg" ;;
       --months) MONTHS="--months $arg" ;;
       --policy) POLICY="$arg" ;;
+      --export-method) EXPORT_METHOD="$arg" ;;
       --sq-input) SQ_INPUT="$arg" ;;
       --base-url) BASE_URL="$arg" ;;
     esac
@@ -52,9 +54,10 @@ for arg in "$@"; do
       --from=*) FROM="${arg#*=}" ;;
       --to=*) TO="${arg#*=}" ;;
       --policy=*) POLICY="${arg#*=}" ;;
+      --export-method=*) EXPORT_METHOD="${arg#*=}" ;;
       --sq-input=*) SQ_INPUT="${arg#*=}" ;;
       --base-url=*) BASE_URL="${arg#*=}" ;;
-      --from|--to|--symbol|--months|--policy|--sq-input|--base-url) prev="$arg" ;;
+      --from|--to|--symbol|--months|--policy|--export-method|--sq-input|--base-url) prev="$arg" ;;
     esac
   fi
 done
@@ -83,6 +86,7 @@ echo ""
   --source dukascopy \
   --policy "$POLICY" \
   --outdir "$OUTDIR" \
+  --export-method "${EXPORT_METHOD:-unknown}" \
   $RESUME $MONTHS 2>&1; } | tee "$OUTDIR/run.log"
 
 EXIT=${PIPESTATUS[0]:-$?}

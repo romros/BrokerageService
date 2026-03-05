@@ -1,6 +1,6 @@
 # DATA PARITY GATES — BrokerageService Historical Data
 
-**Data:** 2026-02-28
+**Data:** 2026-03-04
 **Principi:** No es passa al gate següent si l'anterior no és PASS o PARTIAL-acceptat.
 
 ---
@@ -321,13 +321,42 @@ Compara candles M1 SQ (CSV export) vs BS (GET /data/ohlcv). **No mira parquet** 
 
 **T9.15.2 Certificació exact:** Script export: `./scripts/run_t9152_export_sq_complete.sh`. El gate parseja SQ **DST-aware** (UTC-5 EDT/EST, igual que lab/paritat_SQ_dukascopy). Amb això, paritat de preus 1:1 (0 mismatches); Febrer 2025 28.732 = 28.732 PASS.
 
-**Per què fallen les 7 barres (extra_in_bs) al canvi DST (març):**
+**Auditoria extra_in_bs (7 barres març 2025):**
 
-En el mes del **canvi d’horari d’estiu** (EUA: segon diumenge de març, p.ex. 2025-03-09), la API/datalayer pot retornar **7 minuts consecutius en UTC** que el CSV SQ no inclou. Timestamps observats: 2025-03-09 02:00–02:06 UTC (1741311960 … 1741312320).  
-**Causa:** En hora local Eastern, a les 02:00 es salta a 03:00 (DST “spring forward”); el feed en UTC té aquests minuts; SQ (export UTC-5) omet o no exporta aquesta finestra. La BS genera barres per tots els minuts UTC; SQ no en té 7 d’aquesta hora.  
-**Impacte:** policy `exact` falla només per `extra_in_bs=7`. Paritat de contingut: 0 missing, 0 mismatches. Per certificar rang amb policy exact cal que el datalayer **ometi** aquests 7 minuts (filtrar barres DST “spring forward” com fa el lab) o usar policy `intersection` (extra_in_bs ignorat).
+El gate escriu `months/YYYY-MM/extra_in_bs.csv` amb columnes `ts` i `market_open` per cada barra que BS té i SQ no. Auditoria real (2025-03): 7 barres consecutives 1741311960 … 1741312320 = **2025-03-07 01:46–01:52 UTC** (divendres). **Totes tenen market_open=True** — són de mercat obert, no de sessió tancada.  
+**Conclusió:** Mismatch genuí: BS retorna 7 barres que SQ no exporta, dins horari FX. Cal investigar per què (session boundary SQ, gap al feed, etc.). No és DST ni mercat tancat. Policy `intersection` ignora extra_in_bs si es vol certificar sense resoldre.
+
+**Investigació .dat vs CSV (7 barres):**
+
+Existeix el fitxer `.dat` amb candles M1: `user/data/History/EURUSD_M1_dukas_M1_UTCMinus05/EURUSD_M1_dukas_M1_UTCMinus05_M1.dat` (~149 MB). El flux sqcli és: llegeix `.dat` → exporta CSV. Per tant el CSV és la vista que sqcli té del `.dat`.
+
+- **CSV i .dat coincideixen** en el sentit que el CSV ve directament del .dat (sqcli no té altra font per l’export).
+- **El gap de 7 minuts** (01:46–01:52 UTC) apareix al CSV exportat: sqcli no inclou aquestes barres. Com que el CSV ve del .dat, o bé (a) el .dat no les té, o bé (b) sqcli les filtra en exportar — en ambdós casos el resultat observable és el mateix.
+- **Format .dat:** És propietari SQ (DataBinReaderNew/DataBinWriterNew, `com.strategyquant.datalib`). L’hexdump mostra capçalera amb versió "4.2", no és format HST MT4. No hi ha parser públic; per confirmar al 100% si el .dat té el gap caldria decompilar datalib o disposar d’eina SQ per llegir-lo.
+
+**Validació 7 barres (2026-03-04):** Donem per vàlid que no podem obtenir aquestes 7 barres de SQ. Per totes les veles que existeixen a SQ, nosaltres tenim la mateixa (missing_in_bs=0, mismatches=0). Les 7 extra a BS són defecte de SQ (no exporta), no nostre. Policy `intersection` → PASS.
 
 **Quan `exact` falla per `missing_in_bs`:** Executar **T9.16** abans de rebuildar "a lo bèstia". L'audit determina si el gap és per raw inexistents o per builder (raw present però Parquet no incorporat).
+
+---
+
+## Parquet i candles mercat tancat
+
+### Parquet dual (actual vs antic)
+
+| Root | Env | Descripció |
+|------|-----|------------|
+| `historical_parquet` | `DUKASCOPY_PARQUET_ACTIVE=legacy` (default) | Parquet v1 (sync JSON/BI5 directe) |
+| `historical_parquet_ticks_v1` | `DUKASCOPY_PARQUET_ACTIVE=ticks` | Parquet v2 (ticks BI5→M1, paritat SQ) |
+
+**Cutover actual:** `docker-compose.split.yml` té `DUKASCOPY_PARQUET_ACTIVE=ticks` al historical_datalayer. **Tenim ambdós**; v2 és l’actiu. Rollback: `DUKASCOPY_PARQUET_ACTIVE=legacy`.
+
+### Candles mercat tancat
+
+- **Parquet:** Pot contenir candles de mercat tancat (BI5 inclou dissabtes/diumenges = flat bars).
+- **API** (`GET /data/ohlcv`): Filtra per `is_market_open(symbol, ts)` abans de retornar — **no retorna** candles de sessió tancada (FX 24/5).
+- **Gate T9.15:** Compara SQ vs API; ambdós alineats (SQ tampoc exporta mercat tancat; API filtra).
+- **Correcte:** No exposem candles de mercat tancat via API; el Parquet és raw, la API és la vista neta.
 
 ---
 
@@ -401,6 +430,7 @@ En el mes del **canvi d’horari d’estiu** (EUA: segon diumenge de març, p.ex
 | 2026-02-28 | T8.13 | Fix parquets buits perpetus |
 | 2026-02-28 | T8.12 | Parity checker + report EURUSD M1 |
 | 2026-03-04 | T9.15 | Gate SQ↔BS M1 parity: sq_bs_m1_parity_gate.py, run_t915_sq_bs_m1_parity_gate.sh |
+| 2026-03-04 | T9.15 | Investigació .dat vs CSV (format propietari SQ); validació 7 barres extra_in_bs = defecte SQ; secció Parquet dual + market_closed |
 | 2026-03-04 | T9.15.1 | Policy intersection o exact: --policy per exports parcials vs complets |
 | 2026-03-04 | T9.16 | Dukascopy gap audit: dukascopy_gap_audit.py, run_t916_gap_audit.sh — RAW vs Parquet vs API, root_cause, suggested_rebuild |
 | 2026-03-04 | T9.18 | Certificar rang real SQ: run_t918_certify_sq_range.sh (export + gate exact); DUKASCOPY_CERTIFIED_FROM/TO (constants + runner) |

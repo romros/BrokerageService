@@ -123,8 +123,12 @@ async def get_ohlcv(
                 next_ts_cursor=next_ts,
             )
 
+            # Només retornar barres de mercat obert (FX 24/5), com Dukascopy/SQ — no donar candles de sessió tancada
+            from application.market_hours.fx_24_5 import is_market_open
+            candles_out = [row for row in stitched["candles"] if len(row) >= 1 and is_market_open(sym, int(row[0]))]
+
             xdata_headers = compute_xdata_headers_mixed(
-                candles=stitched["candles"],
+                candles=candles_out,
                 source=stitched["source"],
                 from_ts=from_ts,
                 to_ts=to_ts,
@@ -133,7 +137,7 @@ async def get_ohlcv(
                 "symbol": sym,
                 "timeframe": tf,
                 "source": stitched["source"],
-                "candles": stitched["candles"],
+                "candles": candles_out,
                 "total": parquet_result["total_in_range"],
                 "limit": limit,
                 "next_ts": stitched["next_ts"],
