@@ -342,14 +342,14 @@ Existeix el fitxer `.dat` amb candles M1: `user/data/History/EURUSD_M1_dukas_M1_
 
 ## Parquet i candles mercat tancat
 
-### Parquet dual (actual vs antic)
+### Parquet (T9.19: legacy decommissioned)
 
-| Root | Env | Descripció |
-|------|-----|------------|
-| `historical_parquet` | `DUKASCOPY_PARQUET_ACTIVE=legacy` (default) | Parquet v1 (sync JSON/BI5 directe) |
-| `historical_parquet_ticks_v1` | `DUKASCOPY_PARQUET_ACTIVE=ticks` | Parquet v2 (ticks BI5→M1, paritat SQ) |
+| Root | Estat |
+|------|-------|
+| `historical_parquet_ticks_v1` | **Únic actiu** (ticks BI5→M1, paritat SQ) |
+| `historical_parquet` | **Decommissioned** (T9.19); arxivat a `_archive/` |
 
-**Cutover actual:** `docker-compose.split.yml` té `DUKASCOPY_PARQUET_ACTIVE=ticks` al historical_datalayer. **Tenim ambdós**; v2 és l’actiu. Rollback: `DUKASCOPY_PARQUET_ACTIVE=legacy`.
+**T9.19:** `DUKASCOPY_PARQUET_ACTIVE=legacy` → error explícit. Ticks és l'únic camí. API filtra `market_closed`.
 
 ### Candles mercat tancat
 
@@ -431,6 +431,7 @@ Existeix el fitxer `.dat` amb candles M1: `user/data/History/EURUSD_M1_dukas_M1_
 | 2026-02-28 | T8.12 | Parity checker + report EURUSD M1 |
 | 2026-03-04 | T9.15 | Gate SQ↔BS M1 parity: sq_bs_m1_parity_gate.py, run_t915_sq_bs_m1_parity_gate.sh |
 | 2026-03-04 | T9.15 | Investigació .dat vs CSV (format propietari SQ); validació 7 barres extra_in_bs = defecte SQ; secció Parquet dual + market_closed |
+| 2026-03-04 | T9.19 | Decommission historical_parquet legacy; ticks únic; DUKASCOPY_PARQUET_ACTIVE=legacy → error; script run_t919_archive_legacy_parquet.sh |
 | 2026-03-04 | T9.15.1 | Policy intersection o exact: --policy per exports parcials vs complets |
 | 2026-03-04 | T9.16 | Dukascopy gap audit: dukascopy_gap_audit.py, run_t916_gap_audit.sh — RAW vs Parquet vs API, root_cause, suggested_rebuild |
 | 2026-03-04 | T9.18 | Certificar rang real SQ: run_t918_certify_sq_range.sh (export + gate exact); DUKASCOPY_CERTIFIED_FROM/TO (constants + runner) |

@@ -134,3 +134,15 @@ BrokerageService/
 └── datafiles/                 # Dades persistents (volum Docker)
     └── realtime_datalayer/    # candles/, ticks/, config/
 ```
+
+---
+
+## Arxivat (docs/_archive/2026-03-04_docs_cleanup/)
+
+| Doc | Motiu |
+|-----|-------|
+| LAB_LIGHTER_HISTORICAL.md | Lighter arxivat T5.32 |
+| MODEL_FEES_LIGHTER.md | Lighter arxivat T5.32 |
+| ARCH_REVIEW_P4_READY.md | Tasca P3.3 completada (històric) |
+| RESUM_T9.15_2026-03-04.md | Evidència tasca; info a ESTAT/DATA_PARITY_GATES |
+| RESUM_T9.19_decommission_2026-03-04.md | Evidència tasca; info a ESTAT/DATA_PARITY_GATES |
