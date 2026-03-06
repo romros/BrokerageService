@@ -312,7 +312,7 @@ def run_backtest_parquet(
             "hold_minutes": hold_minutes,
         },
         "coverage": {
-            "source": "historical_parquet",
+            "source": svc._source_label,
             "candles_count": len(all_candles),
             "coverage_from": coverage_from,
             "coverage_to": coverage_to,

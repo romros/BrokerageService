@@ -123,9 +123,7 @@ async def get_ohlcv(
                 next_ts_cursor=next_ts,
             )
 
-            # Només retornar barres de mercat obert (FX 24/5), com Dukascopy/SQ — no donar candles de sessió tancada
-            from application.market_hours.fx_24_5 import is_market_open
-            candles_out = [row for row in stitched["candles"] if len(row) >= 1 and is_market_open(sym, int(row[0]))]
+            candles_out = stitched["candles"]
 
             xdata_headers = compute_xdata_headers_mixed(
                 candles=candles_out,
@@ -223,17 +221,21 @@ async def get_sources():
     """
     datafiles_root = os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT)
 
-    # Símbols amb Parquet (dukascopy)
+    # Símbols amb Parquet (dukascopy) — T9.19: ticks únic; legacy decommissioned
     dukascopy_symbols: list[str] = []
     try:
         from infrastructure.query.duckdb_query_service import DuckDBQueryService
         duckdb_svc = DuckDBQueryService(root_path=datafiles_root)
-        parquet_root = Path(datafiles_root) / "historical_parquet"
+        parquet_root = duckdb_svc._root  # ticks (historical_parquet_ticks_v1)
         if parquet_root.exists():
             for sym_dir in sorted(parquet_root.iterdir()):
                 if sym_dir.is_dir() and sym_dir.name.isalnum() and not sym_dir.name.startswith("_"):
                     if duckdb_svc.has_data(sym_dir.name.upper()):
                         dukascopy_symbols.append(sym_dir.name.upper())
+    except RuntimeError as e:
+        if "decommissioned" in str(e):
+            raise
+        pass
     except Exception:
         pass
 

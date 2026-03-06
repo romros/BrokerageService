@@ -36,29 +36,34 @@ PARQUET_SUBDIR = "historical_parquet"
 PARQUET_TICKS_SUBDIR = "historical_parquet_ticks_v1"
 TIMEFRAME = "1m"
 
-# Env var per seleccionar root Parquet (BS.T9.13)
-# "ticks"  → historical_parquet_ticks_v1 (v2, paritat SQ)
-# "legacy" → historical_parquet (v1, default)
+# Env var per seleccionar root Parquet (BS.T9.13, T9.19)
+# T9.19: legacy decommissioned; ticks és l'únic camí actiu.
 ENV_PARQUET_ACTIVE = "DUKASCOPY_PARQUET_ACTIVE"
 ENV_PARQUET_TICKS_ROOT = "DUKASCOPY_PARQUET_TICKS_ROOT"
+
+LEGACY_DECOMMISSIONED_MSG = (
+    "historical_parquet legacy decommissioned (T9.19). "
+    "ticks is the only source. See docs/DATA_PARITY_GATES.md § Parquet."
+)
 
 
 def _resolve_parquet_root(base_root: Path) -> tuple[Path, str]:
     """
-    Retorna (parquet_root, source_label) segons DUKASCOPY_PARQUET_ACTIVE.
+    Retorna (parquet_root, source_label). T9.19: ticks és l'únic camí actiu.
 
-    - "ticks"  → historical_parquet_ticks_v1 / source=dukascopy_ticks_v1
-    - "legacy" (default) → historical_parquet / source=historical_parquet
+    - "ticks" (default) → historical_parquet_ticks_v1 / source=dukascopy
+    - "legacy" → error explícit (decommissioned)
     """
-    mode = os.getenv(ENV_PARQUET_ACTIVE, "legacy").strip().lower()
-    if mode == "ticks":
-        custom = os.getenv(ENV_PARQUET_TICKS_ROOT)
-        if custom:
-            root = Path(custom)
-        else:
-            root = base_root.parent / PARQUET_TICKS_SUBDIR
-        return root, "dukascopy_ticks_v1"
-    return base_root, "historical_parquet"
+    mode = os.getenv(ENV_PARQUET_ACTIVE, "ticks").strip().lower()
+    if mode == "legacy":
+        raise RuntimeError(LEGACY_DECOMMISSIONED_MSG)
+    # ticks (default) o qualsevol valor no-legacy
+    custom = os.getenv(ENV_PARQUET_TICKS_ROOT)
+    if custom:
+        root = Path(custom)
+    else:
+        root = base_root.parent / PARQUET_TICKS_SUBDIR
+    return root, "dukascopy"
 
 
 class DuckDBQueryService:
@@ -108,7 +113,7 @@ class DuckDBQueryService:
                 "candles": [[ts, open, high, low, close, volume], ...],
                 "next_ts": int|None,    # timestamp del pròxim cursor; null si no hi ha més
                 "total_in_range": int,  # total candles al rang (sense paginació)
-                "source": "historical_parquet"
+                "source": "dukascopy"
             }
         """
         import duckdb

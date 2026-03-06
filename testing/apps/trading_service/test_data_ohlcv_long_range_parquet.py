@@ -46,9 +46,13 @@ def _make_candles(symbol: str, year: int, month: int, count: int) -> list:
 
 
 def _write_parquet(tmp_root: str, symbol: str, year: int, month: int, count: int) -> list:
+    """Escriu al path ticks (T9.19: DuckDB llegeix de historical_parquet_ticks_v1)."""
+    from unittest.mock import patch
     candles = _make_candles(symbol, year, month, count)
-    store = ParquetCandleStore(root_path=tmp_root)
-    store.write_month(symbol, year, month, candles)
+    from infrastructure.storage import parquet_store
+    with patch.object(parquet_store, "PARQUET_SUBDIR", "historical_parquet_ticks_v1"):
+        store = ParquetCandleStore(root_path=tmp_root)
+        store.write_month(symbol, year, month, candles)
     return candles
 
 
@@ -63,7 +67,7 @@ def _create_app(tmp_dir: str):
 # ---------------------------------------------------------------------------
 
 def test_ohlcv_uses_duckdb_path_when_parquet_exists():
-    """GET /ohlcv/{symbol} → DuckDB path quan existeix Parquet (source=historical_parquet)."""
+    """GET /ohlcv/{symbol} → DuckDB path quan existeix Parquet (source=dukascopy)."""
     with tempfile.TemporaryDirectory() as tmp:
         _write_parquet(tmp, "EURUSD", 2020, 1, 10)
         app = _create_app(tmp)
@@ -71,7 +75,7 @@ def test_ohlcv_uses_duckdb_path_when_parquet_exists():
             resp = client.get("/api/v1/data/ohlcv/EURUSD")
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert data["source"] == "historical_parquet"
+    assert data["source"] == "dukascopy"
     assert len(data["candles"]) == 10
     assert "next_ts" in data
     print(f"✓ test_ohlcv_uses_duckdb_path_when_parquet_exists OK (candles={len(data['candles'])})")

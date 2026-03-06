@@ -47,10 +47,13 @@ def _make_candles(symbol: str, base_ts: int, count: int) -> list:
 
 
 def _write_parquet(tmp_root: str, symbol: str, year: int, month: int, count: int) -> list:
+    """Escriu parquet al path ticks (T9.19: DuckDB llegeix de historical_parquet_ticks_v1)."""
     base_ts = int(datetime(year, month, 1, tzinfo=timezone.utc).timestamp())
     candles = _make_candles(symbol, base_ts, count)
-    store = ParquetCandleStore(root_path=tmp_root)
-    store.write_month(symbol, year, month, candles)
+    from infrastructure.storage import parquet_store
+    with patch.object(parquet_store, "PARQUET_SUBDIR", "historical_parquet_ticks_v1"):
+        store = ParquetCandleStore(root_path=tmp_root)
+        store.write_month(symbol, year, month, candles)
     return candles
 
 
@@ -78,7 +81,7 @@ def test_query_ohlcv_returns_correct_candles():
         candles = _write_parquet(tmp, "EURUSD", 2020, 1, 5)
         svc = DuckDBQueryService(root_path=tmp)
         result = svc.query_ohlcv("EURUSD")
-        assert result["source"] == "historical_parquet"
+        assert result["source"] == "dukascopy"
         assert len(result["candles"]) == 5
         first = result["candles"][0]
         assert len(first) == 6
@@ -135,7 +138,7 @@ def test_compute_xdata_headers_structure():
         assert "X-Data-Coverage-To" in headers
         assert "X-Data-Missing-Minutes" in headers
         assert "X-Data-Max-Gap-S" in headers
-        assert headers["X-Data-Source"] == "historical_parquet"
+        assert headers["X-Data-Source"] == "dukascopy"
     print("✓ test_compute_xdata_headers_structure OK")
 
 
@@ -158,7 +161,7 @@ def test_data_routes_uses_duckdb_when_parquet_exists():
             resp = client.get("/api/v1/data/ohlcv/EURUSD")
         assert resp.status_code == 200, f"Status {resp.status_code}: {resp.text}"
         body = resp.json()
-        assert body["source"] == "historical_parquet", f"Source: {body.get('source')}"
+        assert body["source"] == "dukascopy", f"Source: {body.get('source')}"
         assert isinstance(body["candles"], list)
         assert len(body["candles"]) == 5
         assert "next_ts" in body

@@ -90,7 +90,7 @@ def stitch_ohlcv_mixed(
     """
     Combina candles parquet (ja llegides i paginades) amb candles realtime.
 
-    Si mixed not allowed → retorna parquet_candles sense modificació + source=historical_parquet.
+    Si mixed not allowed → retorna parquet_candles sense modificació + source=dukascopy.
 
     Args:
         parquet_candles: [[ts,o,h,l,c,v],...] del Parquet (ja amb limit aplicat)
@@ -105,8 +105,8 @@ def stitch_ohlcv_mixed(
         {
             "candles": [[ts,o,h,l,c,v], ...],  # <= limit, monotònic
             "next_ts": int|None,
-            "sources_used": ["historical_parquet"] | ["ostium_local"] | ["historical_parquet", "ostium_local"],
-            "source": "mixed" | "historical_parquet" | "ostium_local",
+            "sources_used": ["dukascopy"] | ["ostium_local"] | ["dukascopy", "ostium_local"],
+            "source": "mixed" | "dukascopy" | "ostium_local",
         }
     """
     if not is_mixed_allowed():
@@ -115,8 +115,8 @@ def stitch_ohlcv_mixed(
         return {
             "candles": parquet_candles,
             "next_ts": new_next_ts if len(parquet_candles) == limit else None,
-            "sources_used": ["historical_parquet"],
-            "source": "historical_parquet",
+            "sources_used": ["dukascopy"],
+            "source": "dukascopy",
         }
 
     # Llegir realtime (tota la finestra sol·licitada; filtrarem per ts)
@@ -128,8 +128,8 @@ def stitch_ohlcv_mixed(
         return {
             "candles": parquet_candles,
             "next_ts": new_next_ts,
-            "sources_used": ["historical_parquet"] if parquet_candles else [],
-            "source": "historical_parquet",
+            "sources_used": ["dukascopy"] if parquet_candles else [],
+            "source": "dukascopy",
         }
 
     # Aplicar cursor d'entrada al realtime (si next_ts_cursor → rt ts > cursor)
@@ -163,13 +163,13 @@ def stitch_ohlcv_mixed(
 
     if has_parquet and has_rt:
         source = "mixed"
-        sources_used = ["historical_parquet", "ostium_local"]
+        sources_used = ["dukascopy", "ostium_local"]
     elif has_rt:
         source = "ostium_local"
         sources_used = ["ostium_local"]
     else:
-        source = "historical_parquet"
-        sources_used = ["historical_parquet"]
+        source = "dukascopy"
+        sources_used = ["dukascopy"]
 
     # Cursor: si hi ha més dades, apunta a l'última ts de la pàgina
     new_next_ts = page[-1][0] if (len(page) == limit and len(all_rows) > limit) else None
@@ -197,7 +197,7 @@ def compute_xdata_headers_mixed(
     Calcula headers X-Data-* per un chunk mixt.
 
     candles: [[ts, o, h, l, c, v], ...]
-    source: "mixed" | "historical_parquet" | "ostium_local"
+    source: "mixed" | "dukascopy" | "ostium_local"
     """
     if not candles:
         return {

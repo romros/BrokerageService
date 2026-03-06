@@ -55,10 +55,14 @@ def _make_candles(symbol: str, base_ts: int, count: int) -> list:
 
 
 def _write_parquet(tmp_root: str, symbol: str, year: int, month: int, count: int = 100) -> list:
+    """Escriu al path ticks (T9.19: DuckDB llegeix de historical_parquet_ticks_v1)."""
+    from unittest.mock import patch
     base_ts = int(datetime(year, month, 1, tzinfo=timezone.utc).timestamp())
     candles = _make_candles(symbol, base_ts, count)
-    store = ParquetCandleStore(root_path=tmp_root)
-    store.write_month(symbol, year, month, candles)
+    from infrastructure.storage import parquet_store
+    with patch.object(parquet_store, "PARQUET_SUBDIR", "historical_parquet_ticks_v1"):
+        store = ParquetCandleStore(root_path=tmp_root)
+        store.write_month(symbol, year, month, candles)
     return candles
 
 
@@ -152,7 +156,7 @@ def test_run_backtest_parquet_generates_artifact():
         assert result["symbol"] == "EURUSD"
         assert result["strategy"]["name"] == "simple_trend_df"
         assert result["coverage"]["candles_count"] > 0
-        assert result["coverage"]["source"] == "historical_parquet"
+        assert result["coverage"]["source"] == "dukascopy"
         assert "kpis" in result
         assert result["artifact_path"] is not None
         assert Path(result["artifact_path"]).exists()

@@ -112,7 +112,7 @@ services:
       - RAW_SYNC_INTERVAL_MIN=60
       - RAW_SYNC_TAIL_DAYS=7
       - DUKASCOPY_BACKFILL_MODE=ticks
-      # T9.14 cutover: default=ticks (Parquet v2). Rollback: DUKASCOPY_PARQUET_ACTIVE=legacy
+      # T9.19: ticks únic (legacy decommissioned)
       - DUKASCOPY_PARQUET_ACTIVE=ticks
     volumes:
       - ./datafiles:/datafiles

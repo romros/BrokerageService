@@ -8,7 +8,7 @@ Valida:
 - mixed denied (HISTORICAL_MIXED_ALLOWED=0): fallback parquet only
 - paginació cursor next_ts funciona correctament en stitched
 - GET /ohlcv/{symbol} retorna source=mixed quan hi ha parquet + realtime
-- GET /ohlcv/{symbol} retorna source=historical_parquet quan mixed denied
+- GET /ohlcv/{symbol} retorna source=dukascopy quan mixed denied
 """
 
 import os
@@ -48,6 +48,7 @@ def _parquet_rows(base_ts: int, count: int, price_start: float = 1.1) -> list[li
 
 
 def _write_parquet(tmp_root: str, symbol: str, year: int, month: int, count: int) -> list:
+    """Escriu al path ticks (T9.19: DuckDB llegeix de historical_parquet_ticks_v1)."""
     base_ts = int(datetime(year, month, 1, tzinfo=timezone.utc).timestamp())
     candles = [
         Candle(
@@ -58,8 +59,10 @@ def _write_parquet(tmp_root: str, symbol: str, year: int, month: int, count: int
         )
         for i in range(count)
     ]
-    store = ParquetCandleStore(root_path=tmp_root)
-    store.write_month(symbol, year, month, candles)
+    from infrastructure.storage import parquet_store
+    with patch.object(parquet_store, "PARQUET_SUBDIR", "historical_parquet_ticks_v1"):
+        store = ParquetCandleStore(root_path=tmp_root)
+        store.write_month(symbol, year, month, candles)
     return _parquet_rows(base_ts, count)
 
 
@@ -117,13 +120,13 @@ def test_stitch_source_mixed():
         )
 
     assert result["source"] == "mixed", f"Esperat mixed, obtingut {result['source']}"
-    assert "historical_parquet" in result["sources_used"]
+    assert "dukascopy" in result["sources_used"]
     assert "ostium_local" in result["sources_used"]
     print(f"✓ test_stitch_source_mixed OK")
 
 
 def test_stitch_mixed_denied_returns_parquet_only():
-    """HISTORICAL_MIXED_ALLOWED=0 → retorna parquet without realtime, source=historical_parquet."""
+    """HISTORICAL_MIXED_ALLOWED=0 → retorna parquet without realtime, source=dukascopy."""
     base = _ts(2020, 1, 1)
     parquet = [_row(base + i * 60) for i in range(5)]
     rt = [_row(base + i * 60, 2.0) for i in range(3, 8)]
@@ -135,7 +138,7 @@ def test_stitch_mixed_denied_returns_parquet_only():
                 from_ts=None, to_ts=None, limit=10, next_ts_cursor=None,
             )
 
-    assert result["source"] == "historical_parquet", f"Esperat historical_parquet, obtingut {result['source']}"
+        assert result["source"] == "dukascopy", f"Esperat dukascopy, obtingut {result['source']}"
     assert result["candles"] == parquet, "Candles haurien de ser exactament les del parquet"
     print(f"✓ test_stitch_mixed_denied_returns_parquet_only OK")
 
@@ -201,7 +204,7 @@ def test_ohlcv_api_source_mixed_with_parquet_and_realtime():
 
 
 def test_ohlcv_api_source_parquet_only_when_mixed_denied():
-    """GET /ohlcv/{symbol} retorna source=historical_parquet quan HISTORICAL_MIXED_ALLOWED=0."""
+    """GET /ohlcv/{symbol} retorna source=dukascopy quan HISTORICAL_MIXED_ALLOWED=0."""
     from fastapi.testclient import TestClient
 
     base = _ts(2020, 1, 1)
@@ -218,7 +221,7 @@ def test_ohlcv_api_source_parquet_only_when_mixed_denied():
 
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert data["source"] == "historical_parquet", f"Obtingut {data['source']}"
+        assert data["source"] == "dukascopy", f"Obtingut {data['source']}"
     assert len(data["candles"]) == 5  # només parquet
     print(f"✓ test_ohlcv_api_source_parquet_only_when_mixed_denied OK")
 

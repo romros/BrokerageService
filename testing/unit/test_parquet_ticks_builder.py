@@ -214,31 +214,33 @@ def test_compute_gaps_detected() -> bool:
 # Tests DuckDBQueryService switch
 # ---------------------------------------------------------------------------
 
-def test_duckdb_legacy_root() -> bool:
-    """DUKASCOPY_PARQUET_ACTIVE absent → root legacy + source=historical_parquet."""
+def test_duckdb_ticks_default() -> bool:
+    """DUKASCOPY_PARQUET_ACTIVE absent → ticks default + source=dukascopy (T9.19)."""
     with tempfile.TemporaryDirectory() as tmp:
         env = {k: v for k, v in os.environ.items() if k != "DUKASCOPY_PARQUET_ACTIVE"}
         with patch.dict(os.environ, env, clear=True):
             from infrastructure.query.duckdb_query_service import DuckDBQueryService
             svc = DuckDBQueryService(root_path=tmp)
-        ok = svc._source_label == "historical_parquet"
+        ok = svc._source_label == "dukascopy"
         if not ok:
             print(f"  FAIL: source_label={svc._source_label}")
         return ok
 
 
-def test_duckdb_ticks_root() -> bool:
-    """DUKASCOPY_PARQUET_ACTIVE=ticks → source=dukascopy_ticks_v1."""
+def test_duckdb_legacy_raises() -> bool:
+    """DUKASCOPY_PARQUET_ACTIVE=legacy → RuntimeError (T9.19 decommissioned)."""
     with tempfile.TemporaryDirectory() as tmp:
-        with patch.dict(os.environ, {"DUKASCOPY_PARQUET_ACTIVE": "ticks"}, clear=False):
-            from infrastructure.query import duckdb_query_service
-            import importlib
-            importlib.reload(duckdb_query_service)
-            svc = duckdb_query_service.DuckDBQueryService(root_path=tmp)
-        ok = svc._source_label == "dukascopy_ticks_v1"
-        if not ok:
-            print(f"  FAIL: source_label={svc._source_label}")
-        return ok
+        with patch.dict(os.environ, {"DUKASCOPY_PARQUET_ACTIVE": "legacy"}, clear=False):
+            from infrastructure.query.duckdb_query_service import DuckDBQueryService
+            try:
+                DuckDBQueryService(root_path=tmp)
+                print("  FAIL: expected RuntimeError")
+                return False
+            except RuntimeError as e:
+                ok = "decommissioned" in str(e)
+                if not ok:
+                    print(f"  FAIL: wrong message: {e}")
+                return ok
 
 
 def test_coverage_empty() -> bool:
@@ -269,8 +271,8 @@ _TESTS = [
     test_month_range_utc,
     test_compute_gaps_none,
     test_compute_gaps_detected,
-    test_duckdb_legacy_root,
-    test_duckdb_ticks_root,
+    test_duckdb_ticks_default,
+    test_duckdb_legacy_raises,
     test_coverage_empty,
 ]
 
