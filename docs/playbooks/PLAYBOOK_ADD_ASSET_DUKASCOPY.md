@@ -6,6 +6,27 @@
 
 ---
 
+## Quick Start (check ràpid)
+
+Abans de començar, respon:
+
+1. L'asset existeix a Dukascopy? (URL bi5 → HTTP 200?)
+2. Tipus de dades: candles M1 (bi5) — pipeline actual usa ticks→Parquet
+3. Objectiu: històric llarg (backfill)
+
+Si no pots respondre en <2 minuts → escala al PM abans de continuar.
+
+---
+
+## Decisions importants
+
+- Dukascopy = històric llarg (backfill); Ostium = live
+- Símbols estàndard FX (EURUSD, XAUUSD); no mapping XXX→XXXUSD com Ostium
+- Pipeline: RAW bi5 → Parquet ticks v1 → DuckDB
+- No tots els assets existeixen a Dukascopy
+
+---
+
 ## 1. Verificació asset
 
 ### Com saber si existeix
@@ -187,8 +208,11 @@ Atura't i escala si:
 
 ## Definition of Done
 
-- [ ] Asset verificat via URL bi5 (HTTP 200)
-- [ ] sync_symbol.sh o POST /sync executat
-- [ ] Parquet físic a `historical_parquet_ticks_v1/{SYMBOL}/`
-- [ ] `GET /data/coverage/{SYMBOL}?source=dukascopy` retorna months_done > 0
-- [ ] `GET /data/ohlcv/{SYMBOL}?source=dukascopy&tf=1m&limit=10` retorna candles
+Un asset Dukascopy està correctament integrat si:
+
+- [ ] Existeix Parquet físic (`historical_parquet_ticks_v1/{SYMBOL}/`)
+- [ ] Es pot consultar via `/data?source=dukascopy`
+- [ ] Coverage retorna months_done > 0
+- [ ] Passa validació d'integritat (si aplica)
+
+Si algun punt no es compleix → la tasca NO està acabada.

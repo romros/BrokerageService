@@ -6,6 +6,28 @@
 
 ---
 
+## Quick Start (check ràpid)
+
+Abans de començar, respon:
+
+1. L'asset existeix a Ostium? (`curl .../latest-price?asset=SYMBOL` → 200?)
+2. Quin és el mapping correcte? (ex: MSFT → MSFTUSD)
+3. Cal un proxy? (ex: QQQ → NDXUSD)
+4. Objectiu: live + persistència durable
+
+Si no pots respondre en <2 minuts → escala al PM abans de continuar.
+
+---
+
+## Decisions importants
+
+- Els assets depenen del venue (no tots existeixen a Ostium)
+- El mapping pot diferir del ticker (ex: MSFT → MSFTUSD)
+- Alguns assets requereixen proxy: QQQ (ETF) → NDXUSD (índex)
+- Ostium = live + retenció pròpia (CSV → Parquet)
+
+---
+
 ## 1. Verificació suport Ostium
 
 **Regla:** Els assets es defineixen per availability del venue, no per desig del producte.
@@ -247,13 +269,14 @@ Atura't i escala si:
 
 ## Definition of Done
 
-- [ ] Símbol verificat via Ostium API (200)
-- [ ] Config: SYMBOLS, OSTIUM_SYMBOLS, mapping (si cal), MARKET_HOURS_UNKNOWN (si cal)
-- [ ] Ingestió: ticks i candles a realtime
-- [ ] CSV: path `candles/NEWSYMBOL/` amb fitxers
-- [ ] Rollover real executat
-- [ ] Parquet físic verificat
-- [ ] `/data/ohlcv/NEWSYMBOL?source=ostium` retorna dades
-- [ ] Integritat: gaps=0, duplicates=0, valid=True
-- [ ] No regressió: EURUSD, MSFT, NVDA OK
-- [ ] Documentació a ESTAT.md (decisió mapping/proxy si aplica)
+Un asset Ostium està correctament integrat si:
+
+- [ ] És visible a `/realtime` (ohlcv, data_status)
+- [ ] Escriu dades a CSV (`candles/{SYMBOL}/`)
+- [ ] Passa rollover real
+- [ ] Existeix Parquet físic (`historical_parquet_ostium_v1/{SYMBOL}/`)
+- [ ] Es pot consultar via `/data?source=ostium`
+- [ ] Passa validació d'integritat (gaps=0, duplicates=0)
+- [ ] No hi ha regressions en altres assets (EURUSD, MSFT, NVDA)
+
+Si algun punt no es compleix → la tasca NO està acabada.

@@ -6,6 +6,26 @@
 
 ---
 
+## Quick Start (check ràpid)
+
+Abans de començar, respon:
+
+1. L'asset existeix a Ostium? I a Dukascopy?
+2. Decisió: només Ostium, només Dukascopy, o ambdues fonts?
+3. Objectiu: full pipeline (live + històric)
+
+Si no pots respondre en <2 minuts → escala al PM abans de continuar.
+
+---
+
+## Decisions importants
+
+- Ostium = live + retenció pròpia; Dukascopy = històric llarg
+- Símbols poden divergir per venue (ex: NDXUSD vs QQQ)
+- Asset "complet" = ambdues fonts operatives i coherents
+
+---
+
 ## Fase 1 — Ostium (ingestió + persistència)
 
 Seguir [PLAYBOOK_ADD_ASSET_OSTIUM.md](PLAYBOOK_ADD_ASSET_OSTIUM.md) completament:
@@ -101,8 +121,11 @@ Per cada source amb dades, validar amb `compute_ohlcv_integrity_report` (veure p
 
 ## Definition of Done
 
-- [ ] Fase 1 (Ostium) completa — si asset a Ostium
-- [ ] Fase 2 (Dukascopy) completa — si asset a Dukascopy
-- [ ] Fase 3: coherència i integritat verificades
-- [ ] Fase 4: asset ready
-- [ ] Documentació a ESTAT.md
+Un asset complet està correctament integrat si:
+
+- [ ] Amdues fonts operatives (Ostium i Dukascopy, segons aplicabilitat)
+- [ ] Coherència entre sources verificada
+- [ ] Integritat OK per cada source
+- [ ] No hi ha regressions
+
+Si algun punt no es compleix → la tasca NO està acabada.
