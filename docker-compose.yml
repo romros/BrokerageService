@@ -45,6 +45,7 @@ services:
       - LIGHTER_API_KEY_INDEX=${LIGHTER_API_KEY_INDEX:-}
       - LIGHTER_API_PRIVATE_KEY=${LIGHTER_API_PRIVATE_KEY:-}
     volumes:
+      - .:/app
       - ./datafiles:/datafiles
       - ./logs:/app/logs
       - ./lab/lighter:/app/lab/lighter

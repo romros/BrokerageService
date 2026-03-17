@@ -14,6 +14,48 @@
 
 ---
 
+## TASCA 2 — Historical-by-source + retenció durable Ostium (2026-03-17)
+
+**Contracte verificat:**
+- `source=dukascopy` → Parquet (DuckDB) + stitch opcional (HISTORICAL_MIXED_ALLOWED)
+- `source=ostium` → CSV + Parquet rollover (merge, CSV guanya en overlap)
+- `source=mixed` no és query param; és valor de resposta quan source=dukascopy i stitch retorna dues fonts
+
+**Retenció durable Ostium:**
+- **Abans:** No hi havia rollover; CSV era l'única persistència. Estat: `docs/ESTAT.md` línia 193: "No hi ha rollover realtime→historical".
+- **Implementat:** Tool `application/tools/ostium_csv_to_parquet_rollover.py` + script `scripts/run_ostium_rollover.sh`. Cron diari: input CSV dia anterior, output Parquet `historical_parquet_ostium_v1/{SYMBOL}/tf=1m/year=.../month=.../data.parquet`. Merge idempotent (no duplica).
+- **Consulta source=ostium:** Ara llegeix Parquet + CSV; merge amb preferència CSV en overlap.
+
+**Coverage Ostium:** Corregit bug (read_range None,None); ara usa get_earliest_timestamp/get_last_timestamp + Parquet rollover per rang.
+
+**Comandes:**
+```bash
+# Rollover dry-run
+./scripts/run_ostium_rollover.sh --dry-run
+
+# Rollover ahir (cron)
+./scripts/run_ostium_rollover.sh
+
+# Verificar per font
+curl -s "http://localhost:8081/data/ohlcv/EURUSD?source=dukascopy&tf=1m&limit=5"
+curl -s "http://localhost:8081/data/ohlcv/EURUSD?source=ostium&tf=1m&limit=5"
+curl -s "http://localhost:8081/data/coverage/EURUSD?source=ostium"
+```
+
+### TASCA 2b — Validació i correcció arquitectònica (2026-03-17)
+
+**Correccions:** Constants centralitzades (AGENTS §6.2); bug coverage Ostium `last_ts` (CSV prioritat); imports pyarrow documentats. **Provat:** linter OK; constants + data_routes + backtest_market_data + rollover alineats. Smoke/curl/rollover pendent dins Docker.
+
+### TASCA 2c — Soak Ostium validation (2026-03-17)
+
+**Scripts:** `run_soak_ostium_validation.sh --hours 2` | `check_soak_status.sh`. Checks: serveis vius, source=dukascopy/ostium, coverage, realtime OHLCV, rollover dry-run, integritat. Artifacts: `datafiles/soak/ostium_validation/<timestamp>/`. **Provat:** Prova curta 3 min OK; soak 2h en marxa. **Execució:** `nohup ./scripts/run_soak_ostium_validation.sh --hours 2 > datafiles/soak/ostium_validation/nohup.out 2>&1 &`
+
+### OHLCV Integrity (validació canònica)
+
+**Mòdul:** `application/data/ohlcv_integrity.py` — `compute_ohlcv_integrity_report(candles)` retorna dict amb candles_count, duplicates, gaps, ts_step_errors, order_ok, ohlc_ok, max_gap_s, valid. **Test:** `testing/apps/historical_datalayer/test_ohlcv_integrity_by_source.py` (8 tests 0-network). **Verificar:** `./test.sh testing/apps/historical_datalayer/test_ohlcv_integrity_by_source.py`
+
+---
+
 ## TL;DR
 
 - ✅ **MVP Ostium LIVE stable** (fast-ack 202 + operations + smoke + up scripts)

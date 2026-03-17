@@ -26,6 +26,7 @@ CANONICAL_TIMEZONE = ZoneInfo(CANONICAL_TIMEZONE_NAME)
 # BROKER API (candles, trades, limits)
 # ============================================
 SUPPORTED_TIMEFRAME = "1m"
+CANDLE_STEP_SECONDS_1M = 60  # ts[i+1] - ts[i] per timeframe 1m
 DEFAULT_CANDLES_LIMIT = 100
 MAX_CANDLES_LIMIT = 10_000
 DEFAULT_OHLCV_LIMIT = 1000  # /ohlcv/{symbol} default
@@ -105,6 +106,12 @@ COMPAT_REGISTRY_RELATIVE_PATH = "compat_probe/compat_registry.json"
 OSTIUM_COMPAT_REGISTRY_RELATIVE_PATH = "compat_reports/ostium_compat_registry.json"
 # T6.2: Artifact path canònic per compat reports (Dukascopy ↔ Ostium)
 ARTIFACTS_COMPAT_DIR = "artifacts/compat"
+
+# Ostium storage paths (TASCA 2; shared data_routes, backtest_market_data, mixed_ohlcv_stitcher)
+REALTIME_DATALAYER_SUBDIR = "realtime_datalayer"
+OSTIUM_BROKER_SUBDIR = "candles"
+OSTIUM_CANONICAL_TZ = "America/New_York"
+OSTIUM_PARQUET_SUBDIR = "historical_parquet_ostium_v1"
 
 # Storage tuning
 MONTHS_TO_CHECK_BACKWARD = 12  # How many months to scan for files

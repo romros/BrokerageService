@@ -8,6 +8,7 @@ testing/apps/historical_datalayer/test_historical_parquet.py
 testing/apps/historical_datalayer/test_duckdb_query.py
 testing/apps/historical_datalayer/test_backtest_parquet.py
 testing/apps/historical_datalayer/test_backfill_robustness.py
+testing/apps/historical_datalayer/test_ohlcv_integrity_by_source.py
 testing/apps/historical_datalayer/test_historical_health_status.py
 testing/unit/test_sync_endpoint_logic.py
 testing/unit/test_rebuild_coverage.py

@@ -44,18 +44,21 @@ class ApplicationLogger:
             colorize=True
         )
 
-        # File handler (DEBUG) with rotation
+        # File handler (DEBUG) with rotation — tolerant a permisos (volum muntat root-owned)
         log_dir = Path("logs")
-        log_dir.mkdir(exist_ok=True)
-
-        loguru_logger.add(
-            "logs/sqpy_{time:YYYY-MM-DD}.log",
-            rotation="00:00",  # Rotate at midnight
-            retention="30 days",  # Keep logs for 30 days
-            level="DEBUG",
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-            encoding="utf-8"
-        )
+        try:
+            log_dir.mkdir(exist_ok=True)
+            loguru_logger.add(
+                "logs/sqpy_{time:YYYY-MM-DD}.log",
+                rotation="00:00",  # Rotate at midnight
+                retention="30 days",  # Keep logs for 30 days
+                level="DEBUG",
+                format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+                encoding="utf-8"
+            )
+        except (PermissionError, OSError) as e:
+            # Volum logs root-owned o no escribible → només stderr (servei arranca igual)
+            loguru_logger.warning(f"Log file disabled (permissions): {e}")
 
     def get_logger(self, module_name: str):
         """Get logger bound to module name"""
