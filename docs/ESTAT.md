@@ -30,11 +30,15 @@
 
 **Comandes:**
 ```bash
-# Rollover dry-run
+# Rollover dry-run (1 símbol)
 ./scripts/run_ostium_rollover.sh --dry-run
 
-# Rollover ahir (cron)
+# Rollover ahir (1 símbol, default EURUSD)
 ./scripts/run_ostium_rollover.sh
+
+# Rollover TOTS els símbols Ostium (per cron)
+./scripts/run_ostium_rollover_all.sh
+./scripts/run_ostium_rollover_all.sh --dry-run
 
 # Verificar per font
 curl -s "http://localhost:8081/data/ohlcv/EURUSD?source=dukascopy&tf=1m&limit=5"
@@ -79,6 +83,30 @@ Procediments operatius executables per afegir nous assets:
 - [docs/playbooks/PLAYBOOK_ADD_ASSET_FULL.md](playbooks/PLAYBOOK_ADD_ASSET_FULL.md) — asset complet (Ostium + Dukascopy)
 
 Veure [docs/playbooks/README.md](playbooks/README.md) per què són i quan s'utilitzen.
+
+### TASCA 7 — Rollover Ostium automatització (2026-03-17)
+
+**Discovery:** No hi havia cron ni scheduler. El rollover era només manual (1 símbol). Implementat: `run_ostium_rollover_all.sh` + `deploy/cron/ostium_rollover.cron.example`.
+
+**Contracte operatiu:**
+
+| Aspecte | Valor |
+|---------|-------|
+| **Qui executa** | Cron host (no dins contenidor) |
+| **Freqüència** | 1 cop al dia |
+| **Hora recomanada** | 00:10 UTC |
+| **Script** | `./scripts/run_ostium_rollover_all.sh` |
+| **Input** | CSV dia anterior (`candles/{SYMBOL}/`) |
+| **Output** | Parquet `historical_parquet_ostium_v1/{SYMBOL}/tf=1m/year=.../month=.../` |
+| **Símbols** | OSTIUM_SYMBOLS menys OSTIUM_QUARANTINE_SYMBOLS |
+
+**Després de restart:** El cron host reprèn automàticament al següent cicle (00:10 UTC). No cal pas manual.
+
+**Verificar que està viu:** `crontab -l` ha d'incloure la línia; logs a `/var/log/ostium_rollover.log`.
+
+**Fallback manual:** `./scripts/run_ostium_rollover_all.sh` o `./scripts/run_ostium_rollover.sh --symbol SYMBOL --from YYYY-MM-DD --to YYYY-MM-DD`.
+
+**Configuració cron:** `deploy/cron/ostium_rollover.cron.example`
 
 ---
 

@@ -1,0 +1,15 @@
+# Ostium CSV → Parquet rollover — cron diari
+#
+# Executa 1 cop al dia a 00:10 UTC.
+# Requereix: stack split en marxa (o almenys datafiles muntat)
+# Logs: /var/log/ostium_rollover.log (crear si no existeix)
+#
+# Instal·lació (host):
+#   cp deploy/cron/ostium_rollover.cron.example /tmp/ostium_rollover.cron
+#   crontab -l 2>/dev/null | cat - /tmp/ostium_rollover.cron | crontab -
+#
+# O afegir manualment:
+#   crontab -e
+#   → 10 0 * * * cd /path/to/BrokerageService && ./scripts/run_ostium_rollover_all.sh >> /var/log/ostium_rollover.log 2>&1
+
+10 0 * * * cd /path/to/BrokerageService && ./scripts/run_ostium_rollover_all.sh >> /var/log/ostium_rollover.log 2>&1
