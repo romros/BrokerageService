@@ -54,6 +54,14 @@ curl -s "http://localhost:8081/data/coverage/EURUSD?source=ostium"
 
 **Mòdul:** `application/data/ohlcv_integrity.py` — `compute_ohlcv_integrity_report(candles)` retorna dict amb candles_count, duplicates, gaps, ts_step_errors, order_ok, ohlc_ok, max_gap_s, valid. **Test:** `testing/apps/historical_datalayer/test_ohlcv_integrity_by_source.py` (8 tests 0-network). **Verificar:** `./test.sh testing/apps/historical_datalayer/test_ohlcv_integrity_by_source.py`
 
+### TASCA 3 — MSFT asset pilot (2026-03-17)
+
+**Config:** MSFT afegit a SYMBOLS, OSTIUM_SYMBOLS (docker-compose.split.yml); OSTIUM_DEFAULT_MAPPING MSFT→MSFTUSD (Ostium asset); MARKET_HOURS_UNKNOWN_SYMBOLS (equity). **Hot-reload:** `curl -X PUT http://localhost:8081/realtime/symbols -H "Content-Type: application/json" -d '{"symbols":["MSFT"],"apply_mode":"diff"}'`. **Verificar:** `curl /realtime/api/v1/broker/ohlcv/MSFT?tf=1m&limit=5`; `curl /data/ohlcv/MSFT?source=ostium&tf=1m&limit=5`; `./scripts/run_ostium_rollover.sh --symbol MSFT --from YYYY-MM-DD --to YYYY-MM-DD`. **CSV:** `datafiles/realtime_datalayer/candles/MSFT/`. **Rebuild:** `docker compose ... build realtime_datalayer` per canvis de codi.
+
+### TASCA 3b — MSFT persistència durable (2026-03-17)
+
+**Rollover real:** `./scripts/run_ostium_rollover.sh --symbol MSFT --from 2026-03-17 --to 2026-03-18` → 9 candles escrites. **Parquet:** `datafiles/historical_parquet_ostium_v1/MSFT/tf=1m/year=2026/month=03/data.parquet`. **Consulta històrica:** `curl /data/ohlcv/MSFT?source=ostium&tf=1m&limit=20` retorna 9 candles (font Parquet+CSV merge). **Integritat:** gaps=0, duplicates=0, order_ok, ohlc_ok. **Mapping MSFT→MSFTUSD:** Ostium REST API `/PricePublish/latest-price?asset=MSFT` retorna 400 "Invalid asset"; `asset=MSFTUSD` retorna preu. Llista d'assets vàlids Ostium inclou MSFTUSD. **MARKET_HOURS_UNKNOWN_SYMBOLS:** MSFT és equity US (com GOOGUSD, NVDAUSD); calendari NYSE/NASDAQ no modelat; `unknown` evita degradació falsa per stale durant horaris no FX.
+
 ---
 
 ## TL;DR

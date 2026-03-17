@@ -43,6 +43,7 @@ OSTIUM_DEFAULT_MAPPING = {
     "DAXEUR": "DAXEUR",
     "DAX_EUR": "DAXEUR",
     "SPXUSD": "SPXUSD",
+    "MSFT": "MSFTUSD",  # Ostium asset name
 }
 
 
