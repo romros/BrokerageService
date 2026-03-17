@@ -18,6 +18,16 @@
 
 **Baseline:** Aquest ordre defineix el model mental mínim. Sense llegir-los, no implementis.
 
+**Nota:** Si hi ha conflicte entre aquest document i [docs/ESTAT.md](ESTAT.md), preval `docs/ESTAT.md` per a estat operatiu i comandes canòniques.
+
+---
+
+## 2b. Què NO és aquest document
+
+- No substitueix els playbooks
+- No és una especificació completa de cada servei
+- No és la font d'evidència operativa (això és [docs/ESTAT.md](ESTAT.md))
+
 ---
 
 ## 3. Problema → què fer (índex ràpid)
@@ -45,6 +55,21 @@
 | **Validació / recerca** | [lab/gold/](../lab/gold/), [lab/runner/](../lab/runner/), [lab/ostium/](../lab/ostium/) |
 | **Incidents** | [docs/SAFETY_RUNBOOK.md](SAFETY_RUNBOOK.md) — MAI aturar realtime_datalayer |
 | **Navegació** | [docs/INDEX.md](INDEX.md) — Hub centralitzat |
+
+---
+
+## 4b. Scripts `run_t*` operatius
+
+Alguns scripts conserven prefix `run_t*` perquè van néixer com a tasques, però encara són útils operativament o com a gates actius.
+
+| Script | Funció |
+|--------|--------|
+| `run_t915_sq_bs_m1_parity_gate.sh` | Gate de paritat vigent |
+| `run_t916_gap_audit.sh` | Auditoria de gaps |
+| `run_t918_certify_sq_range.sh` | Certificació de rang SQ |
+| `run_t849_gold_smoke.sh` | Smoke útil de lab/gold |
+| `run_t850_lab_cleanup.sh` | Cleanup operatiu del lab |
+| `run_t825_evidence_pack.sh` | Evidence pack post-BI5 |
 
 ---
 
@@ -99,7 +124,7 @@
 
 **Base:** `https://raw.githubusercontent.com/romros/BrokerageService/main/`
 
-Per agents externs (ChatGPT, etc.): afegir el path al base per obtenir el contingut.
+Per agents externs (ChatGPT, etc.): afegir el path al base per obtenir el contingut. **No cal llegir-ho tot:** començar per baseline i després navegar segons la tasca.
 
 ### Docs principals
 ```
