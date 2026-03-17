@@ -70,6 +70,16 @@ curl -s "http://localhost:8081/data/coverage/EURUSD?source=ostium"
 
 **Decisió PM:** QQQ (ETF Nasdaq 100) NO suportat per Ostium (`asset=QQQ` i `asset=QQQUSD` → 400). **NDXUSD** (índex Nasdaq 100) sí suportat. **Equivalència funcional:** QQQ = ETF que replica l'índex Nasdaq 100; NDXUSD = índex Nasdaq 100 directe. Per anàlisi de mercat són el mateix factor. **Diferència explícita:** QQQ (ETF) ≠ NDXUSD (índex), però funcionalment equivalent. **Config:** NDXUSD afegit a SYMBOLS, OSTIUM_SYMBOLS; MARKET_HOURS_UNKNOWN_SYMBOLS (índex com SPXUSD, DAXEUR). Sense mapping (Ostium usa NDXUSD directament). **Rollover real:** `./scripts/run_ostium_rollover.sh --symbol NDXUSD --from 2026-03-17 --to 2026-03-18`. **Parquet:** `datafiles/historical_parquet_ostium_v1/NDXUSD/tf=1m/year=.../month=.../data.parquet`. **Nota futura:** Dukascopy podria tenir QQQ; Ostium → NDXUSD. `source=ostium` → NDXUSD, `source=dukascopy` → QQQ (si aplica).
 
+### Playbooks d'onboarding d'assets (TASCA 6)
+
+Procediments operatius executables per afegir nous assets:
+
+- [docs/playbooks/PLAYBOOK_ADD_ASSET_OSTIUM.md](playbooks/PLAYBOOK_ADD_ASSET_OSTIUM.md) — live + persistència durable
+- [docs/playbooks/PLAYBOOK_ADD_ASSET_DUKASCOPY.md](playbooks/PLAYBOOK_ADD_ASSET_DUKASCOPY.md) — cobertura històrica
+- [docs/playbooks/PLAYBOOK_ADD_ASSET_FULL.md](playbooks/PLAYBOOK_ADD_ASSET_FULL.md) — asset complet (Ostium + Dukascopy)
+
+Veure [docs/playbooks/README.md](playbooks/README.md) per què són i quan s'utilitzen.
+
 ---
 
 ## TL;DR
