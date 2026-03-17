@@ -9,7 +9,7 @@
 set -e
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-PROJECT_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 OUT=lab/runner/out_compare
 ARTIFACTS="$OUT/artifacts/T8.45/EURUSD/1m/2026-02-01_2026-02-02"
 

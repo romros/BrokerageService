@@ -4,7 +4,7 @@
 # Executa backtest BS (source=dukascopy = ticks) + compara amb oracle SQ.
 # Estratègia: RSI(14)[1]<35, exit 60 bars, M1 EURUSD.
 #
-# Ús: ./scripts/run_t915_gate_parity.sh [--docker] [--base-url URL]
+# Ús: ./scripts/oneshot/run_t915_gate_parity.sh [--docker] [--base-url URL]
 #
 # Prerequisits:
 #   - DUKASCOPY_PARQUET_ACTIVE=ticks al historical_datalayer
@@ -13,7 +13,7 @@
 set -e
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-PROJECT_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 # lab/out/artifacts pot ser root-owned; lab/out és accessible
 OUT="${BS_T915_OUT:-$PROJECT_ROOT/lab/out/BS.T9.15}"
 SQ_ORACLE="$PROJECT_ROOT/lab/gold/cases/rsi35_exit60_m1_oracle/expected_trades.csv"
@@ -45,9 +45,9 @@ if [ "$USE_DOCKER" = "1" ]; then
   SQ_REL="lab/gold/cases/rsi35_exit60_m1_oracle/expected_trades.csv"
   OUT_REL="lab/out/BS.T9.15"
   docker run --rm --network host -v "$PROJECT_ROOT:/app" -w /app python:3.11-slim \
-    bash -c "pip install -q pandas 2>/dev/null; python3 scripts/run_t915_gate_parity.py --base-url $BASE_URL --sq-trades $SQ_REL --out-dir $OUT_REL 2>&1" | tee "$OUT/run.log"
+    bash -c "pip install -q pandas 2>/dev/null; python3 scripts/oneshot/run_t915_gate_parity.py --base-url $BASE_URL --sq-trades $SQ_REL --out-dir $OUT_REL 2>&1" | tee "$OUT/run.log"
 else
-  python3 scripts/run_t915_gate_parity.py \
+  python3 scripts/oneshot/run_t915_gate_parity.py \
     --base-url "$BASE_URL" \
     --sq-trades "$SQ_ORACLE" \
     --out-dir "$OUT" 2>&1 | tee "$OUT/run.log"

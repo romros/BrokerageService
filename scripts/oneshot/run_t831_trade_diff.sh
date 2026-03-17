@@ -10,7 +10,7 @@
 set -e
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-PROJECT_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 cd "$PROJECT_ROOT"
 
 OUT=lab/runner/out_compare
@@ -49,7 +49,7 @@ fi
 
 if [ ! -f "$LAB_TRADES" ]; then
   echo "ERROR: LAB trades no trobat: $LAB_TRADES"
-  echo "  Executa primer: ./scripts/run_t830_contract_grid.sh"
+  echo "  Executa primer: ./scripts/oneshot/run_t830_contract_grid.sh"
   exit 1
 fi
 

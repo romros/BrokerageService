@@ -9,7 +9,7 @@
 set -e
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-PROJECT_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 cd "$PROJECT_ROOT"
 
 OUT=lab/runner/out_compare
@@ -23,7 +23,7 @@ if [ ! -f "$MT4" ]; then
 fi
 if [ ! -f "$CANDLES" ]; then
   echo "ERROR: Indicators/candles CSV no trobat: $CANDLES"
-  echo "  Executa primer: ./scripts/run_t831_trade_diff.sh"
+  echo "  Executa primer: ./scripts/oneshot/run_t831_trade_diff.sh"
   exit 1
 fi
 

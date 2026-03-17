@@ -71,7 +71,7 @@ python3 -m application.tools.repair_missing_months_bi5 --symbol EURUSD --datafil
 python3 -m application.tools.repair_missing_months_bi5 --symbol EURUSD --datafiles-root /datafiles --fix
 ```
 
-O `./scripts/run_t826_repair_bi5.sh`. El script executa: dry-run → fix (inclou rebuild coverage) → `generate_parity_vs_sq_report` → escriu `parity_EURUSD_M1_vs_SQ.json`. Objectiu: delta vs SQ < 2–3%.
+O `./scripts/oneshot/run_t826_repair_bi5.sh`. El script executa: dry-run → fix (inclou rebuild coverage) → `generate_parity_vs_sq_report` → escriu `parity_EURUSD_M1_vs_SQ.json`. Objectiu: delta vs SQ < 2–3%.
 
 ---
 

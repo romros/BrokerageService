@@ -1,6 +1,6 @@
 # BS.T9.08 — Primera execució RAW Dukascopy (job + monitor + fs-check)
 
-Script únic: `./scripts/run_t908_raw_first_run.sh`
+Script únic (arxivat): `./scripts/_archive/2026-03-raw-deprecated/run_t908_raw_first_run.sh` — RAW endpoints eliminats 2026-03.
 
 ## Modes
 
@@ -42,13 +42,13 @@ Script únic: `./scripts/run_t908_raw_first_run.sh`
 Després d’executar el pilot (o --full-5y), omplir a `docs/ESTAT.md` (entrada T9.08):
 
 - **DATAFILES_ROOT:** (valor usat)
-- **Comanda:** `./scripts/run_t908_raw_first_run.sh` [o `--full-5y`]
+- **Comanda (deprecada):** `./scripts/_archive/2026-03-raw-deprecated/run_t908_raw_first_run.sh` [o `--full-5y`] — RAW eliminat.
 - **job_id:** (de job_id.txt)
 - **Resultat:** status final (done/running/failed), tmp_count, watermark last_complete_day, bi5_count
 
 ## T9.08.1 Finalize
 
-Una sola comanda: `./scripts/run_t908_finalize.sh [--job JOB_ID]`. job_id per defecte: `job_id.txt`.
+Una sola comanda (deprecada): `./scripts/_archive/2026-03-raw-deprecated/run_t908_finalize.sh [--job JOB_ID]` — RAW eliminat. job_id per defecte: `job_id.txt`.
 
 - Si el job no és `done`: imprimeix "still running" i surt (0).
 - Si `done`: fs-check, si days_failed>0 retry 1 dia (data de last_error), escriu `final_report.json` + `final_report.md`, actualitza ESTAT.

@@ -26,13 +26,13 @@ Requisit: tenir el fitxer accessible (p.ex. `/mnt/volume-SQ/user/t903_5y_export/
 
 ```bash
 # Dry-run (només llista mesos i paths)
-./scripts/run_t903_bs_sq_m1_gate.sh --dry-run
+./scripts/oneshot/run_t903_bs_sq_m1_gate.sh --dry-run
 
 # Aplicar (1 mes per smoke)
-./scripts/run_t903_bs_sq_m1_gate.sh --apply --months 1
+./scripts/oneshot/run_t903_bs_sq_m1_gate.sh --apply --months 1
 
 # 5 anys complets
-./scripts/run_t903_bs_sq_m1_gate.sh --apply
+./scripts/oneshot/run_t903_bs_sq_m1_gate.sh --apply
 ```
 
 Directe amb Python (rang 5y descobert des de BS per defecte):
@@ -67,4 +67,4 @@ Sota `lab/datalayer/artifacts/BS.T9.03/`:
 ## Verificació
 
 - BS ha d’estar en marxa (gateway :8081) i Parquet EURUSD M1 disponible per el rang.
-- Comanda: `./scripts/run_t903_bs_sq_m1_gate.sh --apply`; revisar `gate_summary.json` i `gate_summary.csv`.
+- Comanda: `./scripts/oneshot/run_t903_bs_sq_m1_gate.sh --apply`; revisar `gate_summary.json` i `gate_summary.csv`.

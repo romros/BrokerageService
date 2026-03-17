@@ -260,7 +260,7 @@ Els exploratoris de backtest i paritat amb StrategyQuant/MT4 viuen a `lab/runner
 
 ```bash
 # Pipeline complet: export indicadors t836_best + backtest + trade diff
-./scripts/run_t837_t836_best_e2e.sh [--force-export]
+./scripts/oneshot/run_t837_t836_best_e2e.sh [--force-export]
 ```
 
 **Docs:** [lab/runner/out_compare/compare_notes.md](../runner/out_compare/compare_notes.md), [docs/ESTAT.md](../../docs/ESTAT.md) § T8.37.

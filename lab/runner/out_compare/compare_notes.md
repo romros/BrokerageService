@@ -54,7 +54,7 @@ Diagnòstic de causes per trades unmatched (MT4 vs LAB best contract).
 ### Execució
 
 ```bash
-./scripts/run_t831_trade_diff.sh
+./scripts/oneshot/run_t831_trade_diff.sh
 ```
 
 ---
@@ -82,7 +82,7 @@ Triage automàtic <20s per decidir tipus de divergència sense recalcular indica
 ### Execució
 
 ```bash
-./scripts/run_t832_triage.sh
+./scripts/oneshot/run_t832_triage.sh
 ```
 
 ### Artifacts
@@ -110,7 +110,7 @@ Sweep d'offsets (hores) als timestamps MT4 per maximitzar matching MT4↔LAB i m
 ### Execució
 
 ```bash
-./scripts/run_t833_time_alignment_sweep.sh
+./scripts/oneshot/run_t833_time_alignment_sweep.sh
 ```
 
 ### Artifacts
@@ -140,7 +140,7 @@ Auditoria de policies D1 per handling diumenge: baseline, drop_sunday, merge_sun
 ### Execució
 
 ```bash
-./scripts/run_t834_d1_policy_audit.sh
+./scripts/oneshot/run_t834_d1_policy_audit.sh
 ```
 
 ### Artifacts
@@ -166,7 +166,7 @@ Validació en <2s: inferència best_day_offset_h i detecció de solapaments.
 ### Execució
 
 ```bash
-./scripts/run_t835_mt4_sanity_check.sh
+./scripts/oneshot/run_t835_mt4_sanity_check.sh
 ```
 
 ### Artifacts
@@ -192,7 +192,7 @@ Grid 16 variants: RSI method (wilder/ema_gains), indexing (bar_closed/bar_curren
 ### Execució
 
 ```bash
-./scripts/run_t836_signal_def_sweep.sh
+./scripts/oneshot/run_t836_signal_def_sweep.sh
 ```
 
 ### Artifacts
@@ -236,7 +236,7 @@ python3 -m application.tools.export_indicators_csv --symbol EURUSD --from 2003-0
   --signal-def t836_best --mt4-like --out lab/runner/out_compare/indicators_LAB_full_t836_best.csv
 
 # Pipeline complet
-./scripts/run_t837_t836_best_e2e.sh [--force-export]
+./scripts/oneshot/run_t837_t836_best_e2e.sh [--force-export]
 ```
 
 ### Artifacts
@@ -265,10 +265,10 @@ Inferència de cadència MT4 (bars_held, bars_between_exit_and_next_entry) + gri
 
 ```bash
 # baseline (default)
-./scripts/run_t838_entry_gating_e2e.sh
+./scripts/oneshot/run_t838_entry_gating_e2e.sh
 
 # t836_best (objectiu: reduir 91→22 trades, EXIT_CASCADE 12→menys)
-./scripts/run_t838_entry_gating_e2e.sh --signal-def t836_best
+./scripts/oneshot/run_t838_entry_gating_e2e.sh --signal-def t836_best
 ```
 
 ### Artifacts
@@ -311,10 +311,10 @@ Harness de paritat "de baix a dalt" per validar candles M1 i reproducció exacta
 
 ```bash
 # Amb Docker (BI5 + xarxa)
-./scripts/run_t839_mt4_m1_parity.sh --docker --no-api
+./scripts/oneshot/run_t839_mt4_m1_parity.sh --docker --no-api
 
 # Amb API (historical_datalayer)
-./scripts/run_t839_mt4_m1_parity.sh
+./scripts/oneshot/run_t839_mt4_m1_parity.sh
 ```
 
 ### Artifacts

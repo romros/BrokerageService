@@ -149,4 +149,4 @@ ATR(high, low, close, period):
 
 - `compare_indicators.py`: LAB (mt4_like) vs MT4 CSV → max diff < 1 pip (EMA/ATR), < 0.1 (RSI).
 - `compare_trades.py`: entry_match_rate esperat > 70% (actual ~50% amb pandas ewm).
-- T8.30: exploració contracte senyal/entrada (`--entry-fill open_i|open_i1`, `--signal-contract`) via `run_t830_contract_grid.sh`.
+- T8.30: exploració contracte senyal/entrada (`--entry-fill open_i|open_i1`, `--signal-contract`) via `scripts/oneshot/run_t830_contract_grid.sh`.
