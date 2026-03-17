@@ -1,9 +1,15 @@
 # BrokerageService — Índex de documentació
 
-**Data:** 2026-02-19
+**Data:** 2026-03-17
 **Repo:** `/mnt/volume-SQ/dev/BrokerageService`
 
 Hub canònic. Tota la navegació comença aquí.
+
+---
+
+## Agents (Cursor, ChatGPT)
+
+**Entrypoint obligatori:** [docs/LLM_ENTRYPOINT.md](LLM_ENTRYPOINT.md) — model mental, ordre de lectura, problema→solució, guardrails.
 
 ---
 
@@ -23,7 +29,7 @@ Hub canònic. Tota la navegació comença aquí.
 
 ## Subprojectes (Split vNext)
 
-### realtime_datalayer (port 8081)
+### realtime_datalayer (proxy :8081/realtime/*)
 Recollida 24/7 de preus (Ostium) i servei de candles/ticks recents. Servei autònom.
 
 | Doc | Descripció |
@@ -41,7 +47,7 @@ curl -s http://localhost:8081/ui       # Dashboard web
 
 ---
 
-### historical_datalayer (port 8082)
+### historical_datalayer (proxy :8081/data/*)
 Backfill Dukascopy, compat reports, stitching gated. Servei autònom.
 
 | Doc | Descripció |
@@ -97,6 +103,14 @@ Smoke only: `./scripts/run_ostium_live_smoke.sh --recreate --clean`
 
 ---
 
+## Scripts operatius
+
+| Doc | Descripció |
+|-----|------------|
+| [scripts/README.md](../scripts/README.md) | Índex scripts: operatius, oneshot, arxiu |
+
+---
+
 ## Tests
 
 ```bash
@@ -130,7 +144,9 @@ BrokerageService/
 ├── deploy/compose/            # Compose split vNext
 ├── docs/                      # Documentació global (aquí ets)
 ├── lab/ostium/                # LAB experimental Ostium
-├── scripts/                   # run_tests.sh, run_smoke.sh, run_lab.sh
+├── scripts/                   # Operatius: run_tests.sh, run_smoke.sh, run_ostium_rollover_all.sh
+│   ├── oneshot/               # Puntuals (LAB, migracions)
+│   └── _archive/               # Deprecats
 └── datafiles/                 # Dades persistents (volum Docker)
     └── realtime_datalayer/    # candles/, ticks/, config/
 ```

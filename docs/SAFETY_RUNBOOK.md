@@ -6,6 +6,25 @@
 
 ---
 
+## 0) Regla d’or — MAI aturar live
+
+**realtime_datalayer és el nostre gold:** guarda les dades Ostium (candles, ticks) en temps real.
+
+| Acció | Permès? |
+|-------|---------|
+| Aturar `realtime_datalayer` | ❌ **MAI** |
+| Recrear / rebuild `realtime_datalayer` | ❌ **MAI** (excepte finestra de manteniment planificada) |
+| Recrear `trading_service` | ✅ Sí (live_on/live_off fan només això) |
+| Recrear `historical_datalayer` | ✅ Sí |
+
+**Per què:** Si atures realtime_datalayer perds ingest; les dades noves no es guarden. Les dades ja persistides queden al volum, però el flux viu es talla.
+
+**Scripts segurs:** `live_on.sh`, `live_off.sh` — fan `--force-recreate trading_service` **ONLY**. Mai toquen realtime_datalayer.
+
+**Soak Ostium (TASCA 2c):** El soak `run_soak_ostium_validation.sh` només fa checks HTTP i rollover dry-run. **No atura ni reinicia cap servei.** Requereix stack split en marxa (gateway :8081).
+
+---
+
 ## 1) Preflight (TZ, env, build)
 
 **TZ:** `CANONICAL_TZ=America/New_York`, `TZ=America/New_York` (container).

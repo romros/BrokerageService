@@ -2,6 +2,8 @@
 
 Tots els docker-compose overrides operatius. Convenció: un fitxer per perfil.
 
+**⚠️ Regla d’or:** Mai aturar ni recrear `realtime_datalayer` — és el gold, guarda les dades Ostium. `live_on`/`live_off` només toquen `trading_service`. Veure [SAFETY_RUNBOOK.md](../../docs/SAFETY_RUNBOOK.md) §0.
+
 **Scaffold split vNext:** `deploy/compose/docker-compose.split.yml` — 3 serveis (realtime_datalayer, historical_datalayer, trading_service). Reutilitza mateixa imatge; és scaffold operatiu, encara no migració de codi. Veure `docs/ESTAT.md` § Arquitectura split vNext.
 
 | Fitxer | Perfil | Descripció |

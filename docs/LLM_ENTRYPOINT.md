@@ -20,20 +20,35 @@
 
 ---
 
-## 3. Segons la tasca
+## 3. Problema → què fer (índex ràpid)
+
+| Problema | Acció / Doc |
+|----------|-------------|
+| Afegir asset Ostium (MSFT, NVDA, NDXUSD...) | [PLAYBOOK_ADD_ASSET_OSTIUM.md](playbooks/PLAYBOOK_ADD_ASSET_OSTIUM.md) — SYMBOLS, OSTIUM_SYMBOLS, mapping, MARKET_HOURS_UNKNOWN |
+| Afegir asset Dukascopy (històric FX) | [PLAYBOOK_ADD_ASSET_DUKASCOPY.md](playbooks/PLAYBOOK_ADD_ASSET_DUKASCOPY.md) |
+| Delta Parquet vs SQ, gaps, integritat | [DATA_PARITY_GATES.md](DATA_PARITY_GATES.md) — gates A/B/C/D; `run_t825_evidence_pack.sh`, `run_t915_sq_bs_m1_parity_gate.sh` |
+| Rollover Ostium CSV→Parquet | `./scripts/run_ostium_rollover.sh` (1 símbol) o `run_ostium_rollover_all.sh` (cron) |
+| Incident, aturar servei | [SAFETY_RUNBOOK.md](SAFETY_RUNBOOK.md) — **MAI** aturar realtime_datalayer |
+| Tests, smoke, validació | [scripts/README.md](../scripts/README.md) — `run_tests.sh`, `run_smoke.sh`, `run_soak_ostium_validation.sh` |
+| Navegació completa | [docs/INDEX.md](INDEX.md) — Hub centralitzat |
+
+---
+
+## 4. Segons la tasca
 
 | Tipus | Docs |
 |-------|------|
 | **Data layer** | [docs/DATA_PARITY_GATES.md](DATA_PARITY_GATES.md), [docs/DUKASCOPY_RAW_STORE.md](DUKASCOPY_RAW_STORE.md), [docs/INDICATOR_PARITY_SPEC.md](INDICATOR_PARITY_SPEC.md) |
 | **Afegir assets** | [docs/playbooks/PLAYBOOK_ADD_ASSET_OSTIUM.md](playbooks/PLAYBOOK_ADD_ASSET_OSTIUM.md), [docs/playbooks/PLAYBOOK_ADD_ASSET_DUKASCOPY.md](playbooks/PLAYBOOK_ADD_ASSET_DUKASCOPY.md), [docs/playbooks/PLAYBOOK_ADD_ASSET_FULL.md](playbooks/PLAYBOOK_ADD_ASSET_FULL.md) |
 | **Trading / execució** | [docs/runbook_trades_api.md](runbook_trades_api.md), [docs/SAFETY_RUNBOOK.md](SAFETY_RUNBOOK.md) |
+| **Scripts operatius** | [scripts/README.md](../scripts/README.md) — operatius, oneshot, arxiu |
 | **Validació / recerca** | [lab/gold/](../lab/gold/), [lab/runner/](../lab/runner/), [lab/ostium/](../lab/ostium/) |
 | **Incidents** | [docs/SAFETY_RUNBOOK.md](SAFETY_RUNBOOK.md) — MAI aturar realtime_datalayer |
 | **Navegació** | [docs/INDEX.md](INDEX.md) — Hub centralitzat |
 
 ---
 
-## 4. Guardrails (CRÍTIC)
+## 5. Guardrails (CRÍTIC)
 
 ### ❌ Prohibit
 
@@ -54,7 +69,7 @@
 
 ---
 
-## 5. Conceptes clau
+## 6. Conceptes clau
 
 | Concepte | Definició |
 |----------|-----------|
@@ -64,21 +79,23 @@
 | **`/data` merge** | `source=ostium` llegeix Parquet + CSV; en overlap, CSV prioritat |
 | **cutover_ts** | Primer `ts` al primary; stitching gated per compat |
 | **TZ canònica** | `America/New_York` (config i display); `ts` sempre UTC epoch |
+| **Assets Ostium** | EURUSD, GBPUSD, XAUUSD, MSFT, NVDA, NDXUSD (allowlist); XAU quarantine |
 
 ---
 
-## 6. Com treballar correctament
+## 7. Com treballar correctament
 
 1. Llegir aquest entrypoint
 2. Llegir baseline (README → ESTAT → AGENTS)
-3. Identificar playbook si la tasca toca assets
-4. No implementar sense DoD clar
-5. Validar amb integritat si toca Data Layer (gaps, duplicates, ts_step)
-6. Actualitzar [docs/ESTAT.md](ESTAT.md) si cal evidència nova
+3. Consultar **§3 Problema → què fer** si cal orientació ràpida
+4. Identificar playbook si la tasca toca assets
+5. No implementar sense DoD clar
+6. Validar amb integritat si toca Data Layer (gaps, duplicates, ts_step)
+7. Actualitzar [docs/ESTAT.md](ESTAT.md) si cal evidència nova
 
 ---
 
-## 7. Documentació completa (raw URLs)
+## 8. Documentació completa (raw URLs)
 
 **Base:** `https://raw.githubusercontent.com/romros/BrokerageService/main/`
 
@@ -88,6 +105,7 @@ Per agents externs (ChatGPT, etc.): afegir el path al base per obtenir el contin
 ```
 README.md
 AGENTS_ARQUITECTURA.md
+docs/LLM_ENTRYPOINT.md
 docs/ESTAT.md
 docs/INDEX.md
 docs/plantilla_tasca.md
@@ -150,6 +168,9 @@ lab/runner/out_compare/mt4_oracle_tools/README.md
 ```
 deploy/compose/overrides/README.md
 deploy/compose/lab/README.md
+scripts/README.md
+scripts/oneshot/README.md
+scripts/_archive/2026-03-raw-deprecated/README.md
 scripts/network_smokes/ESTAT.md
 scripts/network_smokes/PLAYBOOK.md
 testing/README.md

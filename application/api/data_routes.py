@@ -29,7 +29,13 @@ from pydantic import BaseModel, Field
 
 from application.api.error_codes import INVALID_PARAMS
 from application.data.backtest_market_data import get_ohlcv_backtest
-from foundation.config.constants import DEFAULT_DATAFILES_ROOT
+from foundation.config.constants import (
+    DEFAULT_DATAFILES_ROOT,
+    OSTIUM_BROKER_SUBDIR,
+    OSTIUM_CANONICAL_TZ,
+    OSTIUM_PARQUET_SUBDIR,
+    REALTIME_DATALAYER_SUBDIR,
+)
 from foundation.logging import get_logger
 
 import os
@@ -243,8 +249,12 @@ async def get_sources():
     ostium_symbols: list[str] = []
     try:
         from infrastructure.storage.csv_store import CSVCandleStore
-        ostium_root = str(Path(datafiles_root) / "realtime_datalayer")
-        store = CSVCandleStore(root_path=ostium_root, broker="candles", canonical_tz="America/New_York")
+        ostium_root = str(Path(datafiles_root) / REALTIME_DATALAYER_SUBDIR)
+        store = CSVCandleStore(
+            root_path=ostium_root,
+            broker=OSTIUM_BROKER_SUBDIR,
+            canonical_tz=OSTIUM_CANONICAL_TZ,
+        )
         ostium_symbols = sorted(store.list_symbols()) if hasattr(store, "list_symbols") else []
     except Exception:
         pass
@@ -317,29 +327,71 @@ async def get_coverage(
     datafiles_root = os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT)
 
     if resolved_source == "ostium":
-        # Coverage Ostium: rang primer/últim registre al CSVCandleStore
+        # Coverage Ostium: CSV + Parquet rollover (TASCA 2)
         from infrastructure.storage.csv_store import CSVCandleStore
-        ostium_root = str(Path(datafiles_root) / "realtime_datalayer")
-        try:
-            store = CSVCandleStore(root_path=ostium_root, broker="candles", canonical_tz="America/New_York")
-            result = store.read_range(sym, None, None, validate_gaps=False)
-            candles = result.candles
-        except Exception:
-            candles = []
 
-        if candles:
-            from_ts = int(candles[0].timestamp.timestamp())
-            to_ts_val = int(candles[-1].timestamp.timestamp()) + 60
-        else:
-            from_ts = None
-            to_ts_val = None
+        ostium_root = str(Path(datafiles_root) / REALTIME_DATALAYER_SUBDIR)
+        parquet_root = Path(datafiles_root) / OSTIUM_PARQUET_SUBDIR
+        first_ts = None
+        csv_last_ts = None
+        parquet_last_ts = None
+        total = 0
+        try:
+            store = CSVCandleStore(
+                root_path=ostium_root,
+                broker=OSTIUM_BROKER_SUBDIR,
+                canonical_tz=OSTIUM_CANONICAL_TZ,
+            )
+            csv_first = store.get_earliest_timestamp(sym)
+            csv_last = store.get_last_timestamp(sym)
+            total = store.count_stored_candles(sym)
+            if csv_first:
+                first_ts = csv_first
+            if csv_last:
+                csv_last_ts = csv_last
+        except Exception:
+            pass
+        # Parquet rollover (TASCA 2) — amplia rang; total no suma (evitar doble comptatge)
+        try:
+            import pyarrow.parquet as pq  # lazy import to reduce startup cost (AGENTS §6.1)
+            base = parquet_root / sym / "tf=1m"
+            if base.exists():
+                for p in base.rglob("data.parquet"):
+                    try:
+                        meta = pq.read_metadata(str(p))
+                        if meta.num_rows > 0:
+                            parts = p.relative_to(base).parts
+                            if len(parts) >= 2:
+                                y = int(parts[0].split("=")[1])
+                                m = int(parts[1].split("=")[1])
+                                month_start = datetime(y, m, 1, tzinfo=timezone.utc)
+                                if first_ts is None or month_start < first_ts:
+                                    first_ts = month_start
+                                if m == 12:
+                                    month_end = datetime(y + 1, 1, 1, tzinfo=timezone.utc)
+                                else:
+                                    month_end = datetime(y, m + 1, 1, tzinfo=timezone.utc)
+                                # Parquet: last candle ≈ end of month; prefer csv_last when CSV has more recent data
+                                cand = month_end - timedelta(minutes=1)
+                                if parquet_last_ts is None or cand > parquet_last_ts:
+                                    parquet_last_ts = cand
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # CSV té prioritat per last_ts (dades exactes); Parquet només quan no hi ha CSV
+        last_ts = csv_last_ts if csv_last_ts else parquet_last_ts
+
+        from_ts = int(first_ts.timestamp()) if first_ts else None
+        to_ts_val = int(last_ts.timestamp()) + 60 if last_ts else None
 
         return JSONResponse(content={
             "symbol": sym,
             "timeframe": tf,
             "source": "ostium",
-            "has_data": len(candles) > 0,
-            "total_candles": len(candles),
+            "has_data": total > 0,
+            "total_candles": total,
             "coverage_from_ts": from_ts,
             "coverage_to_ts": to_ts_val,
             "summary": {},

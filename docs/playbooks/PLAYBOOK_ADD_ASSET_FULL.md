@@ -123,7 +123,7 @@ Per cada source amb dades, validar amb `compute_ohlcv_integrity_report` (veure p
 
 Un asset complet està correctament integrat si:
 
-- [ ] Amdues fonts operatives (Ostium i Dukascopy, segons aplicabilitat)
+- [ ] Ambdues fonts operatives (Ostium i Dukascopy, segons aplicabilitat)
 - [ ] Coherència entre sources verificada
 - [ ] Integritat OK per cada source
 - [ ] No hi ha regressions

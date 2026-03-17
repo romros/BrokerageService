@@ -18,14 +18,57 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from domain.models import Candle
+from foundation.config.constants import (
+    OSTIUM_BROKER_SUBDIR,
+    OSTIUM_CANONICAL_TZ,
+    OSTIUM_PARQUET_SUBDIR,
+    REALTIME_DATALAYER_SUBDIR,
+)
 from foundation.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Path relatiu del realtime_datalayer dins de datafiles
-REALTIME_DATALAYER_SUBDIR = "realtime_datalayer"
-OSTIUM_BROKER_SUBDIR = "candles"
-OSTIUM_CANONICAL_TZ = "America/New_York"
+
+def _read_ostium_parquet(
+    symbol: str,
+    start: datetime,
+    end: datetime,
+    datafiles_root: str,
+) -> List[Candle]:
+    """
+    Llegeix candles Ostium des del Parquet rollover (TASCA 2).
+
+    Path: {datafiles_root}/historical_parquet_ostium_v1/{SYMBOL}/tf=1m/year=.../month=.../data.parquet
+    """
+    import pyarrow.parquet as pq  # lazy import to reduce startup cost (AGENTS §6.1)
+
+    base = Path(datafiles_root) / OSTIUM_PARQUET_SUBDIR / symbol.upper() / "tf=1m"
+    if not base.exists():
+        return []
+
+    candles: List[Candle] = []
+    for parquet_path in base.rglob("data.parquet"):
+        try:
+            table = pq.read_table(str(parquet_path))
+            for i in range(table.num_rows):
+                ts = table.column("ts")[i].as_py()
+                ts_dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+                if start <= ts_dt < end:
+                    candles.append(
+                        Candle(
+                            symbol=symbol,
+                            timestamp=ts_dt,
+                            open=table.column("open")[i].as_py(),
+                            high=table.column("high")[i].as_py(),
+                            low=table.column("low")[i].as_py(),
+                            close=table.column("close")[i].as_py(),
+                            volume=table.column("volume")[i].as_py(),
+                            is_closed=True,
+                        )
+                    )
+        except Exception as e:
+            logger.warning("ostium_parquet read %s: %s", parquet_path, e)
+    return sorted(candles, key=lambda c: c.timestamp)
 
 
 def resolve_backtest_data_source(
@@ -55,10 +98,11 @@ def _read_ostium_candles(
     datafiles_root: str,
 ) -> List[Candle]:
     """
-    Llegeix candles Ostium des de CSVCandleStore del realtime_datalayer.
-
-    Path: {datafiles_root}/realtime_datalayer/candles/{SYMBOL}/{TZ}/{YYYY}/{MM}.csv
+    Llegeix candles Ostium: Parquet (rollover durable) + CSV (realtime).
+    Merge: CSV guanya en overlap (TASCA 2).
     """
+    parquet_candles = _read_ostium_parquet(symbol, start, end, datafiles_root)
+
     from infrastructure.storage.csv_store import CSVCandleStore
 
     ostium_root = str(Path(datafiles_root) / REALTIME_DATALAYER_SUBDIR)
@@ -69,10 +113,16 @@ def _read_ostium_candles(
     )
     try:
         result = store.read_range(symbol, start, end, validate_gaps=False)
-        return result.candles
+        csv_candles = result.candles
     except Exception as e:
-        logger.warning("backtest_market_data: ostium read error symbol=%s: %s", symbol, e)
-        return []
+        logger.warning("backtest_market_data: ostium csv read error symbol=%s: %s", symbol, e)
+        csv_candles = []
+
+    # Merge: per ts, CSV guanya (realtime més recent)
+    by_ts = {int(c.timestamp.timestamp()): c for c in parquet_candles}
+    for c in csv_candles:
+        by_ts[int(c.timestamp.timestamp())] = c
+    return sorted(by_ts.values(), key=lambda c: c.timestamp)
 
 
 def _candles_to_body(symbol: str, candles: List[Candle]) -> dict[str, Any]:

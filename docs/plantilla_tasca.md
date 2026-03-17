@@ -115,3 +115,24 @@
 - Commits:
 - Evidència (logs/snippet):
 - Notes finals:
+
+## Regla de tancament de tasca
+
+No marquis la tasca com a `DONE` si falta qualsevol dels següents:
+
+- tests executats realment
+- evidència de smoke / integration si aplica
+- comprovació bàsica de no regressió
+- compliment d’arquitectura i capes segons `AGENTS_ARQUITECTURA.md`
+
+Si apareixen errors, dubtes arquitectònics, imports fora de lloc, o decisions de disseny no explícites:
+- atura el tancament,
+- documenta el problema,
+- escala al PM.
+
+Estats permesos:
+- `DONE`
+- `IMPLEMENTED, NOT VALIDATED`
+- `BLOCKED — PM REVIEW REQUIRED`
+
+Altrament si tot és correcte fer push a Github

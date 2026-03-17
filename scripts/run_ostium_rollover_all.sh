@@ -17,8 +17,8 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
 # Símbols Ostium (allowlist - quarantine). Alineat amb docker-compose.split.yml
-OSTIUM_SYMBOLS="${OSTIUM_SYMBOLS:-EURUSD,GBPUSD,MSFT,NVDA,NDXUSD}"
-OSTIUM_QUARANTINE="${OSTIUM_QUARANTINE_SYMBOLS:-XAUUSD,XAU}"
+OSTIUM_SYMBOLS="${OSTIUM_SYMBOLS:-EURUSD,GBPUSD,MSFT,NVDA,NDXUSD,XAUUSD}"
+OSTIUM_QUARANTINE="${OSTIUM_QUARANTINE_SYMBOLS:-XAU}"
 
 # Llista símbols: allowlist menys quarantine
 _allowed() {
