@@ -66,6 +66,10 @@ curl -s "http://localhost:8081/data/coverage/EURUSD?source=ostium"
 
 **Patró:** Replicat exactament MSFT. **Config:** NVDA afegit a SYMBOLS, OSTIUM_SYMBOLS; OSTIUM_DEFAULT_MAPPING NVDA→NVDAUSD; MARKET_HOURS_UNKNOWN_SYMBOLS. **Mapping NVDA→NVDAUSD:** Ostium `asset=NVDA` → 400; `asset=NVDAUSD` → preu vàlid. **Rollover real:** `./scripts/run_ostium_rollover.sh --symbol NVDA --from 2026-03-17 --to 2026-03-18` → 2 candles. **Parquet:** `datafiles/historical_parquet_ostium_v1/NVDA/tf=1m/year=2026/month=03/data.parquet`. **Integritat:** gaps=0, duplicates=0, order_ok, ohlc_ok. **No regressió:** EURUSD i MSFT OK.
 
+### TASCA 5 — NDXUSD (proxy funcional de QQQ) (2026-03-17)
+
+**Decisió PM:** QQQ (ETF Nasdaq 100) NO suportat per Ostium (`asset=QQQ` i `asset=QQQUSD` → 400). **NDXUSD** (índex Nasdaq 100) sí suportat. **Equivalència funcional:** QQQ = ETF que replica l'índex Nasdaq 100; NDXUSD = índex Nasdaq 100 directe. Per anàlisi de mercat són el mateix factor. **Diferència explícita:** QQQ (ETF) ≠ NDXUSD (índex), però funcionalment equivalent. **Config:** NDXUSD afegit a SYMBOLS, OSTIUM_SYMBOLS; MARKET_HOURS_UNKNOWN_SYMBOLS (índex com SPXUSD, DAXEUR). Sense mapping (Ostium usa NDXUSD directament). **Rollover real:** `./scripts/run_ostium_rollover.sh --symbol NDXUSD --from 2026-03-17 --to 2026-03-18`. **Parquet:** `datafiles/historical_parquet_ostium_v1/NDXUSD/tf=1m/year=.../month=.../data.parquet`. **Nota futura:** Dukascopy podria tenir QQQ; Ostium → NDXUSD. `source=ostium` → NDXUSD, `source=dukascopy` → QQQ (si aplica).
+
 ---
 
 ## TL;DR
