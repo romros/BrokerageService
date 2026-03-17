@@ -62,6 +62,10 @@ curl -s "http://localhost:8081/data/coverage/EURUSD?source=ostium"
 
 **Rollover real:** `./scripts/run_ostium_rollover.sh --symbol MSFT --from 2026-03-17 --to 2026-03-18` → 9 candles escrites. **Parquet:** `datafiles/historical_parquet_ostium_v1/MSFT/tf=1m/year=2026/month=03/data.parquet`. **Consulta històrica:** `curl /data/ohlcv/MSFT?source=ostium&tf=1m&limit=20` retorna 9 candles (font Parquet+CSV merge). **Integritat:** gaps=0, duplicates=0, order_ok, ohlc_ok. **Mapping MSFT→MSFTUSD:** Ostium REST API `/PricePublish/latest-price?asset=MSFT` retorna 400 "Invalid asset"; `asset=MSFTUSD` retorna preu. Llista d'assets vàlids Ostium inclou MSFTUSD. **MARKET_HOURS_UNKNOWN_SYMBOLS:** MSFT és equity US (com GOOGUSD, NVDAUSD); calendari NYSE/NASDAQ no modelat; `unknown` evita degradació falsa per stale durant horaris no FX.
 
+### TASCA 4 — NVDA asset pilot (2026-03-17)
+
+**Patró:** Replicat exactament MSFT. **Config:** NVDA afegit a SYMBOLS, OSTIUM_SYMBOLS; OSTIUM_DEFAULT_MAPPING NVDA→NVDAUSD; MARKET_HOURS_UNKNOWN_SYMBOLS. **Mapping NVDA→NVDAUSD:** Ostium `asset=NVDA` → 400; `asset=NVDAUSD` → preu vàlid. **Rollover real:** `./scripts/run_ostium_rollover.sh --symbol NVDA --from 2026-03-17 --to 2026-03-18` → 2 candles. **Parquet:** `datafiles/historical_parquet_ostium_v1/NVDA/tf=1m/year=2026/month=03/data.parquet`. **Integritat:** gaps=0, duplicates=0, order_ok, ohlc_ok. **No regressió:** EURUSD i MSFT OK.
+
 ---
 
 ## TL;DR

@@ -11,7 +11,7 @@ from typing import List, Tuple
 FX_24_5_SYMBOLS = frozenset({"EURUSD", "GBPUSD", "XAUUSD", "XAU", "USDJPY", "AUDUSD"})
 
 # Indices/equities: calendari no fiable encara → market_hours=unknown (no degradar per stale)
-MARKET_HOURS_UNKNOWN_SYMBOLS = frozenset({"GOOGUSD", "NVDAUSD", "DAXEUR", "SPXUSD", "MSFT"})
+MARKET_HOURS_UNKNOWN_SYMBOLS = frozenset({"GOOGUSD", "NVDAUSD", "DAXEUR", "SPXUSD", "MSFT", "NVDA"})
 
 # Diumenge 22:00 UTC = open; Divendres 22:00 UTC = close
 # weekday: 0=Mon, 5=Sat, 6=Sun
