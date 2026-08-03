@@ -36,6 +36,37 @@ from foundation.logging import get_logger
 logger = get_logger(__name__)
 
 TIMEFRAME = "1m"
+MAX_CONTINUOUS_MINUTE_RETURN_PCT = 5.0
+
+
+def _quarantine_anomalous_days(
+    candles: List[Candle],
+    maximum_continuous_minute_return_pct: float = MAX_CONTINUOUS_MINUTE_RETURN_PCT,
+) -> tuple[List[Candle], list[str], list[dict]]:
+    """Exclude entire UTC days containing an implausible consecutive-M1 jump.
+
+    Source CSV remains untouched. Excluding the full day avoids fabricating a
+    close/high/low when raw ticks are no longer retained.
+    """
+    ordered = sorted(candles, key=lambda candle: candle.timestamp)
+    bad_days: set[str] = set()
+    anomalies: list[dict] = []
+    for previous, current in zip(ordered, ordered[1:]):
+        elapsed = (current.timestamp - previous.timestamp).total_seconds()
+        if elapsed != 60 or previous.close <= 0:
+            continue
+        move_pct = abs(current.close / previous.close - 1) * 100
+        if move_pct > maximum_continuous_minute_return_pct:
+            day = current.timestamp.date().isoformat()
+            bad_days.add(day)
+            anomalies.append({
+                "utc": current.timestamp.isoformat(),
+                "previous_close": previous.close,
+                "close": current.close,
+                "absolute_return_pct": move_pct,
+            })
+    filtered = [candle for candle in ordered if candle.timestamp.date().isoformat() not in bad_days]
+    return filtered, sorted(bad_days), anomalies
 
 
 def _read_csv_candles(
@@ -105,6 +136,7 @@ def _write_month(
     month: int,
     candles: List[Candle],
     out_root: Path,
+    excluded_dates: set[str] | None = None,
 ) -> int:
     """Escriu partició mensual (merge amb existent si cal). Retorna candles escrites."""
     import pyarrow as pa
@@ -124,7 +156,9 @@ def _write_month(
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Merge amb existent (dedup per ts, preferència a candles noves)
-    existing = _read_existing_parquet(symbol, year, month, out_root)
+    excluded_dates = excluded_dates or set()
+    existing = [candle for candle in _read_existing_parquet(symbol, year, month, out_root)
+                if candle.timestamp.date().isoformat() not in excluded_dates]
     by_ts = {int(c.timestamp.timestamp()): c for c in existing}
     for c in candles:
         by_ts[int(c.timestamp.timestamp())] = c
@@ -183,6 +217,14 @@ def run_rollover(
         logger.info("ostium_rollover symbol=%s range=%s..%s: 0 candles (skip)", symbol, from_date, to_date)
         return {"symbol": symbol, "from": from_date, "to": to_date, "months_written": 0, "candles_written": 0, "dry_run": dry_run}
 
+    input_candles = len(candles)
+    candles, quarantined_dates, anomalies = _quarantine_anomalous_days(candles)
+    if quarantined_dates:
+        logger.warning(
+            "ostium_rollover QUARANTINE symbol={} dates={} anomalies={}",
+            symbol, quarantined_dates, len(anomalies),
+        )
+
     # Agrupar per mes
     by_month: dict[tuple[int, int], list[Candle]] = {}
     for c in candles:
@@ -194,7 +236,7 @@ def run_rollover(
     total_written = 0
     if not dry_run:
         for (year, month), month_candles in sorted(by_month.items()):
-            n = _write_month(symbol, year, month, month_candles, out_path)
+            n = _write_month(symbol, year, month, month_candles, out_path, set(quarantined_dates))
             total_written += n
     else:
         for (year, month), month_candles in sorted(by_month.items()):
@@ -207,6 +249,9 @@ def run_rollover(
         "to": to_date,
         "months_written": len(by_month),
         "candles_written": total_written,
+        "input_candles": input_candles,
+        "quarantined_dates": quarantined_dates,
+        "anomalies": anomalies,
         "dry_run": dry_run,
     }
 

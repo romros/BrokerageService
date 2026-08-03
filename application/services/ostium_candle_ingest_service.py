@@ -125,6 +125,11 @@ class OstiumCandleIngestService:
         self._ticks_seen: Dict[str, int] = defaultdict(int)
         self._ticks_last_ts: Dict[str, int] = {}
         self._last_price: Dict[str, float] = {}
+        # Timestamp de l'últim tick acceptat per construir candles. És separat
+        # del heartbeat: Ostium pot retornar un preu actual amb el timestamp de
+        # l'última sessió i aquest tick no ha de reobrir un bucket antic.
+        self._last_ingested_tick_ts: Dict[str, int] = {}
+        self._ignored_ticks_stale: Dict[str, int] = defaultdict(int)
         self._errors_count: Dict[str, int] = defaultdict(int)
         self._last_error: Dict[str, str] = {}
         self._market_hours_fn = market_hours_fn
@@ -248,6 +253,7 @@ class OstiumCandleIngestService:
                 "errors_count": self._errors_count.get(symbol, 0),
                 "last_error": self._last_error.get(symbol),
                 "ignored_ticks_closed": self._ignored_ticks_closed.get(symbol, 0),  # T6.9
+                "ignored_ticks_stale": self._ignored_ticks_stale.get(symbol, 0),
                 "state": state,
                 "market_state": market_state,
                 "market_open": m_open,
@@ -289,7 +295,11 @@ class OstiumCandleIngestService:
                 get_state = self._market_hours_fn or (lambda s, t: get_market_state(s, t))
                 self._paused_symbols = {s for s in active_symbols if not get_state(s, now_ts)[0]}
                 for s in self._paused_symbols - prev_paused:
-                    logger.info("paused ingest for %s: market_closed (heartbeat mode %ss)", s, self.heartbeat_interval_s)
+                    logger.info("paused ingest for {}: market_closed (heartbeat mode {}s)", s, self.heartbeat_interval_s)
+                    # En tancar el mercat ja no hi haurà un altre cicle normal
+                    # que faci flush de l'últim minut complet. No el deixem al
+                    # buffer durant la nit/cap de setmana.
+                    await self._flush_closed_minutes(s, current_minute)
                 for s in prev_paused - self._paused_symbols:
                     logger.info("resumed ingest for %s: market_open", s)
 
@@ -317,6 +327,8 @@ class OstiumCandleIngestService:
                         if symbol not in self._first_seen_ts:
                             self._first_seen_ts[symbol] = now_ts
                         tick = _Tick(ts=result["timestamp"], price=result["price"])
+                        if not self._accept_tick_timestamp(symbol, tick.ts, now_ts):
+                            continue
                         minute_start = (tick.ts // 60) * 60
                         # T6.9 — Gate: ignorar ticks el bucket del qual és market_closed.
                         # Evita que ticks del break (preu congelat Ostium) contaminin
@@ -369,6 +381,25 @@ class OstiumCandleIngestService:
                 await asyncio.sleep(5)
 
             await asyncio.sleep(self.poll_interval_s)
+
+    def _accept_tick_timestamp(self, symbol: str, tick_ts: int, now_ts: int) -> bool:
+        """Fail closed on stale, future or regressing timestamps used for candles."""
+        previous_tick_ts = self._last_ingested_tick_ts.get(symbol)
+        tick_age_s = now_ts - tick_ts
+        invalid = (
+            tick_age_s > self.stale_seconds
+            or tick_age_s < -self.poll_interval_s
+            or (previous_tick_ts is not None and tick_ts < previous_tick_ts)
+        )
+        if invalid:
+            self._ignored_ticks_stale[symbol] += 1
+            logger.warning(
+                "ignored stale/non-monotonic tick symbol={} tick_ts={} now_ts={} age_s={} previous_ts={}",
+                symbol, tick_ts, now_ts, tick_age_s, previous_tick_ts,
+            )
+            return False
+        self._last_ingested_tick_ts[symbol] = tick_ts
+        return True
 
     async def _flush_closed_minutes(self, symbol: str, current_minute: int) -> None:
         """Flush completed candles to store."""

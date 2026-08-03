@@ -17,7 +17,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
 # Símbols Ostium (allowlist - quarantine). Alineat amb docker-compose.split.yml
-OSTIUM_SYMBOLS="${OSTIUM_SYMBOLS:-EURUSD,GBPUSD,MSFT,NVDA,NDXUSD,XAUUSD}"
+OSTIUM_SYMBOLS="${OSTIUM_SYMBOLS:-EURUSD,GBPUSD,MSFT,NVDAUSD,NDXUSD,XAUUSD,SPXUSD,DAXEUR,USDJPY,BTCUSD,ETHUSD,SOLUSD,GOOGUSD}"
 OSTIUM_QUARANTINE="${OSTIUM_QUARANTINE_SYMBOLS:-XAU}"
 
 # Llista símbols: allowlist menys quarantine
@@ -26,6 +26,9 @@ _allowed() {
   allow=$(echo "$OSTIUM_SYMBOLS" | tr ',' ' ')
   q=$(echo "$OSTIUM_QUARANTINE" | tr ',' ' ')
   for sym in $allow; do
+    # El recorder canònic escriu NVDAUSD encara que configuracions antigues
+    # continuïn passant NVDA.
+    [[ "$sym" == "NVDA" ]] && sym="NVDAUSD"
     case " $q " in *" $sym "*) ;; *) echo "$sym";; esac
   done
 }

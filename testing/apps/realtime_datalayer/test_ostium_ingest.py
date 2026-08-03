@@ -359,6 +359,26 @@ def test_no_spike_at_boundary():
     print(f"✓ test_no_spike_at_boundary OK (o={o} h={h} l={l} c={c})")
 
 
+def test_stale_previous_session_timestamp_is_rejected():
+    """Un preu nou amb timestamp de la sessió anterior no pot crear candles."""
+    store = CSVCandleStore(root_path=tempfile.mkdtemp(), broker="test", canonical_tz="UTC")
+    svc = OstiumCandleIngestService(store, ["MSFT"], poll_interval_s=4, stale_seconds=180)
+    now_ts = 1785754800
+    previous_session_ts = 1785527939
+    assert svc._accept_tick_timestamp("MSFT", previous_session_ts, now_ts) is False
+    assert svc._ignored_ticks_stale["MSFT"] == 1
+    assert "MSFT" not in svc._last_ingested_tick_ts
+
+
+def test_tick_timestamp_must_not_regress_or_be_from_future():
+    store = CSVCandleStore(root_path=tempfile.mkdtemp(), broker="test", canonical_tz="UTC")
+    svc = OstiumCandleIngestService(store, ["MSFT"], poll_interval_s=4, stale_seconds=180)
+    assert svc._accept_tick_timestamp("MSFT", 1000, 1001) is True
+    assert svc._accept_tick_timestamp("MSFT", 999, 1002) is False
+    assert svc._accept_tick_timestamp("MSFT", 1010, 1002) is False
+    assert svc._last_ingested_tick_ts["MSFT"] == 1000
+
+
 def main():
     test_ostium_bucket_aggregation_1m()
     test_ostium_aggregation_excludes_open_minute()
@@ -371,6 +391,8 @@ def main():
     test_tick_at_open_minute_accepted()
     test_tick_at_closed_minute_ignored()
     test_no_spike_at_boundary()
+    test_stale_previous_session_timestamp_is_rejected()
+    test_tick_timestamp_must_not_regress_or_be_from_future()
     print("\n✓ Tots els tests Ostium ingest passats")
 
 
