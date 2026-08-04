@@ -39,6 +39,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import lzma
+import os
 import struct
 import time
 import urllib.error
@@ -64,9 +65,12 @@ _TICK_SIZE      = 20        # bytes per tick
 _PRICE_SCALE    = 100_000.0
 _PRICE_SCALE_JPY = 1_000.0
 _REQUEST_TIMEOUT = 30       # segons per request HTTP
-_RETRY_ATTEMPTS  = 3
+_RETRY_ATTEMPTS  = 5
 _RETRY_DELAY_S   = 2.0
-_RATE_LIMIT_S    = 0.05     # pausa entre requests d'hora (20 req/s màx)
+_RATE_LIMIT_S    = 1.0      # pausa conservadora entre requests d'hora
+_RATE_LIMIT_ENV  = "DUKASCOPY_TICK_RATE_LIMIT_S"
+_BACKOFF_429_ENV = "DUKASCOPY_TICK_429_BACKOFF_S"
+_BACKOFF_429_MAX_ENV = "DUKASCOPY_TICK_429_BACKOFF_MAX_S"
 _CACHE_SUBDIR    = "dukascopy_ticks_cache"
 
 _NY_TZ = ZoneInfo("America/New_York")
@@ -93,6 +97,20 @@ def _is_dst_fold(ts_utc: int) -> bool:
     return dt.fold == 1
 
 
+def _retry_delay(error: Exception, attempt: int) -> float:
+    if isinstance(error, urllib.error.HTTPError) and error.code == 429:
+        retry_after = error.headers.get("Retry-After") if error.headers else None
+        if retry_after:
+            try:
+                return max(float(retry_after), 0.0)
+            except ValueError:
+                pass
+        base = float(os.getenv(_BACKOFF_429_ENV, "60"))
+        maximum = float(os.getenv(_BACKOFF_429_MAX_ENV, "900"))
+        return min(base * (2 ** attempt), maximum)
+    return _RETRY_DELAY_S * (attempt + 1)
+
+
 def _download_bytes(url: str) -> Optional[bytes]:
     """
     Descarrega URL i retorna els bytes, o None si 404/buit.
@@ -107,12 +125,17 @@ def _download_bytes(url: str) -> Optional[bytes]:
             if e.code == 404:
                 return None  # dia/hora sense dades — normal
             if attempt < _RETRY_ATTEMPTS - 1:
-                time.sleep(_RETRY_DELAY_S)
+                wait = _retry_delay(e, attempt)
+                logger.warning(
+                    "Dukascopy tick HTTP %s; retry=%s/%s wait=%.1fs url=%s",
+                    e.code, attempt + 1, _RETRY_ATTEMPTS, wait, url,
+                )
+                time.sleep(wait)
             else:
                 raise
-        except Exception:
+        except Exception as e:
             if attempt < _RETRY_ATTEMPTS - 1:
-                time.sleep(_RETRY_DELAY_S)
+                time.sleep(_retry_delay(e, attempt))
             else:
                 raise
     return None
@@ -183,11 +206,14 @@ class Bi5TicksBackfillProvider(IBackfillProvider):
     def __init__(
         self,
         datafiles_root: Optional[str] = None,
-        rate_limit_s: float = _RATE_LIMIT_S,
+        rate_limit_s: Optional[float] = None,
     ):
         root = datafiles_root or DEFAULT_DATAFILES_ROOT
         self._cache_root = Path(root) / _CACHE_SUBDIR
-        self._rate_limit_s = rate_limit_s
+        self._rate_limit_s = (
+            float(os.getenv(_RATE_LIMIT_ENV, str(_RATE_LIMIT_S)))
+            if rate_limit_s is None else rate_limit_s
+        )
 
     # ------------------------------------------------------------------
     # Cache
@@ -210,6 +236,9 @@ class Bi5TicksBackfillProvider(IBackfillProvider):
             return p.read_bytes() or None
         return None
 
+    def _empty_cache_path(self, symbol: str, year: int, month: int, day: int, hour: int) -> Path:
+        return self._cache_path(symbol, year, month, day, hour).with_suffix(".empty")
+
     def _save_cache(self, symbol: str, year: int, month: int, day: int, hour: int, data: bytes) -> None:
         p = self._cache_path(symbol, year, month, day, hour)
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -227,6 +256,8 @@ class Bi5TicksBackfillProvider(IBackfillProvider):
         Usa cache local; descarrega si no existeix.
         """
         raw = self._load_cache(symbol, year, month, day, hour)
+        if raw is None and self._empty_cache_path(symbol, year, month, day, hour).exists():
+            return []
         if raw is None:
             month_0idx = month - 1
             url = (
@@ -237,6 +268,15 @@ class Bi5TicksBackfillProvider(IBackfillProvider):
             if raw:
                 self._save_cache(symbol, year, month, day, hour, raw)
             else:
+                hour_start = datetime(
+                    year, month, day, hour, tzinfo=timezone.utc
+                )
+                # No memoritzem 404 recents: podria ser una hora encara no
+                # publicada. Per història tancada evita repetir 24× weekends.
+                if hour_start < datetime.now(timezone.utc) - timedelta(hours=2):
+                    marker = self._empty_cache_path(symbol, year, month, day, hour)
+                    marker.parent.mkdir(parents=True, exist_ok=True)
+                    marker.touch(exist_ok=True)
                 return []  # hora sense dades (normal fora d'hores de mercat)
 
         # Epoch ms de l'inici de l'hora
