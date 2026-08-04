@@ -185,6 +185,9 @@ _chunk_and_sync() {
   cm=$(echo "$from_d" | cut -d- -f2)
   ty=$(echo "$to_d"   | cut -d- -f1)
   tm=$(echo "$to_d"   | cut -d- -f2)
+  # Bash interpreta 08/09 com octal en context aritmètic. Normalitzem a
+  # decimal explícit abans de calcular chunks.
+  cy=$((10#$cy)); cm=$((10#$cm)); ty=$((10#$ty)); tm=$((10#$tm))
 
   local any_failed=0
 
@@ -288,7 +291,8 @@ else
   # Pas 2: Sync async (amb chunks, poll per job_id)
   # ---------------------------------------------------------------------------
   _l "Pas 2: Sync async ${FROM_DATE} → ${TO_DATE} (chunks de ${CHUNK_YEARS} anys)"
-  _chunk_and_sync "$FROM_DATE" "$TO_DATE" || true  # errors gestionats al Pas 4 (retries)
+  sync_failed=0
+  _chunk_and_sync "$FROM_DATE" "$TO_DATE" || sync_failed=1
 fi
 
 # ---------------------------------------------------------------------------
@@ -300,10 +304,22 @@ _l "$(_coverage_summary "$rebuild2")"
 
 missing=$(_missing_months "$rebuild2")
 missing_count=$(echo "$missing" | python3 -c "import sys; ms=sys.stdin.read().split(); print(len([m for m in ms if m]))")
+months_done=$(echo "$rebuild2" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('months_done', 0))")
+total_rows=$(echo "$rebuild2" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('total_rows', 0))")
 
-if [[ "$missing_count" -eq 0 ]]; then
+if [[ "${sync_failed:-0}" -ne 0 ]]; then
+  _err "La sincronització ha fallat; coverage no pot declarar èxit"
+  exit 1
+fi
+
+if [[ "$missing_count" -eq 0 ]] && [[ "$months_done" -gt 0 ]] && [[ "$total_rows" -gt 0 ]]; then
   _l "Coverage OK — sense gaps"
   exit 0
+fi
+
+if [[ "$months_done" -eq 0 ]] || [[ "$total_rows" -eq 0 ]]; then
+  _err "Coverage BUIDA: months_done=${months_done} total_rows=${total_rows}"
+  exit 1
 fi
 
 _l "Gaps detectats (${missing_count}): ${missing}"

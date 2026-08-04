@@ -39,6 +39,8 @@ DEFAULT_WORKERS = 4
 DEFAULT_RETRIES = 3
 DEFAULT_BACKOFF_BASE = 2.0
 DEFAULT_BACKOFF_MAX = 30.0
+DEFAULT_429_BACKOFF_BASE = 60.0
+DEFAULT_429_BACKOFF_MAX = 900.0
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +128,17 @@ def _job_key(symbol: str, tf: str, from_date: str, to_date: str) -> str:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _retry_wait(error: Exception, attempt: int) -> float:
+    """Backoff llarg per rate limits; backoff curt per errors transitoris normals."""
+    if "429" in str(error):
+        return min(
+            float(os.getenv("SYNC_429_BACKOFF_BASE", DEFAULT_429_BACKOFF_BASE))
+            * (2 ** attempt),
+            float(os.getenv("SYNC_429_BACKOFF_MAX", DEFAULT_429_BACKOFF_MAX)),
+        )
+    return min(DEFAULT_BACKOFF_BASE * (2 ** attempt), DEFAULT_BACKOFF_MAX)
 
 
 def _months_in_range(from_d: date, to_d: date) -> list[tuple[int, int]]:
@@ -373,7 +386,7 @@ class SyncManager:
                     retries_used = attempt + 1
                     candles = None
                     if attempt < DEFAULT_RETRIES:
-                        wait = min(DEFAULT_BACKOFF_BASE * (2 ** attempt), DEFAULT_BACKOFF_MAX)
+                        wait = _retry_wait(e, attempt)
                         logger.warning(
                             "sync_manager FETCH_ERROR %s %d-%02d attempt=%d wait=%.1fs: %s",
                             job.symbol, year, month, attempt + 1, wait, e,

@@ -20,7 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from application.data.sync_manager import SyncManager, SyncJob, _job_key
+from application.data.sync_manager import SyncManager, SyncJob, _job_key, _retry_wait
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +219,16 @@ async def test_job_failed_when_fetch_raises():
         assert job.status == "FAILED"
         assert job.failed >= 1
         assert "2022-01" in job.failed_months
+
+
+def test_http_429_uses_long_configurable_backoff(monkeypatch):
+    monkeypatch.setenv("SYNC_429_BACKOFF_BASE", "60")
+    monkeypatch.setenv("SYNC_429_BACKOFF_MAX", "150")
+    error = RuntimeError("HTTP Error 429: Too Many Requests")
+    assert _retry_wait(error, 0) == 60
+    assert _retry_wait(error, 1) == 120
+    assert _retry_wait(error, 2) == 150
+    assert _retry_wait(ConnectionError("temporary"), 0) == 2
 
 
 @pytest.mark.asyncio
