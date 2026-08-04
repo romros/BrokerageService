@@ -2,7 +2,7 @@
 Tests unitaris per source= routing (T9.12) — script Python pur, sense pytest.
 
 Cobertura:
-  1. test_supported_sources:            SUPPORTED_SOURCES == {"dukascopy","ostium"}
+  1. test_supported_sources:            inclou dukascopy, ostium i ostium_clean
   2. test_source_default:               SOURCE_DEFAULT == "dukascopy"
   3. test_resolve_no_registry:          resolve_backtest_data_source → "dukascopy" si no hi ha registry
   4. test_resolve_registry_allowed:     registry allowed_for_backtest=True → "ostium"
@@ -68,8 +68,8 @@ END   = datetime(2025, 1, 2, 1, 0, tzinfo=timezone.utc)
 # ---------------------------------------------------------------------------
 
 def test_supported_sources() -> bool:
-    """SUPPORTED_SOURCES ha de contenir exactament dukascopy i ostium."""
-    expected = frozenset({"dukascopy", "ostium"})
+    """SUPPORTED_SOURCES exposa també el rollover Ostium quarantinat."""
+    expected = frozenset({"dukascopy", "ostium", "ostium_clean"})
     ok = SUPPORTED_SOURCES == expected
     if not ok:
         print(f"  FAIL: SUPPORTED_SOURCES={SUPPORTED_SOURCES!r} ≠ {expected!r}")
@@ -158,6 +158,28 @@ def test_get_ohlcv_source_ostium() -> bool:
     return ok
 
 
+def test_get_ohlcv_source_ostium_clean() -> bool:
+    """ostium_clean llegeix exclusivament Parquet i etiqueta la font."""
+    candles = [_make_candle()]
+    with patch(
+        "application.data.backtest_market_data._read_ostium_parquet",
+        return_value=candles,
+    ) as parquet_reader, patch(
+        "application.data.backtest_market_data._read_ostium_candles",
+    ) as mixed_reader:
+        body, headers = asyncio.run(
+            get_ohlcv_backtest(
+                symbol="EURUSD", start=START, end=END,
+                datafiles_root="/tmp", source="ostium_clean",
+            )
+        )
+    ok = (body["count"] == 1 and headers.get("X-Data-Source") == "ostium_clean"
+          and parquet_reader.call_count == 1 and mixed_reader.call_count == 0)
+    if not ok:
+        print(f"  FAIL: body={body} headers={headers}")
+    return ok
+
+
 def test_get_ohlcv_source_none_default() -> bool:
     """source=None sense registry → resol a dukascopy (via dukascopy_override)."""
     candles = [_make_candle()]
@@ -242,10 +264,10 @@ def test_invalid_source_raises_http422() -> bool:
 
 
 def test_valid_source_not_rejected() -> bool:
-    """source='dukascopy' i 'ostium' no generen 422."""
+    """Les tres fonts canòniques no generen 422."""
     from fastapi import HTTPException
 
-    for src in ("dukascopy", "ostium"):
+    for src in ("dukascopy", "ostium", "ostium_clean"):
         resolved = src.strip().lower()
         try:
             if resolved not in SUPPORTED_SOURCES:
@@ -268,6 +290,7 @@ _TESTS = [
     test_resolve_registry_not_allowed,
     test_get_ohlcv_source_dukascopy,
     test_get_ohlcv_source_ostium,
+    test_get_ohlcv_source_ostium_clean,
     test_get_ohlcv_source_none_default,
     test_get_ohlcv_xdata_source_dukascopy,
     test_get_ohlcv_xdata_source_ostium,

@@ -202,7 +202,8 @@ async def get_ohlcv_backtest(
     """
     Retorna (body_dict, headers_dict) per backtest, resolent la font via registry o paràmetre.
 
-    - source="ostium" → Ostium local (0-network)
+    - source="ostium" → Ostium local CSV+Parquet (0-network)
+    - source="ostium_clean" → només rollover Parquet amb dies anòmals quarantinats
     - source="dukascopy" → Dukascopy (pot requerir xarxa o cache)
     - source=None → comportament llegat: registry-aware (allowed_for_backtest → ostium, altrament dukascopy)
 
@@ -215,7 +216,15 @@ async def get_ohlcv_backtest(
     else:
         source_name = resolve_backtest_data_source(symbol, registry_path=registry_path)
 
-    if source_name == "ostium":
+    if source_name == "ostium_clean":
+        candles = _read_ostium_parquet(symbol, start, end, datafiles_root)
+        xdata_source = "ostium_clean"
+        if not candles:
+            logger.warning(
+                "backtest_market_data: ostium_clean selected but 0 candles symbol=%s — no fallback",
+                symbol,
+            )
+    elif source_name == "ostium":
         candles = _read_ostium_candles(symbol, start, end, datafiles_root)
         xdata_source = "ostium_local"
         if not candles:

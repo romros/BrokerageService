@@ -49,7 +49,7 @@ DEFAULT_LIMIT = 1000
 MAX_LIMIT = 5000
 
 # Fonts de dades disponibles per a OHLCV
-SUPPORTED_SOURCES = frozenset({"dukascopy", "ostium"})
+SUPPORTED_SOURCES = frozenset({"dukascopy", "ostium", "ostium_clean"})
 SOURCE_DEFAULT    = "dukascopy"
 
 
@@ -62,13 +62,14 @@ async def get_ohlcv(
     limit: int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="Màxim candles retornades"),
     offset: int = Query(default=0, ge=0, description="Offset per paginació (legacy; usa next_ts per rangs llargs)"),
     next_ts: Optional[int] = Query(default=None, description="Cursor paginació DuckDB (timestamp exclusiu inici)"),
-    source: Optional[str] = Query(default=None, description="Font de dades: dukascopy (default) | ostium"),
+    source: Optional[str] = Query(default=None, description="Font: dukascopy (default) | ostium | ostium_clean"),
 ):
     """
     Retorna candles OHLCV.
 
     - ?source=dukascopy (default): Dukascopy ticks bi5 → M1 (paritat SQ). Cobertura 2003-present.
-    - ?source=ostium: Ostium realtime local (CSVCandleStore). Cobertura: últims mesos.
+    - ?source=ostium: Ostium local CSV+Parquet. Cobertura: últims mesos.
+    - ?source=ostium_clean: només Parquet rollover amb dies anòmals quarantinats.
     - Si existeix Parquet históric (Phase 16) i source=dukascopy → DuckDB amb cursor next_ts
     - Mixed stitching parquet+realtime (Phase 20) si source=dukascopy i hi ha Parquet
 
@@ -325,6 +326,28 @@ async def get_coverage(
         )
 
     datafiles_root = os.getenv("DATAFILES_ROOT", DEFAULT_DATAFILES_ROOT)
+
+    if resolved_source == "ostium_clean":
+        from application.data.backtest_market_data import _read_ostium_parquet
+        candles = _read_ostium_parquet(
+            sym,
+            datetime(1970, 1, 1, tzinfo=timezone.utc),
+            datetime.now(timezone.utc) + timedelta(days=1),
+            datafiles_root,
+        )
+        first_ts = int(candles[0].timestamp.timestamp()) if candles else None
+        last_ts = int(candles[-1].timestamp.timestamp()) + 60 if candles else None
+        return JSONResponse(content={
+            "symbol": sym,
+            "timeframe": tf,
+            "source": "ostium_clean",
+            "has_data": bool(candles),
+            "total_candles": len(candles),
+            "coverage_from_ts": first_ts,
+            "coverage_to_ts": last_ts,
+            "summary": {},
+            "months": {},
+        })
 
     if resolved_source == "ostium":
         # Coverage Ostium: CSV + Parquet rollover (TASCA 2)
