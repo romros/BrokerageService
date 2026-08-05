@@ -111,20 +111,37 @@ class DukascopyBackfillProvider(IBackfillProvider):
         start_dt = datetime.fromtimestamp(start_ts, tz=timezone.utc)
         end_dt = datetime.fromtimestamp(end_ts, tz=timezone.utc)
 
+        # A fully covered local cache is authoritative for this legacy path.
+        # Avoid a needless network call: tests and offline backtests must remain
+        # deterministic, and refreshing an already complete range only adds
+        # latency/rate-limit risk.
+        cached = self._client.fetch_candles(
+            symbol, start_dt, end_dt, use_cache_only=True
+        )
+        expected_minutes = max(0, (end_ts - start_ts) // 60)
+        cached_timestamps = {
+            int(row["ts"]) for row in cached
+            if start_ts <= int(row["ts"]) < end_ts
+        }
+        if expected_minutes and len(cached_timestamps) == expected_minutes:
+            rows = cached
+        else:
+            rows = None
+
         def _fetch():
             return self._client.fetch_candles(symbol, start_dt, end_dt, use_cache_only=False)
 
-        rows = None
-        try:
-            rows = await asyncio.to_thread(_fetch)
-        except Exception as e:
-            # Offline: intentar només cache
-            if self._client.has_cache(symbol, start_dt, end_dt):
-                rows = self._client.fetch_candles(symbol, start_dt, end_dt, use_cache_only=True)
-            else:
-                raise RuntimeError(
-                    f"dukascopy cache missing + network unavailable: {e}"
-                ) from e
+        if rows is None:
+            try:
+                rows = await asyncio.to_thread(_fetch)
+            except Exception as e:
+                # Offline: intentar només cache
+                if self._client.has_cache(symbol, start_dt, end_dt):
+                    rows = self._client.fetch_candles(symbol, start_dt, end_dt, use_cache_only=True)
+                else:
+                    raise RuntimeError(
+                        f"dukascopy cache missing + network unavailable: {e}"
+                    ) from e
 
         # T8.23: fallback bi5 si rang pre-2007 i JSON retorna buit
         if not rows and start_dt.year <= _BI5_FALLBACK_MAX_YEAR:

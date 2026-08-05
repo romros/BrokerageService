@@ -73,34 +73,25 @@ def test_dukascopy_provider_from_cache():
             DukascopyBackfillProvider,
         )
 
+        previous_mode = os.environ.get("DUKASCOPY_BACKFILL_MODE")
+        os.environ["DUKASCOPY_BACKFILL_MODE"] = "m1"
         provider = DukascopyBackfillProvider(cache_root=tmpdir)
         start = datetime(2026, 2, 10, 12, 0, 0, tzinfo=timezone.utc)
-        end = datetime(2026, 2, 10, 12, 25, 0, tzinfo=timezone.utc)
+        # Exactament la finestra coberta: el provider ha de servir cache-first
+        # i no intentar cap refresh de xarxa.
+        end = datetime(2026, 2, 10, 12, 20, 0, tzinfo=timezone.utc)
 
-        # Simulem offline: mock fetch per forçar cache
         async def _run():
-            # fetch_candles amb use_cache_only cal cridar-ho des del client
-            # El provider crida fetch (xarxa) i si falla intenta cache
-            # Per test sense xarxa: el fetch fallarà, llavors has_cache?
-            # has_cache retorna True si hi ha rows al cache
-            # fetch_candles(use_cache_only=True) retorna del cache
-            # El provider fa asyncio.to_thread(_fetch) on _fetch = client.fetch_candles(use_cache_only=False)
-            # Això intentarà fetch real → fallarà (no xarxa) → raise
-            # Llavors provider except: has_cache? Si sí, fetch_candles(use_cache_only=True)
-            # Però has_cache i fetch_candles són del client - i el client en fetch_candles(False)
-            # quan fetch falla, si cached: return cached. Però cached = _read_cache_range
-            # que es crida ABANS del fetch. Així que si tenim cache, retornarem cached!
-            # Oi - el client primer fa cached = _read_cache_range. Si cached no és buit,
-            # després intenta fetch. Si fetch falla, return cached. Així que amb cache
-            # ple, hauríem de retornar cached sense necessitat de use_cache_only.
-            # Però el fetch podria tenir èxit si hi ha xarxa - i al CI no hi ha.
-            # En el nostre test, no hi ha dukascopy API accessible (o sí?) - en qualsevol cas
-            # el fetch de dukascopy pot fallar per timeout, etc. Amb cache ple, retornem cache.
             return await provider.fetch_ohlcv("XAUUSD", start, end)
 
-        candles = asyncio.run(_run())
-        # Cache té 20; si fetch (xarxa) retorna dades, podríem tenir més
-        assert len(candles) >= 20, f"Expected >=20 from cache, got {len(candles)}"
+        try:
+            candles = asyncio.run(_run())
+        finally:
+            if previous_mode is None:
+                os.environ.pop("DUKASCOPY_BACKFILL_MODE", None)
+            else:
+                os.environ["DUKASCOPY_BACKFILL_MODE"] = previous_mode
+        assert len(candles) == 20, f"Expected exact cached range, got {len(candles)}"
         assert candles[0].symbol == "XAUUSD"
         assert candles[0].is_closed is True
         assert candles[0].timestamp.tzinfo is not None

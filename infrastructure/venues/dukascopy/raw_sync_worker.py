@@ -17,7 +17,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
-from application.data.dukascopy_bi5 import build_m1_url, _download_bytes
+from foundation.market_data.dukascopy_bi5 import build_m1_url, _download_bytes
 from foundation.config.constants import DEFAULT_RAW_SYNC_SYMBOLS, RAW_SYNC_SYMBOLS_ENV
 from foundation.logging import get_logger
 from infrastructure.venues.dukascopy.raw_bi5_store import RawBi5M1Store

@@ -75,6 +75,7 @@ def _start_broker(tmpdir: str, port: int = 8002) -> subprocess.Popen:
         "VENUE": "gtrade",
         "PORT": str(port),
         "PYTHONPATH": str(ROOT),
+        "DUKASCOPY_BACKFILL_MODE": "m1",
     }
     for k, v in list(__import__("os").environ.items()):
         if k not in env:

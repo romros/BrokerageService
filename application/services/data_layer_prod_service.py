@@ -29,7 +29,11 @@ from application.data.data_layer_metrics import (
     SYMBOL_STATE_DEGRADED,
     get_data_layer_metrics,
 )
-from application.market_hours.fx_24_5 import count_closed_minutes_between, get_market_state
+from application.market_hours.fx_24_5 import (
+    count_closed_minutes_between,
+    get_market_state,
+    stale_degradation_applies,
+)
 from foundation.config.constants import (
     DATA_LAYER_ENABLED_ENV,
     DATA_LAYER_WRITE_MODE_ENV,
@@ -308,7 +312,7 @@ class DataLayerProdService:
             market_open_now, market_state_reason = get_market_state(symbol, now_ts)
 
             # stale_s: si mercat tancat ara, no penalitzar (stale_s=0 per gates)
-            if market_open_now:
+            if stale_degradation_applies(symbol, now_ts):
                 stale_s = now_ts - last_ts_int - 60 if last_ts_int > 0 else 0
                 stale_s = max(0, stale_s)
             else:
@@ -316,7 +320,13 @@ class DataLayerProdService:
 
             # missing_minutes_24h: restar minuts en intervals tancats
             try:
-                r = self.store.read_range(symbol, window_24h_start, now_utc, validate_gaps=True)
+                r = self.store.read_range(
+                    symbol,
+                    window_24h_start,
+                    now_utc,
+                    validate_gaps=True,
+                    log_incomplete=False,
+                )
                 missing_24h_raw = getattr(r, "missing_count", 0) or 0
                 closed_mins = count_closed_minutes_between(symbol, window_24h_start_ts, now_ts)
                 missing_24h = max(0, missing_24h_raw - closed_mins)
@@ -353,7 +363,12 @@ class DataLayerProdService:
             if symbol not in self._degraded_symbols:
                 if stale_s > self.stale_seconds:
                     self._mark_degraded(symbol, f"stale_seconds={stale_s} > {self.stale_seconds}")
-                elif missing_24h > self.max_missing_per_24h and not in_warmup:
+                elif (
+                    market_open_now
+                    and market_state_reason == "open"
+                    and missing_24h > self.max_missing_per_24h
+                    and not in_warmup
+                ):
                     self._mark_degraded(symbol, f"missing_minutes_24h={missing_24h} > {self.max_missing_per_24h}")
 
         # Lifecycle: ready | warming_up | degraded (basat en cobertura recent 24h)

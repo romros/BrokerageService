@@ -209,7 +209,7 @@ class OstiumCandleIngestService:
             for s in self.symbols:
                 if s not in self._symbol_to_ostium_asset:
                     self._symbol_to_ostium_asset[s] = s
-        logger.info("OstiumCandleIngestService update_symbols: active=%s stopped=%s", self.symbols, to_remove)
+        logger.info("OstiumCandleIngestService update_symbols: active={} stopped={}", self.symbols, to_remove)
 
     def get_symbol_stats(self) -> Dict[str, Dict[str, Any]]:
         """Stats per símbol: ticks_seen, ticks_last_ts, candles_written, candle_last_ts, errors_count, last_error, state, market_open, market_state_reason."""
@@ -224,7 +224,7 @@ class OstiumCandleIngestService:
             m = symbols_data.get(symbol, {})
             m_open = m.get("market_open", market_open)
             m_reason = m.get("market_state_reason", market_state_reason)
-            market_state = "open" if m_open else ("closed" if m_reason == "closed" else "unknown")
+            market_state = "open" if m_open else ("unknown" if m_reason == "unknown" else "closed")
             if symbol in self._stopped_symbols:
                 state = "stopped"
             elif symbol in self._degraded_symbols:
@@ -302,7 +302,7 @@ class OstiumCandleIngestService:
                     # buffer durant la nit/cap de setmana.
                     await self._flush_closed_minutes(s, current_minute)
                 for s in prev_paused - self._paused_symbols:
-                    logger.info("resumed ingest for %s: market_open", s)
+                    logger.info("resumed ingest for {}: market_open", s)
 
                 # Degraded NO bloqueja: inclou amb backoff.
                 poll_symbols = [
@@ -371,7 +371,7 @@ class OstiumCandleIngestService:
                     if result:
                         self._last_price[symbol] = result["price"]
                         self._ticks_last_ts[symbol] = result["timestamp"]
-                        logger.debug("heartbeat tick %s price=%.5f", symbol, result["price"])
+                        logger.debug("heartbeat tick {} price={:.5f}", symbol, result["price"])
 
                 # Flush closed minutes (només per poll_symbols, no heartbeat)
                 for symbol in poll_symbols:
@@ -382,7 +382,7 @@ class OstiumCandleIngestService:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("OstiumCandleIngestService poll_loop error: %s", e)
+                logger.error("OstiumCandleIngestService poll_loop error: {}", e)
                 for s in self.symbols:
                     if s not in self._stopped_symbols:
                         self._errors_count[s] += 1
@@ -445,7 +445,7 @@ class OstiumCandleIngestService:
                 metrics = get_data_layer_metrics()
                 if metrics:
                     metrics.inc_candles_written(symbol, count=1, last_ts=ts)
-                logger.debug("OstiumCandleIngestService wrote %s %s", symbol, ts_dt)
+                logger.debug("OstiumCandleIngestService wrote {} {}", symbol, ts_dt)
 
         # Remove flushed ticks
         last_flushed = max(ts for ts, *_ in candles_data)
@@ -495,7 +495,7 @@ class OstiumCandleIngestService:
         metrics = get_data_layer_metrics()
         if metrics:
             metrics.set_symbol_state(symbol, SYMBOL_STATE_ACTIVE)
-        logger.info("OSTIUM_AUTORECOVER symbol=%s", symbol)
+        logger.info("OSTIUM_AUTORECOVER symbol={}", symbol)
 
     def _increase_backoff(self, symbol: str, now_ts: int) -> None:
         """Sense progrés → augmenta backoff."""
@@ -541,7 +541,13 @@ class OstiumCandleIngestService:
             else:
                 symbol_uptime_s = 0
             try:
-                r = self.store.read_range(symbol, window_24h_start, now_utc, validate_gaps=True)
+                r = self.store.read_range(
+                    symbol,
+                    window_24h_start,
+                    now_utc,
+                    validate_gaps=True,
+                    log_incomplete=False,
+                )
                 missing_24h_raw = getattr(r, "missing_count", 0) or 0
                 closed_mins = count_closed_minutes_between(symbol, window_24h_start_ts, now_ts)
                 missing_24h = max(0, missing_24h_raw - closed_mins)
@@ -571,7 +577,12 @@ class OstiumCandleIngestService:
                 if stale_applies and stale_s > self.stale_seconds:
                     if candles_written_this_run > 0:
                         self._mark_degraded(symbol, f"stale_seconds={stale_s} > {self.stale_seconds}")
-                elif missing_24h > self.max_missing_per_24h and not in_warmup:
+                elif (
+                    market_open
+                    and market_state_reason == "open"
+                    and missing_24h > self.max_missing_per_24h
+                    and not in_warmup
+                ):
                     self._mark_degraded(
                         symbol,
                         f"missing_minutes_24h={missing_24h} > {self.max_missing_per_24h}",

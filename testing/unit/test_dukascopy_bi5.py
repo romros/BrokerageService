@@ -173,7 +173,7 @@ def test_decode_bi5_m1_invalid_lzma():
 def test_fetch_m1_day_raises_on_network_error():
     from application.data.dukascopy_bi5 import fetch_m1_day
 
-    with patch("application.data.dukascopy_bi5._download_bytes") as mock_dl:
+    with patch("foundation.market_data.dukascopy_bi5._download_bytes") as mock_dl:
         mock_dl.side_effect = RuntimeError("network error")
         raised = False
         try:
@@ -186,7 +186,7 @@ def test_fetch_m1_day_raises_on_network_error():
 def test_fetch_m1_day_returns_empty_on_404():
     from application.data.dukascopy_bi5 import fetch_m1_day
 
-    with patch("application.data.dukascopy_bi5._download_bytes") as mock_dl:
+    with patch("foundation.market_data.dukascopy_bi5._download_bytes") as mock_dl:
         mock_dl.return_value = None  # 404 → None
         result = fetch_m1_day("EURUSD", 2003, 5, 3)  # dissabte
     assert result == [], f"Expected [] per 404, got {result}"
@@ -199,7 +199,7 @@ def test_fetch_m1_day_parses_valid_response():
     record = _make_bi5_record(0, 112161, 112209, 112161, 112209, 258.1)
     compressed = _make_bi5_compressed(record)
 
-    with patch("application.data.dukascopy_bi5._download_bytes") as mock_dl:
+    with patch("foundation.market_data.dukascopy_bi5._download_bytes") as mock_dl:
         mock_dl.return_value = compressed
         candles = fetch_m1_day("EURUSD", 2003, 5, 5)
 

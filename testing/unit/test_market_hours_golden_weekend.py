@@ -42,7 +42,7 @@ def _check(sym: str, dt_ny: datetime, expected_state: str, expected_reason: str 
 def test_golden_saturday_01h_all_closed():
     """Dissabte 01:00 ET → closed per TOTS els perfils (antic bug: XAU/índexs eren open)."""
     dt = datetime(2026, 2, 21, 1, 0, 0, tzinfo=NY_TZ)  # Dissabte
-    for sym in ("EURUSD", "USDJPY", "GBPUSD", "XAUUSD", "DAXEUR", "SPXUSD", "GOOGUSD", "NVDAUSD"):
+    for sym in ("EURUSD", "USDJPY", "GBPUSD", "XAUUSD", "DAXEUR", "SPXUSD", "NDXUSD", "GOOGUSD", "MSFT", "NVDAUSD", "NVDA"):
         _check(sym, dt, "closed", label="Dis 01:00 ET")
     print("✓ test_golden_saturday_01h_all_closed passed")
 
@@ -50,7 +50,7 @@ def test_golden_saturday_01h_all_closed():
 def test_golden_saturday_12h_all_closed():
     """Dissabte 12:00 ET → closed per TOTS els perfils."""
     dt = datetime(2026, 2, 21, 12, 0, 0, tzinfo=NY_TZ)
-    for sym in ("EURUSD", "USDJPY", "GBPUSD", "XAUUSD", "DAXEUR", "SPXUSD", "GOOGUSD", "NVDAUSD"):
+    for sym in ("EURUSD", "USDJPY", "GBPUSD", "XAUUSD", "DAXEUR", "SPXUSD", "NDXUSD", "GOOGUSD", "MSFT", "NVDAUSD", "NVDA"):
         _check(sym, dt, "closed", label="Dis 12:00 ET")
     print("✓ test_golden_saturday_12h_all_closed passed")
 
@@ -62,10 +62,10 @@ def test_golden_sunday_1730_fx_open_xau_closed():
     for sym in ("EURUSD", "USDJPY", "GBPUSD"):
         _check(sym, dt, "open", label="Diu 17:30 ET FX")
     # XAU/índexs: tancat (obren 18:00 ET)
-    for sym in ("XAUUSD", "DAXEUR", "SPXUSD"):
+    for sym in ("XAUUSD", "DAXEUR", "SPXUSD", "NDXUSD"):
         _check(sym, dt, "closed", "weekend", label="Diu 17:30 ET XAU/idx")
     # Equities: tancat (RTH weekday only)
-    for sym in ("GOOGUSD", "NVDAUSD"):
+    for sym in ("GOOGUSD", "MSFT", "NVDAUSD", "NVDA"):
         _check(sym, dt, "closed", "weekend", label="Diu 17:30 ET equities")
     print("✓ test_golden_sunday_1730_fx_open_xau_closed passed")
 
@@ -73,7 +73,7 @@ def test_golden_sunday_1730_fx_open_xau_closed():
 def test_golden_sunday_1800_xau_opens():
     """Diumenge 18:00 ET: XAU i índexs obren."""
     dt = datetime(2026, 2, 22, 18, 0, 0, tzinfo=NY_TZ)  # Diumenge
-    for sym in ("XAUUSD", "DAXEUR", "SPXUSD"):
+    for sym in ("XAUUSD", "DAXEUR", "SPXUSD", "NDXUSD"):
         _check(sym, dt, "open", label="Diu 18:00 ET XAU/idx open")
     print("✓ test_golden_sunday_1800_xau_opens passed")
 
@@ -84,7 +84,7 @@ def test_golden_sunday_fx_opens_at_1700():
     for sym in ("EURUSD", "USDJPY", "GBPUSD"):
         _check(sym, dt, "open", label="Diu 17:00 ET FX open")
     # XAU/índexs encara tancats (obren 18:00)
-    for sym in ("XAUUSD", "DAXEUR", "SPXUSD"):
+    for sym in ("XAUUSD", "DAXEUR", "SPXUSD", "NDXUSD"):
         _check(sym, dt, "closed", label="Diu 17:00 ET XAU closed")
     print("✓ test_golden_sunday_fx_opens_at_1700 passed")
 

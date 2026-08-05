@@ -1,0 +1,13 @@
+.git
+.env
+.env.*
+!.env.example
+!.env.secrets.example
+__pycache__/
+*.py[cod]
+.pytest_cache/
+logs/
+datafiles/
+lab/out/
+lab/runner/out_compare/
+_archive/

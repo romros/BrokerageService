@@ -29,7 +29,7 @@ from typing import List
 from domain.interfaces import IBackfillProvider
 from domain.models import Candle
 
-from application.data.dukascopy_bi5 import fetch_m1_range
+from foundation.market_data.dukascopy_bi5 import fetch_m1_range
 
 logger = logging.getLogger(__name__)
 

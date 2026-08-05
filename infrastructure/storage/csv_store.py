@@ -205,6 +205,7 @@ class CSVCandleStore(ICandleStore):
         start: datetime,
         end: datetime,
         validate_gaps: bool = True,
+        log_incomplete: bool = True,
     ) -> CandleRange:
         """
         Read candles in time range [start, end)
@@ -214,6 +215,7 @@ class CSVCandleStore(ICandleStore):
             start: Start timestamp (inclusive)
             end: End timestamp (exclusive)
             validate_gaps: Check for gaps
+            log_incomplete: Log a warning when the requested range is incomplete
 
         Returns:
             CandleRange with candles and completeness info
@@ -254,7 +256,7 @@ class CSVCandleStore(ICandleStore):
         if validate_gaps:
             candle_range.validate_completeness()
 
-            if not candle_range.is_complete:
+            if log_incomplete and not candle_range.is_complete:
                 logger.warning(
                     f"Range incomplete: {symbol} has {candle_range.missing_count} missing candles "
                     f"({candle_range.count}/{candle_range.expected_count})"

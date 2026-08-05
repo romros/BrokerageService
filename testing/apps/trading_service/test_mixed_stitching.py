@@ -221,7 +221,7 @@ def test_ohlcv_api_source_parquet_only_when_mixed_denied():
 
     assert resp.status_code == 200, resp.text
     data = resp.json()
-        assert data["source"] == "dukascopy", f"Obtingut {data['source']}"
+    assert data["source"] == "dukascopy", f"Obtingut {data['source']}"
     assert len(data["candles"]) == 5  # només parquet
     print(f"✓ test_ohlcv_api_source_parquet_only_when_mixed_denied OK")
 

@@ -12,6 +12,17 @@
 
 **Recorda Docker:** Si has canviat codi, reconstruir abans: `docker compose build brokerage`. Vegeu AGENTS §11.
 
+## Consolidació operativa — 2026-08-01
+
+- Realtime corregit: horaris de `NDXUSD`, `MSFT` i `NVDA`; cap fals `DEGRADED` quan el mercat és `closed` o `unknown`.
+- Logging compatible amb placeholders legacy (`%s`, `%d`, `%.nf`); causes i símbols tornen a ser visibles.
+- Símbols live normalitzats sense duplicat trencat: `NVDAUSD` actiu; `NVDA` retirat en calent.
+- Build sanejat amb `.dockerignore`: secrets, dades, logs, caches i artifacts no entren al context.
+- Frontera arquitectònica BI5 corregida: implementació canònica a `foundation.market_data`; `application.data` conserva shim compatible.
+- Tests 0-network: **84 passed, 0 failed, 1 skipped**. Gateway smoke: **8/8 PASS**.
+- Runtime: `/realtime/health` = `ok`; tots els actius correctament `paused_closed` en dissabte; zero warnings/errors en els 2 minuts finals.
+
+
 ---
 
 ## TASCA 2 — Historical-by-source + retenció durable Ostium (2026-03-17)

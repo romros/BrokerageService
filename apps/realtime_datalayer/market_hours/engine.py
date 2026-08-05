@@ -152,9 +152,12 @@ DEFAULT_PROFILE: dict[str, str] = {
     "XAU": "ostium_xau_break",
     "DAXEUR": "ostium_indices_break",
     "SPXUSD": "ostium_indices_break",
+    "NDXUSD": "ostium_indices_break",
     "NVDAUSD": "ostium_rth_equities",
+    "NVDA": "ostium_rth_equities",
     # US Equities NY: RTH 09:30–16:00 NY (weekday)
     "GOOGUSD": "us_equities_ny",
+    "MSFT": "us_equities_ny",
     "EURUSD": "fx_24_5",
     "GBPUSD": "fx_24_5",
     "USDJPY": "fx_24_5",

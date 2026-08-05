@@ -78,7 +78,7 @@ def load_symbols_config() -> dict[str, Any]:
             "market_hours_overrides": data.get("market_hours_overrides", {}),
         }
     except Exception as e:
-        logger.warning("symbol_config load failed: %s, using default", e)
+        logger.warning("symbol_config load failed: {}, using default", e)
         return {"symbols": list(DEFAULT_SYMBOLS), "instrument_overrides": {}, "market_hours_overrides": {}}
 
 
@@ -98,7 +98,7 @@ def save_symbols_config(
     }
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
-    logger.info("symbol_config saved: %s symbols", len(symbols))
+    logger.info("symbol_config saved: {} symbols", len(symbols))
 
 
 def get_market_hours_profile(symbol: str) -> str | None:

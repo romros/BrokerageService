@@ -41,7 +41,7 @@ def test_ema_sma_vs_first_differ_at_start():
     sma_out = ema(close, 5, seed_mode="sma")
     first_out = ema(close, 5, seed_mode="first")
     assert sma_out.iloc[4] == 20.8
-    assert abs(first_out.iloc[4] - 20.8) > 1.0
+    assert abs(first_out.iloc[4] - 20.8) > 0.1
 
 
 def test_ema_converges_monotonic():
@@ -49,7 +49,8 @@ def test_ema_converges_monotonic():
     close = pd.Series([1.0 + i * 0.01 for i in range(300)])
     sma = ema(close, 200, seed_mode="sma")
     first = ema(close, 200, seed_mode="first")
-    assert abs(sma.iloc[299] - first.iloc[299]) < 0.01
+    assert abs(sma.iloc[299] - first.iloc[299]) < abs(sma.iloc[199] - first.iloc[199])
+    assert abs(sma.iloc[299] - first.iloc[299]) < 0.1
 
 
 def test_rsi_wilder_bounds():

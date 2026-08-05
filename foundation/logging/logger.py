@@ -15,6 +15,43 @@ import sys
 from loguru import logger as loguru_logger
 
 
+class CompatibleLogger:
+    """Façana Loguru compatible amb missatges legacy de logging (%s, %d, %.nf)."""
+
+    def __init__(self, wrapped):
+        self._wrapped = wrapped
+
+    def _log(self, level: str, message, *args, **kwargs):
+        if args and isinstance(message, str) and "%" in message:
+            try:
+                message = message % args
+                args = ()
+            except (TypeError, ValueError):
+                pass
+        return getattr(self._wrapped.opt(depth=2), level)(message, *args, **kwargs)
+
+    def debug(self, message, *args, **kwargs):
+        return self._log("debug", message, *args, **kwargs)
+
+    def info(self, message, *args, **kwargs):
+        return self._log("info", message, *args, **kwargs)
+
+    def warning(self, message, *args, **kwargs):
+        return self._log("warning", message, *args, **kwargs)
+
+    def error(self, message, *args, **kwargs):
+        return self._log("error", message, *args, **kwargs)
+
+    def critical(self, message, *args, **kwargs):
+        return self._log("critical", message, *args, **kwargs)
+
+    def bind(self, **kwargs):
+        return CompatibleLogger(self._wrapped.bind(**kwargs))
+
+    def __getattr__(self, name):
+        return getattr(self._wrapped, name)
+
+
 class ApplicationLogger:
     """Singleton logger for entire application"""
 
@@ -62,7 +99,7 @@ class ApplicationLogger:
 
     def get_logger(self, module_name: str):
         """Get logger bound to module name"""
-        return loguru_logger.bind(name=module_name)
+        return CompatibleLogger(loguru_logger.bind(name=module_name))
 
 
 # Global accessor (façana pattern)
