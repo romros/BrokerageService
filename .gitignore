@@ -71,12 +71,8 @@ lab/_archive/
 
 # Lab artifacts (paths + resums a compare_notes, no outputs)
 lab/out/
-lab/runner/out_compare/artifacts/
-lab/runner/out_compare/contract_*/
-lab/runner/out_compare/mt4like_*/
-lab/runner/out_compare/mt4_oracle/
-lab/runner/out_compare/sq_decompiled/
-lab/runner/out_compare/jadx.zip
+lab/runner/out_compare/
+lab/paritat_SQ_dukascopy/data/
 lab/ostium/output/
 lab/bi5_vs_sqcli/artifacts/
 lab/bi_5y/
