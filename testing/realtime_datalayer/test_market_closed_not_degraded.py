@@ -54,9 +54,23 @@ def test_unknown_symbol_no_stale_degradation():
     print("✓ test_unknown_symbol_no_stale_degradation passed")
 
 
+def test_prod_gate_accepts_canonical_symbol_market_hours():
+    """El gate genèric ha de poder usar el mateix calendari que l'ingestor."""
+    from unittest.mock import MagicMock
+    from application.services.data_layer_prod_service import DataLayerProdService
+
+    closed = lambda symbol, ts: (False, "daily_break")
+    service = DataLayerProdService(
+        store=MagicMock(), provider=MagicMock(), symbols=["XAUUSD"],
+        market_hours_fn=closed,
+    )
+    assert service._market_hours_fn("XAUUSD", 0) == (False, "daily_break")
+
+
 def main() -> int:
     test_market_closed_stale_not_degraded()
     test_unknown_symbol_no_stale_degradation()
+    test_prod_gate_accepts_canonical_symbol_market_hours()
     print("OK test_market_closed_not_degraded")
     return 0
 

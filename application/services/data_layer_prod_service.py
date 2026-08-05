@@ -11,7 +11,7 @@ Quan DATA_LAYER_ENABLED=1:
 import asyncio
 import os
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from domain.interfaces import ICandleStore, IBackfillProvider
 from domain.models import Candle
@@ -32,7 +32,6 @@ from application.data.data_layer_metrics import (
 from application.market_hours.fx_24_5 import (
     count_closed_minutes_between,
     get_market_state,
-    stale_degradation_applies,
 )
 from foundation.config.constants import (
     DATA_LAYER_ENABLED_ENV,
@@ -91,6 +90,7 @@ class DataLayerProdService:
         stale_seconds: int = 180,
         writer_interval_seconds: int = 60,
         write_mode: str = "realtime",
+        market_hours_fn: Optional[Callable[[str, int], tuple[bool, str]]] = None,
     ):
         self.store = store
         self.provider = provider
@@ -102,6 +102,7 @@ class DataLayerProdService:
         self.stale_seconds = stale_seconds
         self.writer_interval_seconds = writer_interval_seconds
         self.write_mode = write_mode  # realtime | backfill_only | realtime_only | realtime_plus_backfill
+        self._market_hours_fn = market_hours_fn
 
         self._running = False
         self._task: Optional[asyncio.Task] = None
@@ -309,10 +310,11 @@ class DataLayerProdService:
                 continue
 
             last_ts_int = int(last_ts.timestamp())
-            market_open_now, market_state_reason = get_market_state(symbol, now_ts)
+            state_fn = self._market_hours_fn or get_market_state
+            market_open_now, market_state_reason = state_fn(symbol, now_ts)
 
             # stale_s: si mercat tancat ara, no penalitzar (stale_s=0 per gates)
-            if stale_degradation_applies(symbol, now_ts):
+            if market_open_now and market_state_reason == "open":
                 stale_s = now_ts - last_ts_int - 60 if last_ts_int > 0 else 0
                 stale_s = max(0, stale_s)
             else:
