@@ -136,6 +136,30 @@ Artifacts: `lab/runner/artifacts/sq_0423850/XAUUSD/4h/2016-01-01_2026-01-01/`
 **Resultat referència T8.8** (Execution Contract v2):
 - n_trades=45, net_pnl=14.84%, win_rate=57.78%, max_drawdown=4.42%, avg_trade=0.33%
 
+### Walk-forward net de costos (2026-08-01)
+
+El resultat brut anterior **no supera el gate temporal net**. Runner:
+
+    docker run --rm -e PYTHONPATH=/app \
+      -v /mnt/volume-SQ/dev/BrokerageService:/app \
+      -v /mnt/volume-SQ/dev/BrokerageService/datafiles:/datafiles \
+      -w /app brokerageservice-historical_datalayer \
+      python3 lab/runner/walk_forward_sq_0423850.py \
+      --parquet-root /datafiles/historical_parquet
+
+Train 2016–2018; OOS anual 2019–2025; costos explícits de fee, spread,
+slippage i rollover:
+
+| Escenari | Retorn OOS compost | PF | Anys positius |
+|---|---:|---:|---:|
+| official_base | -1.00% | 0.96 | 3/7 |
+| conservative | -2.99% | 0.86 | 2/7 |
+| stress | -6.62% | 0.71 | 2/7 |
+
+**Decisió: REJECTED_OOS. No activar en paper.**
+
+Artifacts: lab/out/walkforward_sq_0423850/.
+
 ### SmokeStrategy (pipeline-first, TTL only)
 
 ```bash
