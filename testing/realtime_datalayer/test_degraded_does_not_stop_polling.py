@@ -54,9 +54,33 @@ def test_degraded_not_in_paused_symbols():
     print("✓ test_degraded_not_in_paused_symbols passed")
 
 
+def test_missing_minutes_never_throttles_polling():
+    from application.services.ostium_candle_ingest_service import OstiumCandleIngestService
+    from unittest.mock import MagicMock
+
+    ingest = OstiumCandleIngestService(MagicMock(), ["EURUSD"], poll_interval_s=2)
+    ingest._mark_degraded("EURUSD", "missing_minutes_24h=341 > 1")
+    assert ingest._uses_poll_backoff("EURUSD") is False
+    assert ingest._is_transient_degradation("EURUSD") is False
+    assert "EURUSD" not in ingest._symbol_backoff_until
+
+
+def test_only_transient_failures_can_autorecover_and_backoff():
+    from application.services.ostium_candle_ingest_service import OstiumCandleIngestService
+    from unittest.mock import MagicMock
+
+    ingest = OstiumCandleIngestService(MagicMock(), ["EURUSD"], poll_interval_s=2)
+    ingest._mark_degraded("EURUSD", "poll_failures=3")
+    assert ingest._uses_poll_backoff("EURUSD") is True
+    assert ingest._is_transient_degradation("EURUSD") is True
+    assert "EURUSD" in ingest._symbol_backoff_until
+
+
 def main() -> int:
     test_degraded_symbol_included_in_poll_with_backoff()
     test_degraded_not_in_paused_symbols()
+    test_missing_minutes_never_throttles_polling()
+    test_only_transient_failures_can_autorecover_and_backoff()
     print("OK test_degraded_does_not_stop_polling")
     return 0
 

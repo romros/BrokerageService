@@ -131,6 +131,7 @@ class OstiumCandleIngestService:
         self._last_ingested_tick_ts: Dict[str, int] = {}
         self._ignored_ticks_stale: Dict[str, int] = defaultdict(int)
         self._errors_count: Dict[str, int] = defaultdict(int)
+        self._consecutive_poll_failures: Dict[str, int] = defaultdict(int)
         self._last_error: Dict[str, str] = {}
         self._market_hours_fn = market_hours_fn
         self._market_hours_full_fn = market_hours_full_fn
@@ -307,7 +308,10 @@ class OstiumCandleIngestService:
                 poll_symbols = [
                     s for s in active_symbols
                     if s not in self._paused_symbols
-                    and (s not in self._degraded_symbols or now_ts >= self._symbol_backoff_until.get(s, 0))
+                    and (
+                        not self._uses_poll_backoff(s)
+                        or now_ts >= self._symbol_backoff_until.get(s, 0)
+                    )
                 ]
 
                 # Heartbeat symbols: market_closed → poll reduït, sense flush candles
@@ -321,6 +325,7 @@ class OstiumCandleIngestService:
                     ostium_asset = self._ostium_asset(symbol)
                     result = await loop.run_in_executor(None, fetch_latest_price, ostium_asset)
                     if result:
+                        self._consecutive_poll_failures[symbol] = 0
                         self._ticks_seen[symbol] += 1
                         self._ticks_last_ts[symbol] = result["timestamp"]
                         self._last_price[symbol] = result["price"]
@@ -343,16 +348,20 @@ class OstiumCandleIngestService:
                             )
                         else:
                             self._ticks[symbol][minute_start].append(tick)
-                        if symbol in self._degraded_symbols:
+                        if symbol in self._degraded_symbols and self._is_transient_degradation(symbol):
                             self._autorecover(symbol)
                         if self.tick_recorder:
                             self.tick_recorder.record_tick(
                                 symbol, result["timestamp"], result["price"]
                             )
-                    elif symbol in self._degraded_symbols:
+                    else:
                         get_state = self._market_hours_fn or (lambda s, t: get_market_state(s, t))
                         if get_state(symbol, now_ts)[0]:
-                            self._increase_backoff(symbol, now_ts)
+                            self._consecutive_poll_failures[symbol] += 1
+                            failures = self._consecutive_poll_failures[symbol]
+                            if failures >= 3:
+                                self._mark_degraded(symbol, f"poll_failures={failures}")
+                                self._increase_backoff(symbol, now_ts)
 
                 # Heartbeat poll: actualitza last_price sense escriure candles
                 for symbol in heartbeat_symbols:
@@ -455,7 +464,8 @@ class OstiumCandleIngestService:
         self._degraded_symbols.add(symbol)
         self._degraded_reason[symbol] = reason
         now_ts = int(datetime.now(timezone.utc).timestamp())
-        self._symbol_backoff_until[symbol] = now_ts + self._backoff_base_s
+        if reason.startswith("poll_failures="):
+            self._symbol_backoff_until[symbol] = now_ts + self._backoff_base_s
         metrics = get_data_layer_metrics()
         if metrics:
             metrics.set_symbol_state(
@@ -465,7 +475,17 @@ class OstiumCandleIngestService:
                 duplicates=duplicates,
                 ts_step_errors=ts_step_errors,
             )
-        logger.warning("OSTIUM_DEGRADED symbol=%s reason=%s (backoff %ss)", symbol, reason, self._backoff_base_s)
+        logger.warning(
+            "OSTIUM_DEGRADED symbol={} reason={} poll_backoff={}",
+            symbol, reason, self._uses_poll_backoff(symbol),
+        )
+
+    def _is_transient_degradation(self, symbol: str) -> bool:
+        reason = self._degraded_reason.get(symbol, "")
+        return reason.startswith("poll_failures=") or reason.startswith("stale_seconds=")
+
+    def _uses_poll_backoff(self, symbol: str) -> bool:
+        return self._degraded_reason.get(symbol, "").startswith("poll_failures=")
 
     def _autorecover(self, symbol: str) -> None:
         """Nou tick/candle → running."""
