@@ -67,10 +67,24 @@ def test_prod_gate_accepts_canonical_symbol_market_hours():
     assert service._market_hours_fn("XAUUSD", 0) == (False, "daily_break")
 
 
+def test_canonical_closed_minute_count_includes_xau_daily_break():
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    from apps.realtime_datalayer.market_hours import count_closed_minutes_for_ingest
+
+    ny = ZoneInfo("America/New_York")
+    start = datetime(2026, 8, 5, 17, 0, tzinfo=ny)
+    end = start + timedelta(hours=1)
+    assert count_closed_minutes_for_ingest(
+        "XAUUSD", int(start.timestamp()), int(end.timestamp())
+    ) == 60
+
+
 def main() -> int:
     test_market_closed_stale_not_degraded()
     test_unknown_symbol_no_stale_degradation()
     test_prod_gate_accepts_canonical_symbol_market_hours()
+    test_canonical_closed_minute_count_includes_xau_daily_break()
     print("OK test_market_closed_not_degraded")
     return 0
 

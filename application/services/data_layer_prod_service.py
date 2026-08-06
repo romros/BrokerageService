@@ -91,6 +91,7 @@ class DataLayerProdService:
         writer_interval_seconds: int = 60,
         write_mode: str = "realtime",
         market_hours_fn: Optional[Callable[[str, int], tuple[bool, str]]] = None,
+        closed_minutes_fn: Optional[Callable[[str, int, int], int]] = None,
     ):
         self.store = store
         self.provider = provider
@@ -103,10 +104,12 @@ class DataLayerProdService:
         self.writer_interval_seconds = writer_interval_seconds
         self.write_mode = write_mode  # realtime | backfill_only | realtime_only | realtime_plus_backfill
         self._market_hours_fn = market_hours_fn
+        self._closed_minutes_fn = closed_minutes_fn
 
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self._degraded_symbols: set = set()
+        self._degraded_reason: dict[str, str] = {}
         self._service_start_ts: int = 0  # set a start()
 
         logger.info(
@@ -280,6 +283,7 @@ class DataLayerProdService:
     ) -> None:
         """Marca símbol com DEGRADED i atura writer."""
         self._degraded_symbols.add(symbol)
+        self._degraded_reason[symbol] = reason
         metrics = get_data_layer_metrics()
         if metrics:
             metrics.set_symbol_state(
@@ -330,7 +334,8 @@ class DataLayerProdService:
                     log_incomplete=False,
                 )
                 missing_24h_raw = getattr(r, "missing_count", 0) or 0
-                closed_mins = count_closed_minutes_between(symbol, window_24h_start_ts, now_ts)
+                closed_counter = self._closed_minutes_fn or count_closed_minutes_between
+                closed_mins = closed_counter(symbol, window_24h_start_ts, now_ts)
                 missing_24h = max(0, missing_24h_raw - closed_mins)
             except Exception:
                 missing_24h = 0
@@ -372,6 +377,14 @@ class DataLayerProdService:
                     and not in_warmup
                 ):
                     self._mark_degraded(symbol, f"missing_minutes_24h={missing_24h} > {self.max_missing_per_24h}")
+            elif (
+                self._degraded_reason.get(symbol, "").startswith("missing_minutes_24h=")
+                and missing_24h <= self.max_missing_per_24h
+                and stale_s <= self.stale_seconds
+            ):
+                self._degraded_symbols.discard(symbol)
+                self._degraded_reason.pop(symbol, None)
+                metrics.set_symbol_state(symbol, SYMBOL_STATE_ACTIVE)
 
         # Lifecycle: ready | warming_up | degraded (basat en cobertura recent 24h)
         if self._degraded_symbols:

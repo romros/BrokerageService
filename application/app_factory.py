@@ -311,9 +311,13 @@ def create_app(role: str | None = None) -> FastAPI:
                     provider = DukascopyBackfillProvider(cache_root=config["datafiles_root"])
                 if cfg["symbols"]:
                     prod_market_hours_fn = None
+                    prod_closed_minutes_fn = None
                     if role == "realtime_datalayer":
-                        from apps.realtime_datalayer.market_hours import get_market_state_for_ingest
+                        from apps.realtime_datalayer.market_hours import (
+                            count_closed_minutes_for_ingest, get_market_state_for_ingest,
+                        )
                         prod_market_hours_fn = get_market_state_for_ingest
+                        prod_closed_minutes_fn = count_closed_minutes_for_ingest
                     data_layer_prod_service = DataLayerProdService(
                         store=candle_store,
                         provider=provider,
@@ -325,6 +329,7 @@ def create_app(role: str | None = None) -> FastAPI:
                         stale_seconds=cfg["stale_seconds"],
                         write_mode=cfg.get("write_mode", "realtime"),
                         market_hours_fn=prod_market_hours_fn,
+                        closed_minutes_fn=prod_closed_minutes_fn,
                     )
                     await data_layer_prod_service.start()
                     logger.info("Data Layer prod v0 started symbols=%s", cfg["symbols"])
@@ -374,9 +379,15 @@ def create_app(role: str | None = None) -> FastAPI:
                         market_hours_fn = None
                         market_hours_full_fn = None
                         if role == "realtime_datalayer":
-                            from apps.realtime_datalayer.market_hours import get_market_state_for_ingest, get_market_state_full
+                            from apps.realtime_datalayer.market_hours import (
+                                count_closed_minutes_for_ingest, get_market_state_for_ingest,
+                                get_market_state_full,
+                            )
                             market_hours_fn = get_market_state_for_ingest
                             market_hours_full_fn = get_market_state_full
+                            closed_minutes_fn = count_closed_minutes_for_ingest
+                        else:
+                            closed_minutes_fn = None
                         ostium_ingest_service = OstiumCandleIngestService(
                             store=candle_store,
                             symbols=ostium_symbols,
@@ -389,6 +400,7 @@ def create_app(role: str | None = None) -> FastAPI:
                             symbol_to_ostium_asset=symbol_to_ostium_asset,
                             market_hours_fn=market_hours_fn,
                             market_hours_full_fn=market_hours_full_fn,
+                            closed_minutes_fn=closed_minutes_fn,
                         )
                         await ostium_ingest_service.start()
                         logger.info("OstiumCandleIngestService started symbols=%s", ostium_symbols)

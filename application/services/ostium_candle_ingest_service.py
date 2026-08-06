@@ -98,6 +98,7 @@ class OstiumCandleIngestService:
         symbol_to_ostium_asset: Optional[Dict[str, str]] = None,
         market_hours_fn: Optional[Callable[[str, int], tuple[bool, str]]] = None,
         market_hours_full_fn: Optional[Callable[[str, int], Any]] = None,
+        closed_minutes_fn: Optional[Callable[[str, int, int], int]] = None,
     ):
         self.store = store
         self.symbols = list(symbols)
@@ -135,6 +136,7 @@ class OstiumCandleIngestService:
         self._last_error: Dict[str, str] = {}
         self._market_hours_fn = market_hours_fn
         self._market_hours_full_fn = market_hours_full_fn
+        self._closed_minutes_fn = closed_minutes_fn
         # first_seen_ts: timestamp del primer tick per símbol (per calcular symbol_uptime_s)
         self._first_seen_ts: Dict[str, int] = {}
 
@@ -549,7 +551,8 @@ class OstiumCandleIngestService:
                     log_incomplete=False,
                 )
                 missing_24h_raw = getattr(r, "missing_count", 0) or 0
-                closed_mins = count_closed_minutes_between(symbol, window_24h_start_ts, now_ts)
+                closed_counter = self._closed_minutes_fn or count_closed_minutes_between
+                closed_mins = closed_counter(symbol, window_24h_start_ts, now_ts)
                 missing_24h = max(0, missing_24h_raw - closed_mins)
             except Exception:
                 missing_24h = 0
@@ -587,3 +590,9 @@ class OstiumCandleIngestService:
                         symbol,
                         f"missing_minutes_24h={missing_24h} > {self.max_missing_per_24h}",
                     )
+            elif (
+                self._degraded_reason.get(symbol, "").startswith("missing_minutes_24h=")
+                and missing_24h <= self.max_missing_per_24h
+                and stale_s <= self.stale_seconds
+            ):
+                self._autorecover(symbol)

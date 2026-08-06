@@ -29,9 +29,20 @@ def get_market_state_full(symbol: str, ts_utc: int) -> MarketStateResult:
     return get_market_state_ny(symbol, ts_utc, profile_override=profile)
 
 
+def count_closed_minutes_for_ingest(symbol: str, from_ts: int, to_ts: int) -> int:
+    """Count scheduled closed M1 buckets with the canonical symbol profile."""
+    start = (int(from_ts) // 60) * 60
+    end = ((int(to_ts) + 59) // 60) * 60
+    return sum(
+        1 for ts in range(start, end, 60)
+        if not get_market_state_for_ingest(symbol, ts)[0]
+    )
+
+
 __all__ = [
     "get_market_state_ny",
     "get_market_state_for_ingest",
     "get_market_state_full",
+    "count_closed_minutes_for_ingest",
     "MarketStateResult",
 ]
