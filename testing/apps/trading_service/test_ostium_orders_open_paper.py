@@ -119,9 +119,12 @@ def test_ostium_paper_open_then_positions():
         assert "positions" in data_pos
         positions = data_pos["positions"]
         assert len(positions) == 1, f"expected 1 position, got {len(positions)}"
-        assert positions[0].get("position_id") == f"ostium:{position_id}"
+        assert positions[0].get("position_id") == position_id
         assert positions[0].get("symbol") == "EURUSD"
         assert positions[0].get("side") == "LONG"
+        assert positions[0].get("collateral") == 5.0
+        assert positions[0].get("leverage") == 2.0
+        assert positions[0].get("notional") == 10.0
 
     print("✓ Ostium PAPER: open → position_id; GET positions → 1 posició OK")
 

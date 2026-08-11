@@ -234,6 +234,8 @@ class PositionItem(BaseModel):
     side: str
     size: float
     notional: float
+    collateral: Optional[float] = None
+    leverage: Optional[float] = None
     open_price: float
     entry_time: str
     mark_price: Optional[float] = None  # Preu actual (per PnL)
@@ -1125,7 +1127,9 @@ def _map_positions_response(
         liq_price = _compute_liquidation_price(
             p.open_price, p.notional or 0, p.collateral, p.is_long, maintenance_margin_ratio
         )
-        pid = f"{venue}:{p.venue_position_id}" if getattr(p, "venue_position_id", None) else f"{venue}:{p.pair_id}"
+        venue_position_id = str(getattr(p, "venue_position_id", "") or "")
+        pid = (venue_position_id if venue_position_id.lower().startswith(f"{venue.lower()}:")
+               else f"{venue}:{venue_position_id or p.pair_id}")
         items.append(
             PositionItem(
                 position_id=pid,
@@ -1133,6 +1137,8 @@ def _map_positions_response(
                 side="LONG" if p.is_long else "SHORT",
                 size=size,
                 notional=p.notional or 0,
+                collateral=p.collateral,
+                leverage=p.leverage,
                 open_price=p.open_price,
                 entry_time=p.open_time.isoformat() if p.open_time else "",
                 mark_price=mark_price,
